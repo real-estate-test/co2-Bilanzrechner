@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Projektrechner · Selbsttest Rechenkern</title>
+<style>
+  body { font-family: system-ui, sans-serif; background: #f4f6f8; color: #10151c; padding: 24px; font-size: 14px; }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  p.sub { color: #6b7484; margin-bottom: 18px; }
+  table { border-collapse: collapse; width: 100%; max-width: 1000px; background: #fff;
+          border: 1px solid #e2e6ec; border-radius: 7px; overflow: hidden; }
+  th, td { padding: 7px 11px; border-bottom: 1px solid #eef1f5; text-align: left; }
+  th { background: #fafbfc; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: #6b7484; }
+  td.n { text-align: right; font-family: ui-monospace, monospace; }
+  .ok { color: #0d7a45; font-weight: 600; }
+  .no { color: #c02e26; font-weight: 600; }
+  tr.no td { background: #fdf0ef; }
+  #summe { margin: 16px 0; padding: 11px 14px; border-radius: 7px; font-weight: 600; max-width: 1000px; }
+</style>
+</head>
+<body>
+<h1>Selbsttest Rechenkern</h1>
+<p class="sub">Prüft die Kernrechnungen gegen von Hand nachvollziehbare Referenzwerte.</p>
+<div id="summe"></div>
+<table><thead><tr>
+  <th>Prüfung</th><th class="n">erwartet</th><th class="n">berechnet</th><th>Ergebnis</th>
+</tr></thead><tbody id="tb"></tbody></table>
+
+<script src="../app/model.js"></script>
+<script src="../app/engine.js"></script>
+<script>
+(function () {
+  var A = window.APP, E = A.engine, tb = document.getElementById('tb');
+  var gut = 0, schlecht = 0;
+
+  function pruefe(name, erwartet, ist, toleranz) {
+    toleranz = toleranz === undefined ? 0.5 : toleranz;
+    var ok = Math.abs(erwartet - ist) <= toleranz;
+    ok ? gut++ : schlecht++;
+    var tr = document.createElement('tr');
+    if (!ok) tr.className = 'no';
+    tr.innerHTML = '<td>' + name + '</td>' +
+      '<td class="n">' + A.fmt(erwartet, 2) + '</td>' +
+      '<td class="n">' + A.fmt(ist, 2) + '</td>' +
+      '<td class="' + (ok ? 'ok' : 'no') + '">' + (ok ? 'bestanden' : 'ABWEICHUNG') + '</td>';
+    tb.appendChild(tr);
+  }
+
+  /* ---- Flächenkaskade ------------------------------------------- */
+  var p = A.defaultProject();
+  p.grundstueck.flaeche = 2500; p.grundstueck.az = 0.90;
+  var r = E.compute(p);
+  pruefe('zulässige aGF = 2500 × 0.90', 2250, r.flaechen.agf_zulaessig);
+  pruefe('GF oberirdisch = aGF × 1.10', 2475, r.flaechen.teile.neubau.gf_oi);
+  pruefe('Untergeschoss = GF oi × 15 %', 371.25, r.flaechen.teile.neubau.gf_ug, 0.01);
+  pruefe('GF total', 2846.25, r.flaechen.total.gf, 0.01);
+  pruefe('NWF = GF oi × 78 %', 1930.5, r.flaechen.total.nwf, 0.01);
+  pruefe('Gebäudevolumen = GF × 3.40', 9677.25, r.flaechen.total.gv, 0.1);
+
+  /* ---- Erwerbsnebenkosten --------------------------------------- */
+  var q = A.defaultProject();
+  q.erwerb.preis_modus = 'total'; q.erwerb.preis_total = 4000000;
+  q.erwerb.handaenderung = 2.00; q.erwerb.handaenderung_anteil = 50;
+  q.erwerb.courtage = 2.00; q.erwerb.notariat = 0.20;
+  var rq = E.compute(q);
+  function pos(res, id) {
+    var z = res.erwerb.zeilen.find(function (x) { return x.id === id; });
+    return z ? z.betrag : 0;
+  }
+  pruefe('Handänderungssteuer 2 % × 50 % von 4 Mio.', 40000, pos(rq, 'handaenderung'));
+  pruefe('Courtage 2 % von 4 Mio.', 80000, pos(rq, 'courtage'));
+  pruefe('Notariat 0.20 % von 4 Mio.', 8000, pos(rq, 'notariat'));
+
+  /* Entwicklungshonorar muss nach der Fixpunktiteration exakt
+     dem Prozentsatz der Anlagekosten entsprechen. */
+  pruefe('Entwicklungshonorar = 2.50 % der Anlagekosten',
+    rq.kpi.anlagekosten * 0.025, pos(rq, 'entwicklung'), 600);
+
+  /* ---- Kaufpreiseingabearten ------------------------------------ */
+  var m = A.defaultProject();
+  m.grundstueck.flaeche = 2000; m.grundstueck.az = 1.0;
+  m.erwerb.preis_modus = 'm2_land'; m.erwerb.preis_m2_land = 1500;
+  pruefe('Kaufpreis über CHF/m² Land', 3000000, E.compute(m).erwerb.kaufpreis);
+  m.erwerb.preis_modus = 'm2_agf'; m.erwerb.preis_m2_agf = 1800;
+  pruefe('Kaufpreis über CHF/m² aGF', 3600000, E.compute(m).erwerb.kaufpreis);
+
+  /* ---- Baukosten und Reserve ------------------------------------ */
+  var b = A.defaultProject();
+  var rb = E.compute(b), bl = rb.bau.bloecke.neubau;
+  pruefe('Reserve = 5 % von BKP 1 + 2', (bl.bkp1 + bl.bkp2) * 0.05, bl.reserve, 1);
+  pruefe('Blocktotal = Summe + Reserve', bl.summe + bl.reserve, bl.total, 1);
+  var rohbau = bl.zeilen.find(function (x) { return x.id === 'b2_rohbau'; });
+  pruefe('Rohbau = GF total × Kennwert', rb.flaechen.total.gf * 1150, rohbau.betrag, 1);
+
+  /* ---- Verwertung ------------------------------------------------ */
+  var v = A.defaultProject();
+  v.teile.neubau.nutzungen.wohnen.verwertung = 'stwe';
+  v.teile.neubau.nutzungen.wohnen.preis = 10000;
+  var rv = E.compute(v);
+  pruefe('STWE-Erlös = NWF × 10 000', rv.flaechen.total.nwf * 10000, rv.ertraege.stwe_erloes, 1);
+
+  var h = A.defaultProject();
+  h.teile.neubau.nutzungen.wohnen.verwertung = 'exit';
+  h.teile.neubau.nutzungen.wohnen.miete = 400;
+  h.teile.neubau.nutzungen.wohnen.exit_rendite = 4.00;
+  var rh = E.compute(h);
+  pruefe('Exit-Wert = Sollmiete / 4 %', rh.flaechen.total.nwf * 400 / 0.04, rh.ertraege.exit_wert, 5);
+
+  /* ---- Betrieb ohne gehaltene Flächen ---------------------------- */
+  var s0 = A.defaultProject();   // alles STWE
+  pruefe('kein Betriebsaufwand ohne gehaltene Fläche', 0, E.compute(s0).betrieb.total_a);
+
+  /* ---- Zeitverteilung -------------------------------------------- */
+  var summe = E.spread(1000000, 1.0, 3.0, 6, 's').reduce(function (a, c) { return a + c; }, 0);
+  pruefe('S-Kurve verteilt den Betrag vollständig', 1000000, summe, 0.01);
+  var lin = E.spread(1000000, 0, 4, 6, 'linear');
+  pruefe('lineare Verteilung: erstes Jahr = 25 %', 250000, lin[0], 0.01);
+
+  /* ---- Finanzierung ---------------------------------------------- */
+  var f = A.defaultProject();
+  f.finanzierung.vorverkauf_quote = 55;   // Staffel: ab 50 % → 50 Basispunkte
+  pruefe('Zinsrabatt bei 55 % Vorverkauf', 50, E.compute(f).fin.rabatt_bp);
+  f.finanzierung.vorverkauf_quote = 10;
+  pruefe('kein Rabatt bei 10 % Vorverkauf', 0, E.compute(f).fin.rabatt_bp);
+
+  var g = A.defaultProject();
+  g.finanzierung.ek_einsatz = 'proportional';
+  g.finanzierung.ek_quote = 30;
+  var rg = E.compute(g), j0 = rg.fin.jahre[0];
+  pruefe('Eigenkapitalanteil im ersten Jahr = 30 % des Saldos',
+    j0.saldo * 0.30, j0.ek, 1);
+
+  /* ---- Interner Zinsfuss ------------------------------------------ */
+  var irr = E.irr([-1000, 0, 0, 1331]);
+  pruefe('IRR von −1000 → 1331 nach 3 Jahren ≈ 10 %', 10, irr, 0.6);
+
+  /* ---- Residualwert ---------------------------------------------- */
+  var res = A.engine.residualwert(A.defaultProject(), 15);
+  var probe = A.defaultProject();
+  probe.erwerb.preis_modus = 'total'; probe.erwerb.preis_total = res.preis;
+  pruefe('beim Residualpreis wird die Zielmarge erreicht', 15,
+    E.compute(probe).kpi.marge_ak, 0.15);
+
+  /* ---- Gewinnidentität -------------------------------------------- */
+  var k = rb.kpi;
+  pruefe('Erlöse − alle Kosten − Steuern = Gewinn',
+    k.erloese + k.mietertrag_projekt - k.erwerbskosten - k.baukosten -
+    k.finanzierungskosten - k.vermarktung - k.steuern, k.gewinn, 2);
+
+  /* ---- Zusammenfassung -------------------------------------------- */
+  var box = document.getElementById('summe');
+  box.textContent = gut + ' von ' + (gut + schlecht) + ' Prüfungen bestanden' +
+    (schlecht ? ' — ' + schlecht + ' Abweichung(en)' : '');
+  box.style.background = schlecht ? '#fdf0ef' : '#edf7f1';
+  box.style.color = schlecht ? '#8c2b23' : '#0d5c34';
+})();
+</script>
+</body>
+</html>

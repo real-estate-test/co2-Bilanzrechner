@@ -3,9 +3,23 @@
 Bewertungstool für Immobilienprojekte: von der Akquisition über die Baukosten nach BKP
 bis zur Verwertung, Finanzierung und dem laufenden Portfolio-Tracking.
 
-Reine Webanwendung ohne Build-Schritt — `index.html` im Browser öffnen oder über
-GitHub Pages ausliefern. Alle Projektdaten liegen im Browser des Anwenders
-(localStorage) und lassen sich als JSON sichern und weitergeben.
+Reine Webanwendung ohne Build-Schritt und ohne Fremdbibliotheken.
+
+Zwei Betriebsarten:
+
+| | **Lokal** | **Firmenbetrieb** |
+|---|---|---|
+| Einrichtung | keine — `index.html` öffnen | Supabase-Projekt, ca. 10 Minuten |
+| Daten | nur im Browser des Anwenders | gemeinsame Datenbank |
+| Anmeldung | keine | E-Mail und Passwort |
+| Rollen | — | Betrachter / Bearbeiter / Verwalter |
+| Portfolio | eigene Projekte | alle Projekte der Firma |
+| Protokoll | — | lückenlos, unveränderlich |
+| Kosten | 0 | 0 (siehe [Betrieb](#firmenbetrieb-einrichten)) |
+
+Solange `app/config.js` leer ist, läuft die Anwendung lokal. Das Eintragen der
+Verbindung schaltet den Firmenbetrieb frei — am Rechenkern und an der
+Bedienung ändert sich dabei nichts.
 
 ---
 
@@ -95,19 +109,103 @@ zeigt beide Varianten mit ihren Kennzahlen.
 
 ---
 
+## Firmenbetrieb einrichten
+
+Vier Schritte, keine IT-Abteilung nötig.
+
+**1 · Datenbank anlegen.** Auf [supabase.com](https://supabase.com) ein kostenloses
+Projekt erstellen, Region **Frankfurt** (EU). Das Konto muss auf die Firma laufen,
+nicht auf eine Privatperson.
+
+**2 · Schema einspielen.** Den Inhalt von `db/schema.sql` im SQL-Editor einfügen
+und ausführen. Das legt Tabellen, Rechteregeln, Auslöser und das Protokoll an.
+
+**3 · Verbinden.** Aus *Project Settings › API* die beiden Werte in `app/config.js`
+eintragen:
+
+```js
+window.APP_CONFIG = {
+  url: 'https://xxxx.supabase.co',
+  key: 'eyJhbGci…'          // anon public key
+};
+```
+
+Der `anon key` ist zur Veröffentlichung bestimmt und für sich genommen wertlos —
+wer was sehen und ändern darf, entscheiden ausschliesslich die Rechteregeln in
+der Datenbank.
+
+**4 · Erstes Konto.** Auf der Anmeldemaske *Konto anlegen* wählen. **Das erste
+Konto wird automatisch Verwalter.** Danach ist die Registrierung geschlossen, bis
+der Verwalter unter *Verwaltung › Registrierung* die Firmendomäne freigibt. Neue
+Konten starten immer als Betrachter und werden dort hochgestuft.
+
+### Zwei Wartungsaufträge
+
+Der kostenlose Plan hat zwei Schwächen, die beide kostenlos geschlossen werden.
+Beide Aufträge liegen unter `.github/workflows/` und brauchen nur die Secrets
+unter *Settings › Secrets and variables › Actions*:
+
+| Auftrag | Secret | Wozu |
+|---|---|---|
+| `wachhalter.yml` | `SUPABASE_URL`, `SUPABASE_ANON_KEY` | Der kostenlose Plan pausiert nach 7 Tagen Ruhe. Zwei Anfragen pro Woche verhindern das. |
+| `sicherung.yml` | `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` | Der kostenlose Plan hält keine Sicherung vor. Wöchentliche Ausleitung nach `sicherungen/`, versioniert über die Git-Historie. |
+
+Der `service_role key` umgeht alle Rechteregeln und gehört **ausschliesslich** in
+die GitHub-Secrets — niemals in `app/config.js`.
+
+### Rollen
+
+| | lesen | anlegen, ändern, archivieren | endgültig löschen, Rollen, Zielwerte |
+|---|:--:|:--:|:--:|
+| Betrachter | ✓ | | |
+| Bearbeiter | ✓ | ✓ | |
+| Verwalter | ✓ | ✓ | ✓ |
+
+**Löschen ist zweistufig.** Archivieren blendet ein Projekt aus Listen und
+Portfolio aus, ist reversibel und jedem Bearbeiter erlaubt. Endgültiges Löschen
+verlangt die Verwalterrolle, die Eingabe des Projektnamens und eine erneute
+Passwortabfrage — und steht anschliessend im Protokoll.
+
+Wichtig: Die Rechteprüfung liegt in der Datenbank, nicht im Browser. Ein
+manipulierter Browser oder ein direkter Aufruf der Schnittstelle kommt nicht
+daran vorbei. Die Abfragen in der Oberfläche verhindern Fehlgriffe, sie schützen
+nicht.
+
+### Gleichzeitiges Arbeiten
+
+Jedes Projekt trägt einen Versionszähler. Speichert jemand, während eine andere
+Person am selben Projekt arbeitet, wird der zweite Speichervorgang nicht still
+ausgeführt, sondern meldet sich mit der Wahl: fremden Stand laden oder eigenen
+durchsetzen. Beides landet im Protokoll.
+
+Eingaben gehen sofort in den lokalen Entwurf und erst nach einer Ruhepause zum
+Server. Bei Netzausfall bleiben sie im Browser erhalten.
+
+---
+
 ## Aufbau
 
 ```
 index.html            Grundgerüst
-app/model.js          Datenmodell, Kennwertbibliothek, Kantonswerte, Speicherung
+app/config.js         Verbindung zur Firmendatenbank (leer = lokaler Modus)
+app/model.js          Datenmodell, Kennwertbibliothek, Kantonswerte, lokale Speicherung
 app/engine.js         Rechenkern — reine Funktionen, ohne Oberfläche
+app/api.js            Zugriff auf Datenbank und Anmeldung (nur fetch)
+app/store-server.js   Speicherung in der Firmendatenbank
+app/auth.js           Anmeldung, Sitzung, Passwortbestätigung
 app/ui.js             Feldbausteine, Datenherkunft, Plausibilität
 app/views.js          Eingabeseiten
 app/results.js        Ergebnis, Analyse, Bericht
-app/portfolio.js      Portfolio, Tracking, Import und Export
-app/main.js           Zustand, Navigation, Kennzahlenleiste
+app/portfolio.js      Portfolio, Tracking, Archivieren, Import und Export
+app/admin.js          Verwaltung, Protokoll, Anmerkungen
+app/main.js           Zustand, Navigation, Kennzahlenleiste, Rollen
+db/schema.sql         Tabellen, Rechteregeln, Auslöser
 tests/engine.html     Selbsttest des Rechenkerns
 ```
+
+Lokale und Serverspeicherung liegen hinter **derselben Schnittstelle**. Die
+Oberfläche weiss nicht, woher die Daten kommen — deshalb blieben `engine.js`,
+`views.js` und `results.js` beim Umbau auf den Firmenbetrieb unverändert.
 
 Der Rechenkern kennt kein DOM. Dieselbe Funktion, die die Kennzahlenleiste
 speist, rechnet auch die Sensitivität, den Bericht und die Portfolio-Aggregation —
@@ -147,6 +245,21 @@ Kantonale Feinheiten der Grundstückgewinn- und Gewinnsteuer sind nicht modellie
 Flächenkaskade, Nebenkostensätze, Reservebasis, Verwertungsarten,
 Zeitverteilung, Vorverkaufsstaffel, internen Zinsfuss, Residualwert und die
 Gewinnidentität.
+
+---
+
+## Noch nicht gebaut
+
+Das Reporting für den Verwaltungsrat ist die nächste Etappe:
+
+- **Quartals-Stichtage** mit 14 Tagen Nachfrist und anschliessender Freigabe
+  durch den Verwalter (die Tabelle `stichtage` steht bereits im Schema)
+- **Abweichungsbrücke** — der Vergleich zweier Stichtage zerlegt die Veränderung
+  des Gewinns nach Ursache: Flächen, Baukosten, Erlöse, Termine, Finanzierung
+- **Halbjahresbericht** als PDF, auf Portfolioebene mit getrennt ausgewiesenen
+  Zu- und Abgängen
+- **Anwesenheitsanzeige** („wird gerade bearbeitet von …") — die Konflikterkennung
+  beim Speichern ist bereits vorhanden
 
 ---
 

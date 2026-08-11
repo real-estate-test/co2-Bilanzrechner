@@ -76,8 +76,21 @@ window.APP = window.APP || {};
           { id: 'kauf', label: 'Kauf', hint: 'Erwerb des Grundstücks zu Eigentum' },
           { id: 'baurecht', label: 'Baurecht', hint: 'Baurechtszins statt Kaufpreis' }
         ], 'Erwerbsart', { stufe: 'standard' }),
-        U.num(p, 'ziele.marge', 'Zielmarge', { unit: '% der Anlagekosten', dez: 1 }),
-        U.num(p, 'ziele.bruttorendite', 'Ziel-Bruttorendite', { unit: '%', dez: 2, stufe: 'standard' }),
+        /* Im Firmenbetrieb sind die Zielwerte firmenweit gesetzt — nur so
+           bedeutet «unter Ziel» im Portfolio bei allen dasselbe. */
+        A.ziele
+          ? el('div', { class: 'f' }, [
+              el('label', {}, [el('span', { text: 'Zielwerte (firmenweit)' })]),
+              el('div', { class: 'kachel' }, [
+                el('div', { class: 'v', style: 'font-size:14px',
+                  text: 'Marge ≥ ' + A.fmtPct(p.ziele.marge) + ' · Bruttorendite ≥ ' +
+                        A.fmtPct(p.ziele.bruttorendite, 2) }),
+                el('div', { class: 's', text: 'änderbar nur unter Verwaltung' })
+              ])
+            ])
+          : U.num(p, 'ziele.marge', 'Zielmarge', { unit: '% der Anlagekosten', dez: 1 }),
+        A.ziele ? null
+          : U.num(p, 'ziele.bruttorendite', 'Ziel-Bruttorendite', { unit: '%', dez: 2, stufe: 'standard' }),
         U.chk(p, 'steuern.aktiv', 'Gewinn nach Steuern rechnen', { stufe: 'standard' }),
         U.num(p, 'steuern.satz', 'Effektiver Steuersatz', { unit: '%', dez: 1, stufe: 'standard',
           hilfe: 'Vereinfacht: Grundstückgewinn- bzw. Gewinnsteuer als ein Satz auf den Projektgewinn.' })

@@ -41,12 +41,66 @@ window.APP = window.APP || {};
      Seite: Portfolio
      =================================================================== */
 
+  /* ---------------------------------------------------------------
+     Archivieren und Löschen
+     --------------------------------------------------------------- */
+
+  A.archivieren = function (p) {
+    if (!A.pruefeRecht()) return;
+    if (!confirm('Projekt «' + p.name + '» archivieren?\n\n' +
+      'Es verschwindet aus Listen und Portfolio, bleibt aber vollständig erhalten ' +
+      'und lässt sich jederzeit zurückholen.')) return;
+    A.store.archivieren(p.id).then(function () {
+      A.meldung('ok', '«' + p.name + '» ist archiviert.');
+      if (A.state.p.id === p.id) A.projektOeffnen(null); else A.render();
+    }).catch(function (f) { A.meldung('warn', f.message); });
+  };
+
+  A.reaktivieren = function (p) {
+    if (!A.pruefeRecht()) return;
+    A.store.reaktivieren(p.id).then(function () {
+      A.meldung('ok', '«' + p.name + '» ist wieder aktiv.');
+      A.render();
+    }).catch(function (f) { A.meldung('warn', f.message); });
+  };
+
+  /* Endgültiges Löschen. Die Datenbank lässt das ausschliesslich für
+     Verwalter zu; die Abfragen hier verhindern Fehlgriffe. */
+  A.endgueltigLoeschen = function (p) {
+    if (!A.istVerwalter()) {
+      A.meldung('warn', 'Endgültiges Löschen ist Verwaltern vorbehalten. Archivieren Sie das Projekt stattdessen.');
+      return;
+    }
+    var name = prompt('Endgültiges Löschen kann nicht rückgängig gemacht werden.\n\n' +
+      'Zur Bestätigung den Projektnamen eingeben:\n\n  ' + p.name);
+    if (name === null) return;
+    if (name.trim() !== (p.name || '').trim()) {
+      A.meldung('warn', 'Der Name stimmt nicht — es wurde nichts gelöscht.');
+      return;
+    }
+    A.auth.passwortBestaetigen('Projekt «' + p.name + '» endgültig löschen').then(function (ok) {
+      if (!ok) return;
+      A.store.remove(p.id).then(function () {
+        A.meldung('ok', '«' + p.name + '» wurde gelöscht. Der Vorgang steht im Protokoll.');
+        if (A.state.p.id === p.id) A.projektOeffnen(null); else A.render();
+      }).catch(function (f) {
+        A.meldung('warn', 'Löschen abgelehnt: ' + f.message);
+      });
+    });
+  };
+
+  /* ===================================================================
+     Seite: Portfolio
+     =================================================================== */
+
+  var zeigeArchiv = { wert: false };
+
   V.portfolio = function () {
     var out = el('div', {}, [U.kopf('Portfolio',
       'Alle gespeicherten Projekte im Überblick. Der Kapitalbedarf wird über das Kalenderjahr des Erwerbs ' +
       'zusammengeführt — das zeigt, wann sich Projekte in der Finanzierung überlagern.')]);
 
-    var projekte = A.store.all();
+    var projekte = A.store.alle(zeigeArchiv.wert);
     if (!projekte.length) {
       out.appendChild(U.hinweis('info', 'Noch keine Projekte gespeichert. Das aktuelle Projekt wird ' +
         'automatisch gesichert, sobald Sie es bearbeiten.'));
@@ -91,7 +145,9 @@ window.APP = window.APP || {};
         el('div', { class: 'muted', style: 'font-size:10.5px',
           text: [x.p.ort, A.KANTONE[x.p.kanton] && A.KANTONE[x.p.kanton].label].filter(Boolean).join(' · ') })
       ]));
-      tr.appendChild(el('td', {}, [el('span', { class: 'tag', text: x.p.status })]));
+      tr.appendChild(el('td', {}, [el('span', {
+        class: 'tag' + (x.p.archiviert_am ? ' warn' : ''),
+        text: x.p.archiviert_am ? 'archiviert' : x.p.status })]));
       tr.appendChild(el('td', { class: 'muted', text: String(x.p.startjahr) }));
       tr.appendChild(el('td', { class: 'n', text: fmt(x.r.flaechen.total.nwf) }));
       tr.appendChild(el('td', { class: 'n', text: fmt(k.anlagekosten) }));
@@ -102,16 +158,29 @@ window.APP = window.APP || {};
         text: A.fmtPct(k.marge_ak) })]));
       tr.appendChild(el('td', { class: 'n', text: k.irr === null ? '–' : A.fmtPct(k.irr) }));
       tr.appendChild(el('td', { class: 'n', text: fmt(k.kapital_peak) }));
-      tr.appendChild(el('td', { class: 'w1' }, [
-        el('button', { class: 'ghost sm danger', text: '×', title: 'Projekt löschen',
-          onclick: function () {
-            if (confirm('Projekt «' + x.p.name + '» endgültig löschen?')) {
-              A.store.remove(x.p.id);
-              if (A.state.p.id === x.p.id) { A.projektOeffnen(null); } else A.render();
-            }
-          } })
+      tr.appendChild(el('td', { class: 'w1', style: 'white-space:nowrap' }, [
+        x.p.archiviert_am
+          ? el('button', { class: 'ghost sm schreibend', text: 'zurückholen',
+              title: 'Projekt wieder aktiv setzen',
+              onclick: function () { A.reaktivieren(x.p); } })
+          : el('button', { class: 'ghost sm schreibend', text: 'archivieren',
+              title: 'Aus Listen und Portfolio ausblenden — jederzeit umkehrbar',
+              onclick: function () { A.archivieren(x.p); } }),
+        A.istVerwalter()
+          ? el('button', { class: 'ghost sm danger schreibend', text: '×',
+              title: 'Endgültig löschen (nur Verwalter)',
+              onclick: function () { A.endgueltigLoeschen(x.p); } })
+          : null
       ]));
       return tr;
+    });
+
+    var archivSchalter = el('div', { class: 'seg' });
+    [['Aktive', false], ['inkl. Archiv', true]].forEach(function (o) {
+      var b = el('button', { type: 'button', text: o[0],
+        class: zeigeArchiv.wert === o[1] ? 'on' : '' });
+      b.addEventListener('click', function () { zeigeArchiv.wert = o[1]; A.render(); });
+      archivSchalter.appendChild(b);
     });
 
     out.appendChild(U.panel('Projekte', null, [
@@ -120,7 +189,7 @@ window.APP = window.APP || {};
         { label: 'Anlagekosten', n: true }, { label: 'Erlöse', n: true }, { label: 'Gewinn', n: true },
         { label: 'Marge', n: true }, { label: 'IRR', n: true }, { label: 'Kapitalspitze', n: true }, { label: '' }
       ], zeilen)])
-    ]));
+    ], [archivSchalter]));
 
     /* Kapitalbedarf über die Kalenderjahre */
     var jahre = {};
@@ -374,16 +443,23 @@ window.APP = window.APP || {};
       leser.onload = function () {
         try {
           var d = JSON.parse(leser.result);
-          var liste = Array.isArray(d) ? d : (d.projekte || [d]);
-          var n = 0;
-          liste.forEach(function (x) {
-            var q = A.migrate(x);
-            if (!q) return;
+          if (!A.pruefeRecht()) return;
+          var liste = (Array.isArray(d) ? d : (d.projekte || [d]))
+            .map(A.migrate).filter(Boolean);
+          Promise.all(liste.map(function (q) {
             q.id = A.uid();                       // stets als neues Projekt anlegen
-            A.store.save(q); n++;
+            q.version = 1;
+            q.archiviert_am = null;
+            if (A.zieleAnwenden) A.zieleAnwenden(q);
+            return A.store.save(q);
+          })).then(function () {
+            return A.store.init ? A.store.init() : null;
+          }).then(function () {
+            A.meldung('ok', liste.length + ' Projekt(e) importiert.');
+            A.projektOeffnen(null);
+          }).catch(function (fehler) {
+            A.meldung('warn', 'Import fehlgeschlagen: ' + fehler.message);
           });
-          alert(n + ' Projekt(e) importiert.');
-          A.projektOeffnen(null);
         } catch (e) { alert('Datei konnte nicht gelesen werden: ' + e.message); }
       };
       leser.readAsText(f);

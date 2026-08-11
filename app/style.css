@@ -242,6 +242,45 @@ svg text.n { font-family: var(--mono); }
 textarea { width: 100%; border: 1px solid var(--line2); border-radius: 5px; padding: 8px; font-family: var(--mono); font-size: 11.5px; min-height: 150px; resize: vertical; }
 textarea:focus { outline: none; border-color: var(--accent); }
 
+/* ---------------------------------------------------------------- Anmeldung */
+
+.anmelde-bg {
+  position: fixed; inset: 0; z-index: 500; background: #131a24;
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+  background-image: radial-gradient(circle at 30% 20%, #1d2a3c 0%, #131a24 60%);
+}
+.anmelde {
+  background: var(--panel); border-radius: 10px; width: 100%; max-width: 380px;
+  padding: 26px 26px 20px; box-shadow: 0 22px 60px rgba(0,0,0,.4);
+}
+.anmelde-kopf { margin-bottom: 18px; }
+.anmelde-marke {
+  font-size: 10.5px; letter-spacing: .18em; text-transform: uppercase;
+  color: var(--accent); font-weight: 640; margin-bottom: 7px;
+}
+.anmelde-kopf h1 { font-size: 21px; font-weight: 640; letter-spacing: -.02em; }
+.anmelde-kopf p { color: var(--muted); font-size: 12.5px; margin-top: 3px; }
+.anmelde-felder .f { margin-bottom: 12px; }
+.anmelde-meldung { margin: 0 0 12px; }
+.anmelde-fuss { font-size: 12px; color: var(--muted); margin-top: 12px; text-align: center; }
+.anmelde-fuss button { font-size: 12px; }
+
+.konto { padding: 10px 12px; border-top: 1px solid #232c39; }
+.konto-name { color: #dce4ee; font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+.konto-rolle { color: #6b7c93; font-size: 11px; margin-top: 1px; }
+.konto-rolle button { background: none !important; border: none !important; }
+.konto-rolle button:hover { color: #fff !important; text-decoration: underline; }
+
+/* Nur-Lese-Modus */
+.nurlesen input, .nurlesen select, .nurlesen textarea { pointer-events: none; background: var(--panel2); color: var(--muted); }
+.nurlesen .q { display: none; }
+.nurlesen button.schreibend { display: none; }
+
+.syncstatus { font-size: 11px; }
+.syncstatus.warten { color: var(--warn); }
+.syncstatus.gut { color: var(--pos); }
+.syncstatus.fehler { color: var(--neg); font-weight: 600; }
+
 /* ---------------------------------------------------------------- Druck */
 
 @media print {

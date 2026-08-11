@@ -1,0 +1,91 @@
+# =====================================================================
+#  Wöchentliche Sicherung
+#
+#  Der kostenlose Supabase-Plan hält keine Sicherung vor. Dieser Auftrag
+#  legt jeden Sonntag eine vollständige Ausleitung als JSON in den Ordner
+#  sicherungen/ dieses Repositories ab.
+#
+#  Das hat gegenüber der täglichen Sicherung des Bezahlplans einen
+#  Vorteil: Die Kopie liegt ausserhalb von Supabase und überlebt auch
+#  einen Ausfall dort. Über die Git-Historie ist jeder Wochenstand
+#  einzeln wiederherstellbar.
+#
+#  Einrichtung: unter Settings › Secrets and variables › Actions anlegen
+#    SUPABASE_URL          z. B. https://xxxx.supabase.co
+#    SUPABASE_SERVICE_KEY  der service_role key (NICHT der anon key!)
+#
+#  Der service_role key umgeht die Rechteregeln und darf ausschliesslich
+#  hier als Secret liegen — niemals in app/config.js.
+# =====================================================================
+name: Sicherung
+
+on:
+  schedule:
+    - cron: '25 3 * * 0'      # jeden Sonntag, 03:25 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sichern:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Daten ausleiten
+        env:
+          URL: ${{ secrets.SUPABASE_URL }}
+          KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${URL:-}" ] || [ -z "${KEY:-}" ]; then
+            echo "Zugangsdaten fehlen — Sicherung übersprungen."
+            exit 0
+          fi
+          mkdir -p sicherungen
+          datum=$(date -u +%Y-%m-%d)
+          ziel="sicherungen/stand-$datum.json"
+
+          hole() {
+            curl -sS --fail \
+              -H "apikey: $KEY" -H "Authorization: Bearer $KEY" \
+              "$URL/rest/v1/$1?select=*"
+          }
+
+          {
+            printf '{\n'
+            printf '  "erstellt": "%s",\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            printf '  "projekte": %s,\n'      "$(hole projekte)"
+            printf '  "stichtage": %s,\n'     "$(hole stichtage)"
+            printf '  "kommentare": %s,\n'    "$(hole kommentare)"
+            printf '  "einstellungen": %s,\n' "$(hole einstellungen)"
+            printf '  "profil": %s,\n'        "$(hole profil)"
+            printf '  "protokoll": %s\n'      "$(hole protokoll)"
+            printf '}\n'
+          } > "$ziel"
+
+          python3 -c "import json,sys; json.load(open('$ziel'))" \
+            || { echo 'Ausleitung ist kein gültiges JSON — Abbruch.'; exit 1; }
+
+          echo "Gesichert: $ziel ($(wc -c < "$ziel") Bytes)"
+
+      - name: Ältere Stände ausdünnen
+        run: |
+          # Die letzten 12 Wochenstände behalten, ältere entfernen.
+          # Die Git-Historie bewahrt sie ohnehin dauerhaft auf.
+          ls -1 sicherungen/stand-*.json 2>/dev/null | sort | head -n -12 \
+            | xargs -r rm --
+
+      - name: Ablegen
+        run: |
+          set -euo pipefail
+          if [ -z "$(git status --porcelain sicherungen)" ]; then
+            echo "Keine Änderung gegenüber der letzten Sicherung."
+            exit 0
+          fi
+          git config user.name  'Sicherung'
+          git config user.email 'actions@github.com'
+          git add sicherungen
+          git commit -m "Sicherung $(date -u +%Y-%m-%d)"
+          git push

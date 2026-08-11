@@ -413,7 +413,9 @@ window.APP = window.APP || {};
       ziele: { marge: 15, bruttorendite: 4.0 },
 
       ist: {},                           // Ist-Werte je Kostenzeile
-      snapshots: []
+      snapshots: [],
+      archiviert_am: null,               // gesetzt = aus Listen und Portfolio ausgeblendet
+      version: 1                         // Zähler gegen stilles Überschreiben
     };
 
     A.applyKanton(p, p.kanton);
@@ -524,32 +526,64 @@ window.APP = window.APP || {};
     catch (e) { console.warn('Speichern fehlgeschlagen:', e); return false; }
   }
 
-  A.store = {
-    all: function () { return readAll().projekte.map(A.migrate); },
-    aktivId: function () { return readAll().aktiv; },
-    setAktiv: function (id) { var d = readAll(); d.aktiv = id; writeAll(d); },
+  /* Die Auswahl des aktiven Projektes ist eine Vorliebe des Anwenders
+     und bleibt auch im Firmenbetrieb lokal. */
+  A.aktivMerken = {
+    lesen: function () { try { return localStorage.getItem(KEY + '.aktiv'); } catch (e) { return null; } },
+    setzen: function (id) { try { localStorage.setItem(KEY + '.aktiv', id || ''); } catch (e) {} }
+  };
+
+  /* Lokale Speicherung — Einzelplatz, ohne Anmeldung.
+     Gleiche Schnittstelle wie die Serverspeicherung in store-server.js,
+     damit die Anwendung nicht wissen muss, woher die Daten kommen. */
+  A.storeLokal = {
+    modus: 'lokal',
+    init: function () { return Promise.resolve(); },
+    alle: function (mitArchiv) {
+      return readAll().projekte.map(A.migrate).filter(function (p) {
+        return mitArchiv ? true : !p.archiviert_am;
+      });
+    },
+    all: function () { return A.storeLokal.alle(false); },
+    aktivId: function () { return A.aktivMerken.lesen() || readAll().aktiv; },
+    setAktiv: function (id) { A.aktivMerken.setzen(id); var d = readAll(); d.aktiv = id; writeAll(d); },
+    load: function (id) {
+      var p = readAll().projekte.find(function (x) { return x.id === id; });
+      return p ? A.migrate(p) : null;
+    },
     save: function (p) {
       var d = readAll(), i = d.projekte.findIndex(function (x) { return x.id === p.id; });
       p.stand = A.heute();
       if (i >= 0) d.projekte[i] = p; else d.projekte.push(p);
       d.aktiv = p.id;
-      return writeAll(d);
+      return Promise.resolve({ ok: writeAll(d) });
     },
-    load: function (id) {
-      var p = readAll().projekte.find(function (x) { return x.id === id; });
-      return p ? A.migrate(p) : null;
+    archivieren: function (id) {
+      var d = readAll(), p = d.projekte.find(function (x) { return x.id === id; });
+      if (p) { p.archiviert_am = new Date().toISOString(); writeAll(d); }
+      return Promise.resolve({ ok: true });
+    },
+    reaktivieren: function (id) {
+      var d = readAll(), p = d.projekte.find(function (x) { return x.id === id; });
+      if (p) { p.archiviert_am = null; writeAll(d); }
+      return Promise.resolve({ ok: true });
     },
     remove: function (id) {
       var d = readAll();
       d.projekte = d.projekte.filter(function (x) { return x.id !== id; });
       if (d.aktiv === id) d.aktiv = d.projekte.length ? d.projekte[0].id : null;
-      return writeAll(d);
+      return Promise.resolve({ ok: writeAll(d) });
     },
     replaceAll: function (list) {
       var d = { projekte: list, aktiv: list.length ? list[0].id : null };
-      return writeAll(d);
-    }
+      return Promise.resolve({ ok: writeAll(d) });
+    },
+    protokoll: function () { return Promise.resolve([]); },
+    kommentare: function () { return Promise.resolve([]); },
+    kommentieren: function () { return Promise.resolve(null); }
   };
+
+  A.store = A.storeLokal;   // wird beim Start ggf. auf den Server umgestellt
 
   /* ---------------------------------------------------------------
      Zahlenformate (CH)

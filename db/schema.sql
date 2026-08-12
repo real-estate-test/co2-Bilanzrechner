@@ -407,16 +407,24 @@ create policy protokoll_lesen on protokoll
 -- und lassen sich anschliessend von niemandem mehr verändern.
 
 -- =====================================================================
---  Sicht für das Portfolio: ohne die vollständigen Projektdaten
+--  Hinweis: Hier stand einmal eine Ansicht portfolio_sicht.
+--
+--  Eine gewöhnliche Postgres-Ansicht läuft mit den Rechten ihres
+--  Eigentümers und umgeht damit die Rechteregeln der zugrunde liegenden
+--  Tabellen. Supabase veröffentlicht Ansichten im Schema public über die
+--  REST-Schnittstelle, und der anon key ist öffentlich — die Ansicht war
+--  damit ein Weg an der Anmeldung vorbei.
+--
+--  Die Anwendung braucht sie nicht: Das Portfolio rechnet aus den
+--  Projektdaten, die ohnehin geladen sind. Sie wurde deshalb entfernt.
+--  Falls sie in einer bestehenden Datenbank noch existiert, beseitigt
+--  db/update-01.sql sie.
+--
+--  Sollte später doch eine Ansicht gebraucht werden, muss sie
+--  «with (security_invoker = true)» tragen, damit die Rechteregeln der
+--  Tabellen greifen.
 -- =====================================================================
-create or replace view portfolio_sicht as
-select
-  p.id, p.name, p.ort, p.kanton, p.status, p.startjahr,
-  p.kpi, p.version, p.archiviert_am, p.geaendert_am,
-  v.name  as geaendert_von_name,
-  v.email as geaendert_von_email
-from projekte p
-left join profil v on v.id = p.geaendert_von;
+drop view if exists portfolio_sicht;
 
 -- =====================================================================
 --  Fertig. Nächster Schritt: Projekt-URL und öffentlichen Schlüssel

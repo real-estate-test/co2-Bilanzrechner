@@ -94,7 +94,7 @@ window.APP = window.APP || {};
         height: Math.max(1, y(0) - y(j.einnahmen)), rx: 1.5, fill: FARBE.gewinn, opacity: .8 }));
       punkte.push([x0, y(-j.saldo)]);
       kinder.push(s('text', { x: x0, y: H - unten + 15, 'text-anchor': 'middle', 'font-size': 10,
-        fill: '#6b7484', class: 'n' }, 'Jahr ' + j.jahr));
+        fill: '#6b7484', class: 'n' }, A.jahrLabel(A.state.p, j.jahr)));
       kinder.push(s('text', { x: x0, y: H - unten + 27, 'text-anchor': 'middle', 'font-size': 9.5,
         fill: '#a2abb8' }, j.phase));
     });
@@ -125,7 +125,7 @@ window.APP = window.APP || {};
       kinder.push(s('rect', { x: x0, y: y(j.ek), width: bw, height: ekH, fill: FARBE.ek, rx: 1.5 }));
       kinder.push(s('rect', { x: x0, y: y(j.ek + j.fk), width: bw, height: fkH, fill: FARBE.fk, rx: 1.5 }));
       kinder.push(s('text', { x: x0 + bw / 2, y: H - unten + 14, 'text-anchor': 'middle', 'font-size': 10,
-        fill: '#6b7484', class: 'n' }, 'J' + j.jahr));
+        fill: '#6b7484', class: 'n' }, A.jahrLabel(A.state.p, j.jahr)));
     });
     return U.svg(W, H, kinder, { h: 190 });
   }
@@ -160,9 +160,11 @@ window.APP = window.APP || {};
         U.kachel('Rendite auf Eigenkapital', A.fmtPct(k.roe), 'auf ' + A.fmtMio(k.ek_max) + ' verpflichtet'),
         U.kachel('Interner Zinsfuss', k.irr === null ? '–' : A.fmtPct(k.irr), 'auf Eigenkapital-Cashflow'),
         U.kachel('Spitzenkapitalbedarf', fmt(k.kapital_peak), 'EK ' + A.fmtMio(k.ek_eingesetzt) + ' · FK ' + A.fmtMio(k.fk_peak)),
-        U.kachel('Bruttorendite auf AK', A.fmtPct(k.bruttorendite, 2), 'Ziel ' + A.fmtPct(pp.ziele.bruttorendite, 2),
+        U.kachel('Bruttorendite Ertragsflächen', A.fmtPct(k.bruttorendite, 2),
+          'auf ' + A.fmtMio(k.ak_ertrag) + ' anteilige AK · Ziel ' + A.fmtPct(pp.ziele.bruttorendite, 2),
           k.bruttorendite >= pp.ziele.bruttorendite ? 'pos' : ''),
-        U.kachel('Nettorendite auf AK', A.fmtPct(k.nettorendite, 2)),
+        U.kachel('Nettorendite Ertragsflächen', A.fmtPct(k.nettorendite, 2),
+          A.fmtPct(k.anteil_ertrag * 100) + ' der Nutzfläche wird gehalten'),
         U.kachel('Projektdauer', A.fmt(k.dauer, 2) + ' Jahre')
       ]));
     });
@@ -208,37 +210,84 @@ window.APP = window.APP || {};
     });
     out.appendChild(U.panel('Kostenzusammenzug', null, [zus]));
 
-    /* Erlöse */
+    /* Erlöse — getrennt nach Verwertungsart, damit sich Verkauf und
+       Vermietung nicht vermischen (Rückmeldung 9 und 10). */
     var erl = el('div', { class: 'panelbody' });
     U.derived.push(function () {
-      var r = A.state.r;
-      var zeilen = r.ertraege.positionen.map(function (pos) {
-        return el('tr', {}, [
-          el('td', { text: pos.teil_label }),
-          el('td', { text: pos.nutzung_label }),
-          el('td', { class: 'n', text: fmt(pos.flaeche) + (pos.einheit === 'PP' ? ' PP' : ' m²') }),
-          el('td', {}, [el('span', { class: 'tag', text: pos.art || '—' })]),
-          el('td', { class: 'n', text: fmt(pos.sollmiete) }),
-          el('td', { class: 'n', text: fmt(pos.erloes || pos.wert) })
-        ]);
-      });
-      zeilen.push(el('tr', { class: 'sum' }, [
-        el('td', { colspan: 4, text: 'Verwertung total' }),
-        el('td', { class: 'n', text: fmt(r.ertraege.sollmiete) }),
-        el('td', { class: 'n', text: fmt(r.ertraege.verwertungswert) })
-      ]));
-      if (r.kpi.mietertrag_projekt > 0) {
-        zeilen.push(el('tr', {}, [
-          el('td', { colspan: 4, text: 'Nettomieterträge während der Projektdauer' }),
-          el('td', {}), el('td', { class: 'n', text: fmt(r.kpi.mietertrag_projekt) })
+      var r = A.state.r, zeilen = [];
+      var GRUPPEN = [
+        { id: 'stwe',  titel: 'Verkauf Stockwerkeigentum' },
+        { id: 'miete', titel: 'Vermietung / Halten' },
+        { id: 'exit',  titel: 'Verkauf an Endinvestor' }
+      ];
+
+      GRUPPEN.forEach(function (g) {
+        var pos = r.ertraege.positionen.filter(function (x) { return x.kategorie === g.id; });
+        zeilen.push(el('tr', { class: 'grp' }, [el('td', { colspan: 6, text: g.titel })]));
+        if (!pos.length) {
+          zeilen.push(el('tr', {}, [el('td', { colspan: 6, class: 'muted', text: 'keine Flächen' })]));
+          return;
+        }
+        var sM = 0, sE = 0;
+        pos.forEach(function (x) {
+          sM += x.sollmiete; sE += (x.erloes || x.wert);
+          zeilen.push(el('tr', {}, [
+            el('td', { text: x.teil_label }),
+            el('td', { text: x.nutzung_label }),
+            el('td', { class: 'n', text: fmt(x.flaeche) + ' ' + x.einheit }),
+            el('td', {}, [el('span', { class: 'tag', text: x.art_label || '—' })]),
+            el('td', { class: 'n', text: x.sollmiete ? fmt(x.sollmiete) : '—' }),
+            el('td', { class: 'n', text: fmt(x.erloes || x.wert) })
+          ]));
+        });
+        zeilen.push(el('tr', { class: 'sum' }, [
+          el('td', { colspan: 4, text: 'Zwischentotal ' + g.titel }),
+          el('td', { class: 'n', text: sM ? fmt(sM) : '—' }),
+          el('td', { class: 'n', text: fmt(sE) })
         ]));
-      }
+      });
+
+      /* Laufende Erträge und Aufwände während der Projektdauer */
+      zeilen.push(el('tr', { class: 'grp' }, [el('td', { colspan: 6, text: 'Laufende Rechnung während der Projektdauer' })]));
+
+      var znEnde = A.state.p.bestand_extra.strategie === 'erhalten' ? r.zeit.t_ende : r.zeit.t_baustart;
+      var znBrutto = A.state.p.szenario !== 'neubau' && A.state.p.bestand_extra.zwischennutzung
+        ? A.state.p.bestand_extra.zn_miete * znEnde : 0;
+      zeilen.push(el('tr', {}, [
+        el('td', { colspan: 3, text: 'Mieterträge Bestand bis Baustart' }),
+        el('td', {}, [el('span', { class: 'tag', text: 'Zwischennutzung' })]),
+        el('td', { class: 'n', text: znBrutto ? fmt(znBrutto / Math.max(0.01, znEnde)) : '—' }),
+        el('td', { class: 'n', text: znBrutto ? fmt(znBrutto) : '—' })
+      ]));
+
+      var mietNeu = r.betrieb.noi_a > 0 ? Math.max(0, r.kpi.mietertrag_projekt - znBrutto * 0.75) : 0;
+      zeilen.push(el('tr', {}, [
+        el('td', { colspan: 3, text: 'Mieterträge nach Fertigstellung' }),
+        el('td', {}, [el('span', { class: 'tag', text: 'Erstvermietung' })]),
+        el('td', { class: 'n', text: r.betrieb.sollmiete_a ? fmt(r.betrieb.sollmiete_a) : '—' }),
+        el('td', { class: 'n', text: mietNeu ? fmt(mietNeu) : '—' })
+      ]));
+
+      zeilen.push(el('tr', {}, [
+        el('td', { colspan: 3, text: 'Betriebsaufwand (Bewirtschaftung und Leerstand)' }),
+        el('td', {}, [el('span', { class: 'tag', text: 'Aufwand' })]),
+        el('td', { class: 'n', text: r.betrieb.total_a || r.betrieb.leerstand_a
+          ? '−' + fmt(r.betrieb.total_a + r.betrieb.leerstand_a) : '—' }),
+        el('td', { class: 'n muted', text: 'in den Nettomieterträgen enthalten' })
+      ]));
+
+      zeilen.push(el('tr', {}, [
+        el('td', { colspan: 4, text: 'Nettomieterträge total' }), el('td', {}),
+        el('td', { class: 'n', text: fmt(r.kpi.mietertrag_projekt) })
+      ]));
+
       zeilen.push(el('tr', { class: 'total' }, [
         el('td', { colspan: 4, text: 'Erlöse total' }), el('td', {}),
         el('td', { class: 'n', text: fmt(r.kpi.erloese + r.kpi.mietertrag_projekt) })
       ]));
+
       U.leeren(erl).appendChild(U.tabelle([
-        { label: 'Gebäudeteil' }, { label: 'Nutzung' }, { label: 'Fläche', n: true },
+        { label: 'Gebäudeteil' }, { label: 'Nutzung' }, { label: 'Menge', n: true },
         { label: 'Verwertung' }, { label: 'Sollmiete CHF/a', n: true }, { label: 'Erlös bzw. Wert', n: true }
       ], zeilen));
     });
@@ -258,7 +307,7 @@ window.APP = window.APP || {};
       var r = A.state.r;
       var zeilen = r.fin.jahre.map(function (j) {
         return el('tr', {}, [
-          el('td', { class: 'n', text: 'Jahr ' + j.jahr }),
+          el('td', { class: 'n', text: A.jahrLabel(A.state.p, j.jahr) }),
           el('td', { class: 'muted', text: j.phase }),
           el('td', { class: 'n', text: fmt(j.ausgaben) }),
           el('td', { class: 'n', text: fmt(j.einnahmen) }),

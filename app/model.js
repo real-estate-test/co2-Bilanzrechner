@@ -6,19 +6,38 @@ window.APP = window.APP || {};
 (function (A) {
   'use strict';
 
-  A.SCHEMA = 1;
+  A.SCHEMA = 2;
 
   /* ---------------------------------------------------------------
      Stammlisten
      --------------------------------------------------------------- */
 
+  /* Nutzungsarten. Die Bezeichnung einer Zeile ist frei, die Art bleibt
+     aus dieser Liste — sie liefert die Marktbandbreiten für die Ampel. */
   A.NUTZUNGEN = [
-    { id: 'wohnen',  label: 'Wohnen',            kurz: 'Wohnen'  },
-    { id: 'buero',   label: 'Büro',              kurz: 'Büro'    },
-    { id: 'gewerbe', label: 'Gewerbe',           kurz: 'Gewerbe' },
-    { id: 'verkauf', label: 'Verkauf (Retail)',  kurz: 'Retail'  },
-    { id: 'lager',   label: 'Lager / Nebenflächen', kurz: 'Lager' }
+    { id: 'wohnen',    label: 'Wohnen',              kurz: 'Wohnen',  einheit: 'm²' },
+    { id: 'buero',     label: 'Büro',                kurz: 'Büro',    einheit: 'm²' },
+    { id: 'gewerbe',   label: 'Gewerbe',             kurz: 'Gewerbe', einheit: 'm²' },
+    { id: 'verkauf',   label: 'Verkauf (Retail)',    kurz: 'Retail',  einheit: 'm²' },
+    { id: 'lager',     label: 'Lager / Nebenflächen',kurz: 'Lager',   einheit: 'm²' },
+    { id: 'parkplatz', label: 'Parkplatz',           kurz: 'PP',      einheit: 'Stk.' }
   ];
+
+  /* Zuordnung einer Nutzungszeile zu einer Baukostenzeile der BKP 20–29.
+     Der Ausbaustandard unterscheidet sich zwischen verkauftem Wohnraum,
+     Mietwohnungen und Gewerbe erheblich — deshalb getrennte Kennwerte. */
+  A.KOSTENGRUPPEN = [
+    { id: 'oi_stwe',    label: 'o.i. Stockwerkeigentum' },
+    { id: 'oi_miete',   label: 'o.i. Miete' },
+    { id: 'oi_gewerbe', label: 'o.i. Gewerbe' }
+  ];
+
+  /* Vorschlag der Kostengruppe aus Nutzungsart und Verwertung. */
+  A.kostengruppeFuer = function (art, verwertung) {
+    if (art === 'parkplatz') return 'oi_miete';
+    if (art !== 'wohnen') return 'oi_gewerbe';
+    return verwertung === 'stwe' ? 'oi_stwe' : 'oi_miete';
+  };
 
   A.TEILE = [
     { id: 'bestand',     label: 'Bestand' },
@@ -78,9 +97,25 @@ window.APP = window.APP || {};
      --------------------------------------------------------------- */
 
   A.BASIS_LABELS = {
-    pauschal: 'Pauschal', gf: 'CHF/m² GF', gf_oi: 'CHF/m² GF oi', gv: 'CHF/m³ GV',
-    nwf: 'CHF/m² NWF', pp: 'CHF/PP', umgebung: 'CHF/m² Umgeb.',
-    gv_bestand: 'CHF/m³ GV Best.', pct_bkp2: '% von BKP 2', pct_bkp1_4: '% von BKP 1–4'
+    pauschal:      'Pauschal',
+    gf:            'CHF/m² GF',
+    gf_oi:         'CHF/m² GF o.i.',
+    gf_oi_stwe:    'CHF/m² GF STWE',
+    gf_oi_miete:   'CHF/m² GF Miete',
+    gf_oi_gewerbe: 'CHF/m² GF Gewerbe',
+    gv:            'CHF/m³ GV',
+    gv_oi:         'CHF/m³ o.i.',
+    gv_ug:         'CHF/m³ UG',
+    gv_aeh:        'CHF/m³ Einstellhalle',
+    f_ug:          'CHF/m² UG',
+    f_aeh:         'CHF/m² Einstellhalle',
+    nwf:           'CHF/m² NWF',
+    pp:            'CHF/PP',
+    umgebung:      'CHF/m² Umgeb.',
+    gv_bestand:    'CHF/m³ GV Bestand',
+    pct_bkp2:      '% von BKP 20–29',
+    pct_bkp1_4:    '% von BKP 1–4',
+    pct_bkp1_5:    '% von BKP 1–5'
   };
 
   A.BKP_KATALOG = [
@@ -92,67 +127,82 @@ window.APP = window.APP || {};
     { id: 'b1_pfaehlung', bkp: '1',     label: 'Pfählung / Wasserhaltung / Spezialtiefbau',
       hilfe: 'Baugrundbedingte Zusatzkosten: Pfähle, Spundwände, Grundwasserhaltung.' },
     { id: 'b1_erschl',    bkp: '1',     label: 'Erschliessung / Werkleitungen' },
-    { id: 'b2_rohbau',    bkp: '20–22', label: 'Baugrube & Rohbau 1 + 2' },
-    { id: 'b2_technik',   bkp: '23–26', label: 'Elektro · HLKS · Transportanlagen' },
-    { id: 'b2_ausbau',    bkp: '27–28', label: 'Ausbau 1 + 2' },
-    { id: 'b2_park',      bkp: '2',     label: 'Parkierung (Tiefgarage / Aussen)',
-      hilfe: 'Vollkosten je Parkplatz. Die Tiefgaragenfläche ist deshalb NICHT in der GF enthalten.' },
-    { id: 'b2_honorare',  bkp: '29',    label: 'Honorare Planung (Architekt, Ing., Fach)' },
+
+    { id: 'b2_oi_stwe',   bkp: '20–29', label: 'Gebäude oberirdisch · Stockwerkeigentum',
+      hilfe: 'Kennwert inklusive Technik, Ausbau und Planerhonoraren. Menge aus dem Nutzungsmix.' },
+    { id: 'b2_oi_miete',  bkp: '20–29', label: 'Gebäude oberirdisch · Miete' },
+    { id: 'b2_oi_gewerbe',bkp: '20–29', label: 'Gebäude oberirdisch · Gewerbe' },
+    { id: 'b2_ug',        bkp: '20–29', label: 'Untergeschoss',
+      hilfe: 'Ohne Einstellhalle — diese wird separat erfasst.' },
+    { id: 'b2_aeh',       bkp: '20–29', label: 'Einstellhalle',
+      hilfe: 'Fläche = Fläche je Parkplatz × Anzahl Parkplätze.' },
+    { id: 'b2_reserve',   bkp: '202',   label: 'Reserve auf BKP 20–29' },
+
     { id: 'b3_betrieb',   bkp: '3',     label: 'Betriebseinrichtungen' },
     { id: 'b4_umgebung',  bkp: '4',     label: 'Umgebung' },
     { id: 'b5_bnk',       bkp: '5',     label: 'Baunebenkosten, Bewilligungen, Versicherungen' },
+    { id: 'b5_pm',        bkp: '599',   label: 'Projektmanagement-Honorar',
+      hilfe: 'Prozentual auf BKP 1–5 ohne diese Zeile selbst.' },
     { id: 'b9_ausstat',   bkp: '9',     label: 'Ausstattung' }
   ];
 
-  /* Kennwert-Bibliothek je Kostenblock. min/max = Plausibilitätsband. */
+  /* Kennwert-Bibliothek je Kostenblock. min/max = Plausibilitätsband.
+     Die Kennwerte für BKP 20–29 verstehen sich als Vollkosten inklusive
+     Gebäudetechnik, Ausbau und Planerhonoraren. */
   A.KENNWERTE = {
     neubau: {
-      b1_abbruch:   { basis: 'gv_bestand', wert: 0,     min: 60,   max: 140   },
-      b1_altlasten: { basis: 'pauschal',   wert: 0,     min: 0,    max: 0     },
-      b1_anpassung: { basis: 'pauschal',   wert: 0,     min: 0,    max: 0     },
-      b1_pfaehlung: { basis: 'pauschal',   wert: 0,     min: 0,    max: 0     },
-      b1_erschl:    { basis: 'pauschal',   wert: 120000,min: 0,    max: 0     },
-      b2_rohbau:    { basis: 'gf',         wert: 1150,  min: 850,  max: 1600  },
-      b2_technik:   { basis: 'gf',         wert: 620,   min: 420,  max: 950   },
-      b2_ausbau:    { basis: 'gf',         wert: 880,   min: 600,  max: 1500  },
-      b2_park:      { basis: 'pp',         wert: 48000, min: 30000,max: 75000 },
-      b2_honorare:  { basis: 'pct_bkp2',   wert: 12,    min: 9,    max: 16    },
-      b3_betrieb:   { basis: 'pauschal',   wert: 0,     min: 0,    max: 0     },
-      b4_umgebung:  { basis: 'umgebung',   wert: 280,   min: 150,  max: 550   },
-      b5_bnk:       { basis: 'pct_bkp1_4', wert: 3,     min: 1.5,  max: 6     },
-      b9_ausstat:   { basis: 'nwf',        wert: 60,    min: 0,    max: 250   }
+      b1_abbruch:    { basis: 'gv_bestand', wert: 0,     min: 60,   max: 140   },
+      b1_altlasten:  { basis: 'pauschal',   wert: 0,     min: 0,    max: 0     },
+      b1_anpassung:  { basis: 'pauschal',   wert: 0,     min: 0,    max: 0     },
+      b1_pfaehlung:  { basis: 'pauschal',   wert: 0,     min: 0,    max: 0     },
+      b1_erschl:     { basis: 'pauschal',   wert: 120000,min: 0,    max: 0     },
+      b2_oi_stwe:    { basis: 'gf_oi_stwe',    wert: 3200, min: 2400, max: 4400 },
+      b2_oi_miete:   { basis: 'gf_oi_miete',   wert: 2900, min: 2200, max: 3900 },
+      b2_oi_gewerbe: { basis: 'gf_oi_gewerbe', wert: 2400, min: 1600, max: 3400 },
+      b2_ug:         { basis: 'gv_ug',         wert: 550,  min: 380,  max: 780  },
+      b2_aeh:        { basis: 'gv_aeh',        wert: 400,  min: 270,  max: 620  },
+      b2_reserve:    { basis: 'pct_bkp2',      wert: 3,    min: 0,    max: 10   },
+      b3_betrieb:    { basis: 'pauschal',   wert: 0,     min: 0,    max: 0     },
+      b4_umgebung:   { basis: 'umgebung',   wert: 280,   min: 150,  max: 550   },
+      b5_bnk:        { basis: 'pct_bkp1_4', wert: 3,     min: 1.5,  max: 6     },
+      b5_pm:         { basis: 'pct_bkp1_5', wert: 2.0,   min: 0.5,  max: 5     },
+      b9_ausstat:    { basis: 'nwf',        wert: 60,    min: 0,    max: 250   }
     },
     erweiterung: {
-      b1_abbruch:   { basis: 'gv_bestand', wert: 0,     min: 0,    max: 0     },
-      b1_altlasten: { basis: 'pauschal',   wert: 0,     min: 0,    max: 0     },
-      b1_anpassung: { basis: 'pauschal',   wert: 150000,min: 0,    max: 0     },
-      b1_pfaehlung: { basis: 'pauschal',   wert: 0,     min: 0,    max: 0     },
-      b1_erschl:    { basis: 'pauschal',   wert: 0,     min: 0,    max: 0     },
-      b2_rohbau:    { basis: 'gf',         wert: 1300,  min: 900,  max: 1900  },
-      b2_technik:   { basis: 'gf',         wert: 680,   min: 420,  max: 1050  },
-      b2_ausbau:    { basis: 'gf',         wert: 950,   min: 600,  max: 1600  },
-      b2_park:      { basis: 'pp',         wert: 48000, min: 30000,max: 75000 },
-      b2_honorare:  { basis: 'pct_bkp2',   wert: 14,    min: 10,   max: 18    },
-      b3_betrieb:   { basis: 'pauschal',   wert: 0,     min: 0,    max: 0     },
-      b4_umgebung:  { basis: 'umgebung',   wert: 0,     min: 0,    max: 0     },
-      b5_bnk:       { basis: 'pct_bkp1_4', wert: 3,     min: 1.5,  max: 6     },
-      b9_ausstat:   { basis: 'nwf',        wert: 60,    min: 0,    max: 250   }
+      b1_abbruch:    { basis: 'gv_bestand', wert: 0,     min: 0,    max: 0     },
+      b1_altlasten:  { basis: 'pauschal',   wert: 0,     min: 0,    max: 0     },
+      b1_anpassung:  { basis: 'pauschal',   wert: 150000,min: 0,    max: 0     },
+      b1_pfaehlung:  { basis: 'pauschal',   wert: 0,     min: 0,    max: 0     },
+      b1_erschl:     { basis: 'pauschal',   wert: 0,     min: 0,    max: 0     },
+      b2_oi_stwe:    { basis: 'gf_oi_stwe',    wert: 3500, min: 2500, max: 5000 },
+      b2_oi_miete:   { basis: 'gf_oi_miete',   wert: 3200, min: 2300, max: 4500 },
+      b2_oi_gewerbe: { basis: 'gf_oi_gewerbe', wert: 2700, min: 1700, max: 3900 },
+      b2_ug:         { basis: 'gv_ug',         wert: 0,    min: 0,    max: 0    },
+      b2_aeh:        { basis: 'gv_aeh',        wert: 0,    min: 0,    max: 0    },
+      b2_reserve:    { basis: 'pct_bkp2',      wert: 3,    min: 0,    max: 10   },
+      b3_betrieb:    { basis: 'pauschal',   wert: 0,     min: 0,    max: 0     },
+      b4_umgebung:   { basis: 'umgebung',   wert: 0,     min: 0,    max: 0     },
+      b5_bnk:        { basis: 'pct_bkp1_4', wert: 3,     min: 1.5,  max: 6     },
+      b5_pm:         { basis: 'pct_bkp1_5', wert: 2.0,   min: 0.5,  max: 5     },
+      b9_ausstat:    { basis: 'nwf',        wert: 60,    min: 0,    max: 250   }
     },
     sanierung: {
-      b1_abbruch:   { basis: 'gv_bestand', wert: 0,     min: 0,    max: 0     },
-      b1_altlasten: { basis: 'pauschal',   wert: 60000, min: 0,    max: 0     },
-      b1_anpassung: { basis: 'pauschal',   wert: 0,     min: 0,    max: 0     },
-      b1_pfaehlung: { basis: 'pauschal',   wert: 0,     min: 0,    max: 0     },
-      b1_erschl:    { basis: 'pauschal',   wert: 0,     min: 0,    max: 0     },
-      b2_rohbau:    { basis: 'gf',         wert: 350,   min: 120,  max: 800   },
-      b2_technik:   { basis: 'gf',         wert: 480,   min: 200,  max: 850   },
-      b2_ausbau:    { basis: 'gf',         wert: 700,   min: 300,  max: 1400  },
-      b2_park:      { basis: 'pp',         wert: 0,     min: 0,    max: 0     },
-      b2_honorare:  { basis: 'pct_bkp2',   wert: 15,    min: 10,   max: 20    },
-      b3_betrieb:   { basis: 'pauschal',   wert: 0,     min: 0,    max: 0     },
-      b4_umgebung:  { basis: 'umgebung',   wert: 0,     min: 0,    max: 0     },
-      b5_bnk:       { basis: 'pct_bkp1_4', wert: 3,     min: 1.5,  max: 6     },
-      b9_ausstat:   { basis: 'nwf',        wert: 40,    min: 0,    max: 250   }
+      b1_abbruch:    { basis: 'gv_bestand', wert: 0,     min: 0,    max: 0     },
+      b1_altlasten:  { basis: 'pauschal',   wert: 60000, min: 0,    max: 0     },
+      b1_anpassung:  { basis: 'pauschal',   wert: 0,     min: 0,    max: 0     },
+      b1_pfaehlung:  { basis: 'pauschal',   wert: 0,     min: 0,    max: 0     },
+      b1_erschl:     { basis: 'pauschal',   wert: 0,     min: 0,    max: 0     },
+      b2_oi_stwe:    { basis: 'gf_oi_stwe',    wert: 1800, min: 700,  max: 3200 },
+      b2_oi_miete:   { basis: 'gf_oi_miete',   wert: 1500, min: 600,  max: 2800 },
+      b2_oi_gewerbe: { basis: 'gf_oi_gewerbe', wert: 1200, min: 400,  max: 2400 },
+      b2_ug:         { basis: 'gv_ug',         wert: 180,  min: 0,    max: 450  },
+      b2_aeh:        { basis: 'gv_aeh',        wert: 0,    min: 0,    max: 0    },
+      b2_reserve:    { basis: 'pct_bkp2',      wert: 5,    min: 0,    max: 15   },
+      b3_betrieb:    { basis: 'pauschal',   wert: 0,     min: 0,    max: 0     },
+      b4_umgebung:   { basis: 'umgebung',   wert: 0,     min: 0,    max: 0     },
+      b5_bnk:        { basis: 'pct_bkp1_4', wert: 3,     min: 1.5,  max: 6     },
+      b5_pm:         { basis: 'pct_bkp1_5', wert: 2.5,   min: 0.5,  max: 5     },
+      b9_ausstat:    { basis: 'nwf',        wert: 40,    min: 0,    max: 250   }
     }
   };
 
@@ -205,45 +255,68 @@ window.APP = window.APP || {};
 
   A.heute = function () { return new Date().toISOString().slice(0, 10); };
 
+  /* Beschriftung eines Projektjahres im Kalender. */
+  A.jahrLabel = function (p, j) {
+    var start = p && p.startjahr ? parseInt(p.startjahr, 10) : new Date().getFullYear();
+    return String(start + j);
+  };
+
   /* ---------------------------------------------------------------
      Default-Nutzungszeile
      --------------------------------------------------------------- */
 
-  function defNutzung(anteil, miete, preis, verwertung) {
+  /* Eine Nutzungszeile. Die Bezeichnung ist frei wählbar, damit sich
+     etwa «Wohnen STWE» und «Wohnen Miete» im selben Projekt trennen
+     lassen; die Art liefert weiterhin die Marktbandbreiten. */
+  A.defNutzung = function (o) {
+    o = o || {};
+    var art = o.art || 'wohnen';
     return {
-      anteil: anteil,          // % der NWF des Gebäudeteils
-      flaeche_manuell: 0,      // >0 überschreibt den Anteil
-      miete: miete,            // CHF/m²/Jahr netto
-      preis: preis,            // CHF/m² NWF bei STWE-Verkauf
-      verwertung: verwertung,
-      selbst: 0,               // % selbstgenutzt
-      exit_rendite: 4.0        // Bruttorendite % beim Exit an Investor
+      id: o.id || A.uid(),
+      bezeichnung: o.bezeichnung || (A.NUTZUNGEN.find(function (n) { return n.id === art; }) || {}).label || 'Nutzung',
+      art: art,
+      anteil: o.anteil !== undefined ? o.anteil : 0,   // % der NWF bzw. der Parkplätze
+      flaeche_manuell: o.flaeche_manuell || 0,
+      miete: o.miete !== undefined ? o.miete : 320,    // CHF/m²/Jahr, bei PP CHF/Monat
+      preis: o.preis !== undefined ? o.preis : 9500,   // CHF/m² bzw. CHF/PP
+      verwertung: o.verwertung || 'stwe',
+      selbst: o.selbst || 0,
+      exit_rendite: o.exit_rendite !== undefined ? o.exit_rendite : 4.0,
+      kostengruppe: o.kostengruppe || A.kostengruppeFuer(art, o.verwertung || 'stwe')
     };
-  }
+  };
+
+  A.standardNutzungen = function () {
+    return [
+      A.defNutzung({ bezeichnung: 'Wohnen Stockwerkeigentum', art: 'wohnen',
+        anteil: 100, miete: 320, preis: 9500, verwertung: 'stwe' }),
+      A.defNutzung({ bezeichnung: 'Parkplätze Verkauf', art: 'parkplatz',
+        anteil: 100, miete: 150, preis: 45000, verwertung: 'stwe' })
+    ];
+  };
 
   function defTeil(aktiv, modus) {
-    var n = {};
-    n.wohnen  = defNutzung(100, 320, 9500, 'stwe');
-    n.buero   = defNutzung(0,   280, 7000, 'halten_vermietet');
-    n.gewerbe = defNutzung(0,   180, 5000, 'halten_vermietet');
-    n.verkauf = defNutzung(0,   320, 8000, 'halten_vermietet');
-    n.lager   = defNutzung(0,   100, 2500, 'halten_vermietet');
     return {
       aktiv: aktiv,
       modus: modus,            // 'ausnutzung' | 'studie'
       gf_oi: 0,                // Studie: Geschossfläche oberirdisch m²
-      gf_ug: 0,                // Studie: UG ohne Tiefgarage m²
       nwf_manuell: 0,          // Studie: NWF direkt (überschreibt hnf_quote)
-      gv_manuell: 0,           // Studie: Gebäudevolumen m³
       faktor_gf: 1.10,         // GF oberirdisch je m² aGF
-      ug_quote: 15,            // UG (ohne TG) in % der GF oberirdisch
       hnf_quote: 78,           // NWF in % der GF oberirdisch
-      gv_faktor: 3.40,         // m³ GV je m² GF
+      ug_quote: 80,            // Untergeschoss in % der Gebäudegrundfläche
       pp: 0,                   // Anzahl Parkplätze
-      pp_miete: 150,           // CHF/Monat
-      pp_preis: 45000,         // CHF/PP bei Verkauf
-      pp_verwertung: 'stwe',
-      nutzungen: n
+      flaeche_pro_pp: 30,      // m² Einstellhalle je Parkplatz
+
+      /* Kubaturen: entweder über Höhen gerechnet oder direkt erfasst.
+         Regelgeschosse = Anzahl Geschosse − 1, Dachgeschoss immer eines. */
+      kubatur_modus: 'hoehe',  // 'hoehe' | 'volumen'
+      h_regel: 3.00,
+      h_dach: 3.20,
+      h_ug: 3.40,
+      h_aeh: 3.40,
+      v_oi: 0, v_ug: 0, v_aeh: 0,
+
+      nutzungen: aktiv ? A.standardNutzungen() : []
     };
   }
 
@@ -253,7 +326,9 @@ window.APP = window.APP || {};
       var k = kw[z.id];
       zeilen[z.id] = { aktiv: k.wert !== 0, basis: k.basis, wert: k.wert, menge_manuell: 0 };
     });
-    return { aktiv: false, zeilen: zeilen, reserve: 5, bemerkung: '' };
+    /* Die Reserve steckt neu als Zeile «202» im Katalog und wirkt auf
+       BKP 20–29. Das Feld bleibt für Altprojekte erhalten (Vorgabe 0). */
+    return { aktiv: false, zeilen: zeilen, reserve: 0, bemerkung: '' };
   }
 
   /* ---------------------------------------------------------------
@@ -268,7 +343,8 @@ window.APP = window.APP || {};
       ort: '',
       kanton: 'ZH',
       bearbeiter: '',
-      startjahr: new Date().getFullYear(),   // Kalenderjahr des Erwerbs
+      startdatum: A.heute(),                 // Erwerb — alle Termine bauen darauf auf
+      startjahr: new Date().getFullYear(),   // wird aus startdatum abgeleitet
       stand: A.heute(),
       status: 'Prüfung',
       notiz: '',
@@ -279,8 +355,11 @@ window.APP = window.APP || {};
 
       grundstueck: {
         flaeche: 2500,
+        az_modus: 'az',                  // 'az' = über Ausnützungsziffer, 'agf' = direkt
         az: 0.90,
-        umgebung_anteil: 55,             // % der Grundstücksfläche
+        agf_direkt: 0,                   // anrechenbare Geschossfläche, wenn keine AZ vorliegt
+        geschosse: 4,                    // oberirdisch, inklusive Dachgeschoss
+        umgebung_manuell: 0,             // >0 überschreibt Grundstück − Gebäudegrundfläche
         mehrwertabgabe_aktiv: false,
         mehrwertabgabe_pct: 20,
         mehrwert_basis: 0                // CHF Planungsmehrwert
@@ -441,8 +520,19 @@ window.APP = window.APP || {};
     function startflaechen(teil, gf) {
       if (teil.gf_oi > 0 || teil.nwf_manuell > 0) return;
       teil.gf_oi = Math.round(gf / 10) * 10;
-      teil.gf_ug = Math.round(gf * 0.15 / 10) * 10;
     }
+
+    /* Ein neu aktivierter Gebäudeteil ohne Nutzungszeilen wäre wertlos —
+       er brächte weder Fläche noch Ertrag in die Rechnung. */
+    function startnutzungen(teil) {
+      if (!Array.isArray(teil.nutzungen) || !teil.nutzungen.length) {
+        teil.nutzungen = A.standardNutzungen();
+      }
+    }
+    A.TEILE.forEach(function (T) {
+      var teil = t[T.id];
+      if (teil && teil.aktiv) startnutzungen(teil);
+    });
     var land = num0(p.grundstueck.flaeche);
     if (sz !== 'neubau') {
       startflaechen(t.bestand, land * 0.55);
@@ -476,6 +566,14 @@ window.APP = window.APP || {};
         p.bestand_extra.strategie = 'sanierung';
         break;
     }
+
+    A.TEILE.forEach(function (T) {
+      var teil = t[T.id];
+      if (!teil || !teil.aktiv) return;
+      if (!Array.isArray(teil.nutzungen) || !teil.nutzungen.length) {
+        teil.nutzungen = A.standardNutzungen();
+      }
+    });
     return p;
   };
 
@@ -485,8 +583,82 @@ window.APP = window.APP || {};
 
   A.migrate = function (p) {
     if (!p || typeof p !== 'object') return null;
+
+    /* --- Schema 1 -> 2: Nutzungen wurden von festen Feldern zu freien
+       Zeilen, die Kubatur bekam eigene Bereiche für Untergeschoss und
+       Einstellhalle. --------------------------------------------------- */
+    var altesSchema = (p.schema || 1) < 2;
+
+    if (altesSchema) {
+      A.TEILE.forEach(function (T) {
+        var t = p.teile && p.teile[T.id];
+        if (!t) return;
+
+        /* Nutzungen: Objekt -> Liste */
+        if (t.nutzungen && !Array.isArray(t.nutzungen)) {
+          var alt = t.nutzungen, liste = [];
+          A.NUTZUNGEN.forEach(function (n) {
+            var c = alt[n.id];
+            if (!c) return;
+            if (!(c.anteil > 0 || c.flaeche_manuell > 0)) return;
+            liste.push(A.defNutzung({
+              bezeichnung: n.label, art: n.id,
+              anteil: c.anteil, flaeche_manuell: c.flaeche_manuell,
+              miete: c.miete, preis: c.preis, verwertung: c.verwertung,
+              selbst: c.selbst, exit_rendite: c.exit_rendite
+            }));
+          });
+          if (t.pp > 0) {
+            liste.push(A.defNutzung({
+              bezeichnung: 'Parkplätze', art: 'parkplatz', anteil: 100,
+              miete: t.pp_miete !== undefined ? t.pp_miete : 150,
+              preis: t.pp_preis !== undefined ? t.pp_preis : 45000,
+              verwertung: t.pp_verwertung || 'stwe'
+            }));
+          }
+          t.nutzungen = liste;
+        }
+
+        /* Untergeschoss: war Anteil der Geschossfläche oberirdisch,
+           ist neu Anteil der Gebäudegrundfläche. */
+        if (t.gf_ug > 0 && !t.ug_quote_migriert) {
+          t.ug_flaeche_alt = t.gf_ug;
+        }
+        if (t.ug_quote === undefined || t.ug_quote <= 20) t.ug_quote = 80;
+        t.ug_quote_migriert = true;
+      });
+
+      /* Umgebungsfläche wird neu aus der Gebäudegrundfläche gerechnet.
+         Ein früher gesetzter Anteil bleibt als fester Wert erhalten. */
+      if (p.grundstueck && p.grundstueck.umgebung_anteil > 0 && !p.grundstueck.umgebung_manuell) {
+        p.grundstueck.umgebung_manuell =
+          Math.round(p.grundstueck.flaeche * p.grundstueck.umgebung_anteil / 100);
+      }
+
+      /* Baukosten: die alten Zeilen für Rohbau, Technik, Ausbau, Parkierung
+         und Honorare gehen in den neuen, zusammengefassten Zeilen BKP 20–29
+         auf. Eine rechnerische Umschlüsselung wäre nur scheingenau — die
+         neuen Zeilen starten deshalb auf den Kennwerten der Bibliothek und
+         werden als prüfbedürftig markiert. */
+      ['neubau', 'erweiterung', 'sanierung'].forEach(function (bid) {
+        var b = p.bau && p.bau[bid];
+        if (!b || !b.zeilen) return;
+        if (b.reserve > 0 && b.zeilen.b2_reserve === undefined) {
+          b.reserve_alt = b.reserve;
+        }
+        ['b2_rohbau', 'b2_technik', 'b2_ausbau', 'b2_park', 'b2_honorare'].forEach(function (k) {
+          if (b.zeilen[k]) { b.zeilen[k + '_alt'] = b.zeilen[k]; delete b.zeilen[k]; }
+        });
+      });
+      /* Vor dem Zusammenführen ableiten, sonst überschreibt die Vorgabe
+         (heutiges Datum) das aus dem Startjahr gewonnene Datum. */
+      if (!p.startdatum && p.startjahr) p.startdatum = p.startjahr + '-01-01';
+      p.baukosten_pruefen = true;
+    }
+
+    /* Fehlende Zweige aus dem Default ergänzen (rekursiv, ohne Werte zu
+       überschreiben). Listen bleiben unangetastet. */
     var def = A.defaultProject();
-    // Fehlende Zweige aus dem Default ergänzen (rekursiv, ohne Werte zu überschreiben)
     (function merge(target, source) {
       Object.keys(source).forEach(function (k) {
         if (target[k] === undefined) {
@@ -497,6 +669,18 @@ window.APP = window.APP || {};
         }
       });
     })(p, def);
+
+    /* Nutzungszeilen auf Vollständigkeit bringen */
+    A.TEILE.forEach(function (T) {
+      var t = p.teile[T.id];
+      if (!Array.isArray(t.nutzungen)) t.nutzungen = [];
+      t.nutzungen = t.nutzungen.map(function (n) { return A.defNutzung(n); });
+    });
+
+    /* Startdatum aus einem vorhandenen Startjahr ableiten */
+    if (!p.startdatum && p.startjahr) p.startdatum = p.startjahr + '-01-01';
+    if (p.startdatum) p.startjahr = parseInt(String(p.startdatum).slice(0, 4), 10) || p.startjahr;
+
     p.schema = A.SCHEMA;
     if (!p.id) p.id = A.uid();
     return p;

@@ -67,78 +67,129 @@ window.APP = window.APP || {};
      --------------------------------------------------------------- */
 
   E.flaechen = function (p, warn) {
+    var g = p.grundstueck;
     var res = { teile: {}, total: {
-      gf_oi: 0, gf_ug: 0, gf: 0, gv: 0, nwf: 0, pp: 0
-    }, nutzung: {} };
+      gf_oi: 0, gf_ug: 0, f_aeh: 0, gf: 0, gv: 0, gv_oi: 0, gv_ug: 0, gv_aeh: 0,
+      nwf: 0, pp: 0, grundflaeche: 0
+    }, gruppen: { oi_stwe: 0, oi_miete: 0, oi_gewerbe: 0 } };
 
-    A.NUTZUNGEN.forEach(function (n) { res.nutzung[n.id] = 0; });
-
-    var agf_zul = num(p.grundstueck.flaeche) * num(p.grundstueck.az);
+    /* Anrechenbare Geschossfläche: entweder über die Ausnützungsziffer
+       oder direkt erfasst, wenn keine Ziffer vorliegt. */
+    var agf_zul = g.az_modus === 'agf'
+      ? num(g.agf_direkt)
+      : num(g.flaeche) * num(g.az);
     res.agf_zulaessig = agf_zul;
+
+    var geschosse = Math.max(1, num(g.geschosse) || 1);
+    res.geschosse = geschosse;
+
     var agf_genutzt = 0;
 
     A.TEILE.forEach(function (T) {
       var t = p.teile[T.id];
-      var o = { aktiv: !!t.aktiv, gf_oi: 0, gf_ug: 0, gf: 0, gv: 0, nwf: 0,
-                pp: num(t.pp), nutzungen: {} };
+      var o = { aktiv: !!t.aktiv, gf_oi: 0, gf_ug: 0, f_aeh: 0, gf: 0,
+                gv_oi: 0, gv_ug: 0, gv_aeh: 0, gv: 0, nwf: 0,
+                pp: num(t.pp), grundflaeche: 0, nutzungen: {}, zeilen: [],
+                gruppen: { oi_stwe: 0, oi_miete: 0, oi_gewerbe: 0 } };
+
       if (t.aktiv) {
         if (t.modus === 'ausnutzung') {
-          var agf = agf_zul;
-          o.agf = agf;
-          o.gf_oi = agf * num(t.faktor_gf);
-          o.gf_ug = o.gf_oi * pct(t.ug_quote);
+          o.agf = agf_zul;
+          o.gf_oi = o.agf * num(t.faktor_gf);
         } else {
           o.gf_oi = num(t.gf_oi);
-          o.gf_ug = num(t.gf_ug);
           o.agf = o.gf_oi / Math.max(0.01, num(t.faktor_gf));
         }
-        o.gf = o.gf_oi + o.gf_ug;
-        o.gv = num(t.gv_manuell) > 0 ? num(t.gv_manuell) : o.gf * num(t.gv_faktor);
-        o.nwf = num(t.nwf_manuell) > 0 ? num(t.nwf_manuell) : o.gf_oi * pct(t.hnf_quote);
+
+        /* Gebäudegrundfläche = anrechenbare Geschossfläche je Geschoss */
+        o.grundflaeche = o.agf / geschosse;
+        o.gf_ug  = o.grundflaeche * pct(t.ug_quote);
+        o.f_aeh  = o.pp * num(t.flaeche_pro_pp);
+        o.gf     = o.gf_oi + o.gf_ug;
+        o.nwf    = num(t.nwf_manuell) > 0 ? num(t.nwf_manuell) : o.gf_oi * pct(t.hnf_quote);
+
+        /* Kubaturen. Regelgeschosse = Geschosse − 1, Dachgeschoss immer eines. */
+        var hoehe_oi = (geschosse - 1) * num(t.h_regel) + num(t.h_dach);
+        o.hoehe_oi = hoehe_oi;
+        if (t.kubatur_modus === 'volumen') {
+          o.gv_oi  = num(t.v_oi);
+          o.gv_ug  = num(t.v_ug);
+          o.gv_aeh = num(t.v_aeh);
+          o.h_oi_ist  = o.grundflaeche > 0 ? o.gv_oi / (o.gf_oi / geschosse) : 0;
+          o.h_ug_ist  = o.gf_ug > 0 ? o.gv_ug / o.gf_ug : 0;
+          o.h_aeh_ist = o.f_aeh > 0 ? o.gv_aeh / o.f_aeh : 0;
+        } else {
+          o.gv_oi  = (o.gf_oi / geschosse) * hoehe_oi;
+          o.gv_ug  = o.gf_ug * num(t.h_ug);
+          o.gv_aeh = o.f_aeh * num(t.h_aeh);
+          o.h_oi_ist = hoehe_oi; o.h_ug_ist = num(t.h_ug); o.h_aeh_ist = num(t.h_aeh);
+        }
+        o.gv = o.gv_oi + o.gv_ug + o.gv_aeh;
         agf_genutzt += o.agf || 0;
       }
 
-      /* Nutzungsflächen */
-      var summeAnteil = 0;
-      A.NUTZUNGEN.forEach(function (n) {
-        var cfg = t.nutzungen[n.id];
-        summeAnteil += num(cfg.anteil);
-      });
-      A.NUTZUNGEN.forEach(function (n) {
-        var cfg = t.nutzungen[n.id];
-        var f = num(cfg.flaeche_manuell) > 0
-          ? num(cfg.flaeche_manuell)
-          : o.nwf * pct(cfg.anteil);
-        o.nutzungen[n.id] = t.aktiv ? f : 0;
+      /* Nutzungszeilen */
+      var summeFlaeche = 0, summePP = 0;
+      (t.nutzungen || []).forEach(function (n) {
+        if (n.art === 'parkplatz') summePP += num(n.anteil);
+        else summeFlaeche += num(n.anteil);
       });
 
-      /* Wohnungsspiegel überschreibt Wohnfläche und Preis/m² */
+      (t.nutzungen || []).forEach(function (n) {
+        var menge;
+        if (n.art === 'parkplatz') {
+          menge = num(n.flaeche_manuell) > 0 ? num(n.flaeche_manuell) : o.pp * pct(n.anteil);
+        } else {
+          menge = num(n.flaeche_manuell) > 0 ? num(n.flaeche_manuell) : o.nwf * pct(n.anteil);
+        }
+        if (!t.aktiv) menge = 0;
+        o.nutzungen[n.id] = menge;
+        o.zeilen.push({ id: n.id, menge: menge });
+        /* Geschossfläche je Kostengruppe — Grundlage der BKP 20–29 */
+        if (t.aktiv && n.art !== 'parkplatz') {
+          var gr = n.kostengruppe || A.kostengruppeFuer(n.art, n.verwertung);
+          o.gruppen[gr] = (o.gruppen[gr] || 0) + o.gf_oi * pct(n.anteil);
+        }
+      });
+
+      /* Wohnungsspiegel überschreibt eine bestimmte Nutzungszeile */
       if (p.spiegel.aktiv && p.spiegel.teil === T.id && p.spiegel.einheiten.length) {
         var sf = 0, sp = 0;
         p.spiegel.einheiten.forEach(function (e) { sf += num(e.flaeche); sp += num(e.preis); });
         if (sf > 0) {
-          o.nutzungen.wohnen = sf;
           o.spiegel_preis_m2 = sp / sf;
           o.spiegel_flaeche = sf;
           o.spiegel_erloes = sp;
+          var ziel = p.spiegel.zeile ||
+            ((t.nutzungen.find(function (n) { return n.art === 'wohnen'; }) || {}).id);
+          if (ziel && o.nutzungen[ziel] !== undefined) o.nutzungen[ziel] = sf;
         }
       }
 
-      if (t.aktiv && Math.abs(summeAnteil - 100) > 0.5 && !(p.spiegel.aktiv && p.spiegel.teil === T.id)) {
-        warn.push({ art: 'warn', text: T.label + ': Nutzungsanteile ergeben ' +
-          A.fmt(summeAnteil, 1) + ' % statt 100 %.' });
+      if (t.aktiv && Math.abs(summeFlaeche - 100) > 0.5) {
+        warn.push({ art: 'warn', text: T.label + ': Flächenanteile ergeben ' +
+          A.fmt(summeFlaeche, 1) + ' % statt 100 %.' });
+      }
+      if (t.aktiv && o.pp > 0 && Math.abs(summePP - 100) > 0.5) {
+        warn.push({ art: 'warn', text: T.label + ': die Parkplätze sind zu ' +
+          A.fmt(summePP, 1) + ' % verteilt statt zu 100 %.' });
       }
 
       res.teile[T.id] = o;
       if (t.aktiv) {
-        res.total.gf_oi += o.gf_oi; res.total.gf_ug += o.gf_ug; res.total.gf += o.gf;
-        res.total.gv += o.gv; res.total.nwf += o.nwf; res.total.pp += o.pp;
-        A.NUTZUNGEN.forEach(function (n) { res.nutzung[n.id] += o.nutzungen[n.id]; });
+        ['gf_oi', 'gf_ug', 'f_aeh', 'gf', 'gv', 'gv_oi', 'gv_ug', 'gv_aeh', 'nwf', 'pp', 'grundflaeche']
+          .forEach(function (k) { res.total[k] += o[k]; });
+        Object.keys(o.gruppen).forEach(function (k) { res.gruppen[k] += o.gruppen[k]; });
       }
     });
 
     res.agf_genutzt = agf_genutzt;
-    res.umgebung = num(p.grundstueck.flaeche) * pct(p.grundstueck.umgebung_anteil);
+
+    /* Umgebungsfläche = Grundstück abzüglich der überbauten Fläche */
+    res.umgebung = num(p.grundstueck.umgebung_manuell) > 0
+      ? num(p.grundstueck.umgebung_manuell)
+      : Math.max(0, num(g.flaeche) - res.total.grundflaeche);
+
     res.gv_bestand = num(p.bestand_extra.gv) > 0
       ? num(p.bestand_extra.gv)
       : (res.teile.bestand.gv || 0);
@@ -158,17 +209,27 @@ window.APP = window.APP || {};
     var t = { neubau: 'neubau', erweiterung: 'erweiterung', sanierung: 'bestand' }[block];
     var o = F.teile[t] || {};
     switch (basis) {
-      case 'gf':         return o.gf || 0;
-      case 'gf_oi':      return o.gf_oi || 0;
-      case 'gv':         return o.gv || 0;
-      case 'nwf':        return o.nwf || 0;
-      case 'pp':         return o.pp || 0;
-      case 'umgebung':   return F.umgebung || 0;
-      case 'gv_bestand': return F.gv_bestand || 0;
-      default:           return 1;   // pauschal, pct_*
+      case 'gf':            return o.gf || 0;
+      case 'gf_oi':         return o.gf_oi || 0;
+      case 'gf_oi_stwe':    return (o.gruppen && o.gruppen.oi_stwe) || 0;
+      case 'gf_oi_miete':   return (o.gruppen && o.gruppen.oi_miete) || 0;
+      case 'gf_oi_gewerbe': return (o.gruppen && o.gruppen.oi_gewerbe) || 0;
+      case 'gv':            return o.gv || 0;
+      case 'gv_oi':         return o.gv_oi || 0;
+      case 'gv_ug':         return o.gv_ug || 0;
+      case 'gv_aeh':        return o.gv_aeh || 0;
+      case 'f_ug':          return o.gf_ug || 0;
+      case 'f_aeh':         return o.f_aeh || 0;
+      case 'nwf':           return o.nwf || 0;
+      case 'pp':            return o.pp || 0;
+      case 'umgebung':      return F.umgebung || 0;
+      case 'gv_bestand':    return F.gv_bestand || 0;
+      default:              return 1;   // pauschal, pct_*
     }
   }
   E.mengeFor = mengeFor;
+
+  var PROZENTBASEN = ['pct_bkp2', 'pct_bkp1_4', 'pct_bkp1_5'];
 
   E.baukosten = function (p, F, warn) {
     var res = { bloecke: {}, total: 0, teuerung: 0, basis_ohne_teuerung: 0 };
@@ -180,54 +241,80 @@ window.APP = window.APP || {};
                   bkp1: 0, bkp2: 0, bkp3: 0, bkp4: 0, bkp5: 0, bkp9: 0,
                   summe: 0, reserve: 0, total: 0 };
 
-      /* Erste Runde: alles ausser den prozentualen Zeilen */
-      A.BKP_KATALOG.forEach(function (kat) {
-        var z = b.zeilen[kat.id];
-        if (!z || !z.aktiv) return;
-        if (z.basis === 'pct_bkp2' || z.basis === 'pct_bkp1_4') return;
-        var menge = num(z.menge_manuell) > 0 ? num(z.menge_manuell) : mengeFor(z.basis, bid, F, p);
-        var betrag = z.basis === 'pauschal' ? num(z.wert) : menge * num(z.wert);
-        out.zeilen.push({ id: kat.id, bkp: kat.bkp, label: kat.label, basis: z.basis,
-                          menge: z.basis === 'pauschal' ? null : menge,
-                          kennwert: num(z.wert), betrag: betrag });
-        var g = kat.bkp.charAt(0);
+      var katalog = A.BKP_KATALOG.concat(b.eigene || []);
+
+      function gruppieren(bkp, betrag) {
+        var g = String(bkp).charAt(0);
         if (g === '1') out.bkp1 += betrag;
         else if (g === '2') out.bkp2 += betrag;
         else if (g === '3') out.bkp3 += betrag;
         else if (g === '4') out.bkp4 += betrag;
         else if (g === '5') out.bkp5 += betrag;
         else if (g === '9') out.bkp9 += betrag;
+      }
+
+      function erfassen(kat, z, betrag, menge) {
+        out.zeilen.push({ id: kat.id, bkp: kat.bkp, label: kat.label, basis: z.basis,
+                          menge: z.basis === 'pauschal' ? null : menge,
+                          kennwert: num(z.wert), betrag: betrag });
+        gruppieren(kat.bkp, betrag);
+      }
+
+      /* Erste Runde: alle mengenbezogenen Zeilen */
+      katalog.forEach(function (kat) {
+        var z = b.zeilen[kat.id];
+        if (!z || !z.aktiv) return;
+        if (PROZENTBASEN.indexOf(z.basis) >= 0) return;
+        var menge = num(z.menge_manuell) > 0 ? num(z.menge_manuell) : mengeFor(z.basis, bid, F, p);
+        var betrag = z.basis === 'pauschal' ? num(z.wert) : menge * num(z.wert);
+        erfassen(kat, z, betrag, menge);
       });
 
-      /* Zweite Runde: Honorare (% von BKP 2), danach BNK (% von BKP 1–4) */
-      var hz = b.zeilen.b2_honorare;
-      if (hz && hz.aktiv && hz.basis === 'pct_bkp2') {
-        var hb = out.bkp2 * pct(hz.wert);
-        out.zeilen.push({ id: 'b2_honorare', bkp: '29', label: 'Honorare Planung',
-                          basis: 'pct_bkp2', menge: out.bkp2, kennwert: num(hz.wert), betrag: hb });
-        out.bkp2 += hb;
-      }
-      var bz = b.zeilen.b5_bnk;
-      if (bz && bz.aktiv && bz.basis === 'pct_bkp1_4') {
-        var basis14 = out.bkp1 + out.bkp2 + out.bkp3 + out.bkp4;
-        var bb = basis14 * pct(bz.wert);
-        out.zeilen.push({ id: 'b5_bnk', bkp: '5', label: 'Baunebenkosten, Bewilligungen, Versicherungen',
-                          basis: 'pct_bkp1_4', menge: basis14, kennwert: num(bz.wert), betrag: bb });
-        out.bkp5 += bb;
-      }
+      /* Zweite Runde in fester Reihenfolge, weil die Bezugsgrössen
+         aufeinander aufbauen:
+           202 Reserve   -> auf BKP 20–29
+           BKP 5  BNK    -> auf BKP 1–4 (inkl. Reserve)
+           BKP 599 PM    -> auf BKP 1–5 ohne sich selbst                  */
+      var reihenfolge = [
+        { id: 'b2_reserve', basis: function () { return out.bkp2; } },
+        { id: 'b5_bnk',     basis: function () { return out.bkp1 + out.bkp2 + out.bkp3 + out.bkp4; } },
+        { id: 'b5_pm',      basis: function () { return out.bkp1 + out.bkp2 + out.bkp3 + out.bkp4 + out.bkp5; } }
+      ];
+      reihenfolge.forEach(function (r) {
+        var z = b.zeilen[r.id];
+        if (!z || !z.aktiv || PROZENTBASEN.indexOf(z.basis) < 0) return;
+        var kat = katalog.find(function (k) { return k.id === r.id; });
+        if (!kat) return;
+        var basis = r.basis();
+        var betrag = basis * pct(z.wert);
+        erfassen(kat, z, betrag, basis);
+        if (r.id === 'b2_reserve') out.reserve = betrag;
+      });
+
+      /* Übrige prozentuale Zeilen — etwa frei ergänzte */
+      katalog.forEach(function (kat) {
+        if (reihenfolge.some(function (r) { return r.id === kat.id; })) return;
+        var z = b.zeilen[kat.id];
+        if (!z || !z.aktiv || PROZENTBASEN.indexOf(z.basis) < 0) return;
+        var basis = z.basis === 'pct_bkp2' ? out.bkp2
+                  : z.basis === 'pct_bkp1_5' ? (out.bkp1 + out.bkp2 + out.bkp3 + out.bkp4 + out.bkp5)
+                  : (out.bkp1 + out.bkp2 + out.bkp3 + out.bkp4);
+        erfassen(kat, z, basis * pct(z.wert), basis);
+      });
 
       out.summe = out.bkp1 + out.bkp2 + out.bkp3 + out.bkp4 + out.bkp5 + out.bkp9;
-      out.reserve = (out.bkp1 + out.bkp2) * pct(b.reserve);   // Reserve auf BKP 1 + 2
-      out.total = out.summe + out.reserve;
 
-      /* Plausibilität: Baukosten je m² GF */
+      /* Altprojekte: pauschale Reserve auf BKP 1 + 2, falls noch gesetzt */
+      var altReserve = (out.bkp1 + out.bkp2) * pct(b.reserve);
+      out.reserve_pauschal = altReserve;
+      out.total = out.summe + altReserve;
+
       var gf = mengeFor('gf', bid, F, p);
       out.pro_gf = gf > 0 ? out.total / gf : 0;
       res.bloecke[bid] = out;
       res.basis_ohne_teuerung += out.total;
     });
 
-    /* Teuerung auf die Bauzeitmitte */
     if (p.bau.teuerung_aktiv) {
       var Z = E.zeitachse(p);
       var mitte = (Z.t_baustart + Z.t_bauende) / 2;
@@ -311,8 +398,9 @@ window.APP = window.APP || {};
   E.ertraege = function (p, F) {
     var r = {
       positionen: [],
-      sollmiete: 0,           // Jahressollmiete voll ausgebaut (alle Nutzungen)
-      sollmiete_halten: 0,    // nur gehaltene Flächen
+      sollmiete: 0,           // NUR Miet- und Exit-Flächen — verkaufte STWE
+                              // erzeugt keinen Mietertrag (siehe Rückmeldung 6/9)
+      sollmiete_halten: 0,
       stwe_erloes: 0,
       exit_wert: 0,
       halten_wert: 0,
@@ -323,71 +411,68 @@ window.APP = window.APP || {};
       var t = p.teile[T.id], fo = F.teile[T.id];
       if (!t.aktiv) return;
 
-      A.NUTZUNGEN.forEach(function (n) {
-        var cfg = t.nutzungen[n.id];
-        var fl = fo.nutzungen[n.id];
-        if (fl <= 0) return;
+      (t.nutzungen || []).forEach(function (n) {
+        var menge = fo.nutzungen[n.id] || 0;
+        if (menge <= 0) return;
 
-        var preis = num(cfg.preis);
-        if (p.spiegel.aktiv && p.spiegel.teil === T.id && n.id === 'wohnen' && fo.spiegel_preis_m2) {
-          preis = fo.spiegel_preis_m2;   // Wohnungsspiegel schlägt Preis/m² durch
+        var istPP = n.art === 'parkplatz';
+        var preis = num(n.preis);
+        if (p.spiegel.aktiv && p.spiegel.teil === T.id && fo.spiegel_preis_m2 &&
+            (p.spiegel.zeile ? p.spiegel.zeile === n.id : n.art === 'wohnen')) {
+          preis = fo.spiegel_preis_m2;   // Wohnungsspiegel schlägt durch
         }
-        var miete_a = fl * num(cfg.miete);
-        var pos = { teil: T.id, teil_label: T.label, nutzung: n.id, nutzung_label: n.label,
-                    flaeche: fl, miete_m2: num(cfg.miete), preis_m2: preis,
-                    verwertung: cfg.verwertung, sollmiete: miete_a,
-                    erloes: 0, wert: 0, art: '' };
 
-        r.sollmiete += miete_a;
+        /* Parkplätze werden je Monat erfasst, Flächen je Jahr und m². */
+        var miete_a = istPP ? menge * num(n.miete) * 12 : menge * num(n.miete);
 
-        if (cfg.verwertung === 'stwe') {
-          pos.erloes = fl * preis;
-          pos.art = 'Verkauf';
+        var pos = {
+          teil: T.id, teil_label: T.label,
+          nutzung: n.id, nutzung_label: n.bezeichnung, art: n.art,
+          einheit: istPP ? 'Stk.' : 'm²',
+          flaeche: menge, miete_m2: num(n.miete), preis_m2: preis,
+          verwertung: n.verwertung, sollmiete: 0,
+          erloes: 0, wert: 0, kategorie: ''
+        };
+
+        if (n.verwertung === 'stwe') {
+          pos.erloes = menge * preis;
+          pos.kategorie = 'stwe';
+          pos.art_label = 'Verkauf STWE';
           r.stwe_erloes += pos.erloes;
-          r.nwf_stwe += fl;
-        } else if (cfg.verwertung === 'exit') {
-          var rend = Math.max(0.5, num(cfg.exit_rendite));
+          if (!istPP) r.nwf_stwe += menge;
+        } else if (n.verwertung === 'exit') {
+          var rend = Math.max(0.5, num(n.exit_rendite));
           var basisMiete = miete_a;
           if (p.bewertung.exit_netto) basisMiete = miete_a * (1 - pct(p.betrieb.leerstand)) * 0.82;
           pos.wert = basisMiete / pct(rend);
-          pos.art = 'Exit ' + A.fmt(rend, 2) + ' %';
+          pos.sollmiete = miete_a;
+          pos.kategorie = 'exit';
+          pos.art_label = 'Exit an Investor ' + A.fmt(rend, 2) + ' %';
           r.exit_wert += pos.wert;
+          r.sollmiete += miete_a;
           r.sollmiete_halten += miete_a;
-          r.nwf_halten += fl;
+          if (!istPP) r.nwf_halten += menge;
         } else {
           var rh = Math.max(0.5, num(p.bewertung.rendite_halten));
           pos.wert = miete_a / pct(rh);
-          pos.art = cfg.verwertung === 'halten_selbst' ? 'Halten selbstgenutzt' : 'Halten vermietet';
-          pos.selbst = num(cfg.selbst);
+          pos.sollmiete = miete_a;
+          pos.kategorie = 'miete';
+          pos.art_label = n.verwertung === 'halten_selbst' ? 'Halten selbstgenutzt' : 'Halten vermietet';
+          pos.selbst = num(n.selbst);
           r.halten_wert += pos.wert;
+          r.sollmiete += miete_a;
           r.sollmiete_halten += miete_a;
-          r.nwf_halten += fl;
+          if (!istPP) r.nwf_halten += menge;
         }
         r.positionen.push(pos);
       });
-
-      /* Parkierung */
-      if (fo.pp > 0) {
-        var pm = fo.pp * num(t.pp_miete) * 12;
-        var ppos = { teil: T.id, teil_label: T.label, nutzung: 'pp', nutzung_label: 'Parkierung',
-                     flaeche: fo.pp, miete_m2: num(t.pp_miete), preis_m2: num(t.pp_preis),
-                     verwertung: t.pp_verwertung, sollmiete: pm, erloes: 0, wert: 0, einheit: 'PP' };
-        r.sollmiete += pm;
-        if (t.pp_verwertung === 'stwe') {
-          ppos.erloes = fo.pp * num(t.pp_preis); ppos.art = 'Verkauf';
-          r.stwe_erloes += ppos.erloes;
-        } else if (t.pp_verwertung === 'exit') {
-          ppos.wert = pm / pct(Math.max(0.5, num(p.bewertung.rendite_halten)));
-          ppos.art = 'Exit'; r.exit_wert += ppos.wert; r.sollmiete_halten += pm;
-        } else {
-          ppos.wert = pm / pct(Math.max(0.5, num(p.bewertung.rendite_halten)));
-          ppos.art = 'Halten'; r.halten_wert += ppos.wert; r.sollmiete_halten += pm;
-        }
-        r.positionen.push(ppos);
-      }
     });
 
     r.verwertungswert = r.stwe_erloes + r.exit_wert + r.halten_wert;
+    r.nwf_total = r.nwf_stwe + r.nwf_halten;
+    /* Anteil der Ertragsflächen — Grundlage der anteiligen Anlagekosten
+       für die Bruttorendite (Rückmeldung D2, Variante a). */
+    r.anteil_ertrag = r.nwf_total > 0 ? r.nwf_halten / r.nwf_total : 0;
     return r;
   };
 
@@ -787,8 +872,12 @@ window.APP = window.APP || {};
     if (ekFlow.length) ekFlow[ekFlow.length - 1] -= steuern;
     var irr = E.irr(ekFlow);
 
-    var bruttorendite = anlagekosten > 0 ? ERT.sollmiete / anlagekosten * 100 : 0;
-    var nettorendite  = anlagekosten > 0 ? BET.noi_a / anlagekosten * 100 : 0;
+    /* Bruttorendite auf die ANTEILIGEN Anlagekosten der Ertragsflächen.
+       Auf die gesamten Anlagekosten bezogen wäre sie bei Mischprojekten
+       verzerrt, weil verkaufte Flächen keinen Mietertrag liefern. */
+    var ak_ertrag = anlagekosten * ERT.anteil_ertrag;
+    var bruttorendite = ak_ertrag > 0 ? ERT.sollmiete / ak_ertrag * 100 : 0;
+    var nettorendite  = ak_ertrag > 0 ? BET.noi_a / ak_ertrag * 100 : 0;
     var margeAK = anlagekosten > 0 ? gewinnNach / anlagekosten * 100 : 0;
     var margeErloes = erloese > 0 ? gewinnNach / erloese * 100 : 0;
     /* ROE auf das verpflichtete Eigenkapital (Quote × Gesamtinvestition).
@@ -843,6 +932,11 @@ window.APP = window.APP || {};
         ltc_ist: ltcIst,
         bruttorendite: bruttorendite,
         nettorendite: nettorendite,
+        ak_ertrag: ak_ertrag,
+        anteil_ertrag: ERT.anteil_ertrag,
+        stwe_erloes: ERT.stwe_erloes,
+        exit_wert: ERT.exit_wert,
+        halten_wert: ERT.halten_wert,
         sollmiete: ERT.sollmiete,
         noi: BET.noi_a,
         ak_pro_nwf: F.total.nwf > 0 ? anlagekosten / F.total.nwf : 0,
@@ -864,15 +958,13 @@ window.APP = window.APP || {};
       } },
     { id: 'preise', label: 'Verkaufspreise', apply: function (p, f) {
         A.TEILE.forEach(function (T) {
-          A.NUTZUNGEN.forEach(function (n) { p.teile[T.id].nutzungen[n.id].preis *= f; });
-          p.teile[T.id].pp_preis *= f;
+          (p.teile[T.id].nutzungen || []).forEach(function (n) { n.preis *= f; });
         });
         p.spiegel.einheiten.forEach(function (e) { e.preis *= f; });
       } },
     { id: 'mieten', label: 'Mietzinsen', apply: function (p, f) {
         A.TEILE.forEach(function (T) {
-          A.NUTZUNGEN.forEach(function (n) { p.teile[T.id].nutzungen[n.id].miete *= f; });
-          p.teile[T.id].pp_miete *= f;
+          (p.teile[T.id].nutzungen || []).forEach(function (n) { n.miete *= f; });
         });
       } },
     { id: 'landpreis', label: 'Landpreis', apply: function (p, f) {
@@ -881,7 +973,7 @@ window.APP = window.APP || {};
     { id: 'exitrendite', label: 'Exit-/Bewertungsrendite', apply: function (p, f) {
         p.bewertung.rendite_halten *= f;
         A.TEILE.forEach(function (T) {
-          A.NUTZUNGEN.forEach(function (n) { p.teile[T.id].nutzungen[n.id].exit_rendite *= f; });
+          (p.teile[T.id].nutzungen || []).forEach(function (n) { n.exit_rendite *= f; });
         });
       } },
     { id: 'bauzeit', label: 'Bauzeit', apply: function (p, f) {

@@ -48,6 +48,20 @@ window.APP = window.APP || {};
           hilfe: 'Setzt Handänderungssteuer, Grundbuchgebühren und Steuersatz auf kantonale Richtwerte — bitte prüfen.'
         }),
         U.txt(p, 'bearbeiter', 'Bearbeitung', { stufe: 'standard' }),
+        (function () {
+          /* Startdatum des Erwerbs — alle Termine bauen darauf auf. */
+          var i = el('input', { type: 'date', value: p.startdatum || '' });
+          i.addEventListener('change', function () {
+            p.startdatum = i.value;
+            p.startjahr = parseInt(String(i.value).slice(0, 4), 10) || p.startjahr;
+            A.recompute(); A.render();
+          });
+          return el('div', { class: 'f' }, [
+            el('label', {}, [el('span', { text: 'Startdatum (Erwerb)' })]),
+            el('div', { class: 'inp' }, [i]),
+            el('div', { class: 'hilfe', text: 'Nullpunkt der Zeitachse; alle Phasen bauen darauf auf.' })
+          ]);
+        })(),
         U.sel(p, 'status', A.STATUS.map(function (s) { return { id: s, label: s }; }), 'Projektstatus', { ohneBadge: true, stufe: 'standard' }),
         U.txt(p, 'notiz', 'Kurznotiz', { stufe: 'standard', platzhalter: 'z. B. Variante gemäss Studie Meier 03/26' })
       ], 'c3')
@@ -135,10 +149,11 @@ window.APP = window.APP || {};
       if (b > 62) kinder.push(U.s('text', { x: px(ph.t0) + 7, y: y + 13.5, fill: '#fff', 'font-size': 11 }, ph.label));
       else kinder.push(U.s('text', { x: px(ph.t0) + b + 5, y: y + 13.5, fill: '#6b7484', 'font-size': 11 }, ph.label));
     });
-    /* Jahresraster */
+    /* Jahresraster in Kalenderjahren */
     for (var j = 0; j <= Math.ceil(Z.t_ende); j++) {
       kinder.push(U.s('line', { x1: px(j), y1: 6, x2: px(j), y2: 60, stroke: '#e2e6ec' }));
-      kinder.push(U.s('text', { x: px(j) + 3, y: 70, fill: '#6b7484', 'font-size': 10, class: 'n' }, 'J' + j));
+      kinder.push(U.s('text', { x: px(j) + 3, y: 70, fill: '#6b7484', 'font-size': 10, class: 'n' },
+        A.jahrLabel(A.state.p, j)));
     }
     [['Baubewilligung', Z.t_bb], ['Baustart', Z.t_baustart], ['Bezug', Z.t_bauende]].forEach(function (m) {
       kinder.push(U.s('line', { x1: px(m[1]), y1: 6, x2: px(m[1]), y2: 60, stroke: '#10151c', 'stroke-dasharray': '3 2' }));
@@ -153,30 +168,45 @@ window.APP = window.APP || {};
   V.flaechen = function (p) {
     init();
     var out = el('div', {}, [U.kopf('Grundstück & Flächen',
-      'Die Flächenkaskade läuft von der Ausnutzung bis zur vermietbaren Fläche. ' +
-      'Jeder Umrechnungsfaktor ist überschreibbar; alternativ lassen sich die Flächen direkt aus einer Studie eintragen.')]);
+      'Die Kaskade läuft von der anrechenbaren Geschossfläche bis zur vermietbaren Fläche. ' +
+      'Untergeschoss und Einstellhalle werden getrennt geführt, weil sie unterschiedlich kosten.')]);
+
+    var istAgf = p.grundstueck.az_modus === 'agf';
 
     out.appendChild(U.panel('Grundstück', null, [
       U.body([
         U.num(p, 'grundstueck.flaeche', 'Grundstücksfläche', { unit: 'm²', gross: true }),
-        U.num(p, 'grundstueck.az', 'Ausnützungsziffer AZ', { dez: 2,
-          derive: function (r) { return 'zulässige aGF: ' + fmt(r.flaechen.agf_zulaessig) + ' m²'; } }),
-        U.num(p, 'grundstueck.umgebung_anteil', 'Umgebungsfläche', { unit: '% Grundstück', dez: 0, stufe: 'standard',
-          derive: function (r) { return fmt(r.flaechen.umgebung) + ' m² Mengenbasis für BKP 4'; } }),
+        U.seg(p, 'grundstueck.az_modus', [
+          { id: 'az', label: 'über Ausnützungsziffer' },
+          { id: 'agf', label: 'aGF direkt' }
+        ], 'Herkunft der Geschossfläche'),
+        istAgf
+          ? U.num(p, 'grundstueck.agf_direkt', 'Anrechenbare Geschossfläche', { unit: 'm²', gross: true })
+          : U.num(p, 'grundstueck.az', 'Ausnützungsziffer AZ', { dez: 2,
+              derive: function (r) { return 'ergibt ' + fmt(r.flaechen.agf_zulaessig) + ' m² aGF'; } }),
+        U.num(p, 'grundstueck.geschosse', 'Anzahl Geschosse oberirdisch', { dez: 0,
+          hilfe: 'Inklusive Dachgeschoss. Regelgeschosse = Anzahl − 1.',
+          derive: function (r) { return 'Gebäudegrundfläche ' + fmt(r.flaechen.total.grundflaeche) + ' m²'; } }),
+        U.num(p, 'grundstueck.umgebung_manuell', 'Umgebungsfläche manuell', { unit: 'm²', gross: true, stufe: 'detail',
+          hilfe: 'Leer = Grundstück minus Gebäudegrundfläche.',
+          derive: function (r) { return 'gerechnet: ' + fmt(r.flaechen.umgebung) + ' m²'; } }),
         U.chk(p, 'grundstueck.mehrwertabgabe_aktiv', 'Mehrwertabgabe bei Auf-/Einzonung', { stufe: 'standard' })
-      ], 'c4'),
+      ], 'c3'),
       p.grundstueck.mehrwertabgabe_aktiv ? U.body([
         U.num(p, 'grundstueck.mehrwert_basis', 'Planungsmehrwert', { unit: 'CHF', gross: true }),
         U.num(p, 'grundstueck.mehrwertabgabe_pct', 'Abgabesatz', { unit: '%', dez: 0 })
-      ], 'c4') : null
+      ], 'c3') : null
     ]));
 
-    /* Gebäudeteile */
     A.TEILE.forEach(function (T) {
       var t = p.teile[T.id];
       var kopfAktionen = [el('label', { class: 'check', style: 'padding:0' }, [
         el('input', { type: 'checkbox', checked: t.aktiv ? '' : null,
-          onchange: function (e) { t.aktiv = e.target.checked; A.recompute(); A.render(); } }),
+          onchange: function (e) {
+            t.aktiv = e.target.checked;
+            if (t.aktiv && (!t.nutzungen || !t.nutzungen.length)) t.nutzungen = A.standardNutzungen();
+            A.recompute(); A.render();
+          } }),
         el('span', { style: 'font-size:11.5px;text-transform:none;letter-spacing:0', text: 'aktiv' })
       ])];
       if (!t.aktiv) {
@@ -184,69 +214,89 @@ window.APP = window.APP || {};
         return;
       }
 
-      var istAusnutzung = t.modus === 'ausnutzung';
-      var felder = [
-        T.id === 'neubau' ? U.seg(p, 'teile.neubau.modus', [
-          { id: 'ausnutzung', label: 'aus Ausnutzung' }, { id: 'studie', label: 'aus Studie' }
-        ], 'Flächenherkunft') : null
-      ];
+      var pfad = 'teile.' + T.id + '.';
+      var felder = [];
 
-      if (istAusnutzung && T.id === 'neubau') {
-        felder.push(U.num(p, 'teile.' + T.id + '.faktor_gf', 'GF oberirdisch je m² aGF', { dez: 2, stufe: 'standard',
-          hilfe: 'Geschossfläche SIA 416 im Verhältnis zur anrechenbaren Geschossfläche.' }));
-        felder.push(U.num(p, 'teile.' + T.id + '.ug_quote', 'Untergeschoss', { unit: '% der GF oi', dez: 0, stufe: 'standard',
-          hilfe: 'Ohne Tiefgarage — diese wird über CHF je Parkplatz erfasst.' }));
-      } else {
-        felder.push(U.num(p, 'teile.' + T.id + '.gf_oi', 'Geschossfläche oberirdisch', { unit: 'm²', gross: true }));
-        felder.push(U.num(p, 'teile.' + T.id + '.gf_ug', 'Untergeschoss (ohne TG)', { unit: 'm²', gross: true, stufe: 'standard' }));
+      if (T.id === 'neubau') {
+        felder.push(U.seg(p, pfad + 'modus', [
+          { id: 'ausnutzung', label: 'aus Ausnutzung' }, { id: 'studie', label: 'aus Studie' }
+        ], 'Flächenherkunft'));
       }
-      felder.push(U.num(p, 'teile.' + T.id + '.hnf_quote', 'Nutzfläche NWF', { unit: '% der GF oi', dez: 0,
-        hilfe: 'Anteil vermiet-/verkaufbarer Fläche an der Geschossfläche oberirdisch.',
+      if (t.modus === 'ausnutzung' && T.id === 'neubau') {
+        felder.push(U.num(p, pfad + 'faktor_gf', 'GF oberirdisch je m² aGF', { dez: 2, stufe: 'standard' }));
+      } else {
+        felder.push(U.num(p, pfad + 'gf_oi', 'Geschossfläche oberirdisch', { unit: 'm²', gross: true }));
+      }
+      felder.push(U.num(p, pfad + 'ug_quote', 'Untergeschoss', { unit: '% der Grundfläche', dez: 0,
+        hilfe: 'Ohne Einstellhalle — die wird über die Parkplätze gerechnet.',
+        derive: function (r) { return fmt(r.flaechen.teile[T.id].gf_ug) + ' m² UG'; } }));
+      felder.push(U.num(p, pfad + 'hnf_quote', 'Nutzfläche NWF', { unit: '% der GF o.i.', dez: 0,
         derive: function (r) { return fmt(r.flaechen.teile[T.id].nwf) + ' m² NWF'; } }));
-      felder.push(U.num(p, 'teile.' + T.id + '.nwf_manuell', 'NWF direkt', { unit: 'm²', gross: true, stufe: 'detail',
-        hilfe: 'Grösser als 0 überschreibt die Quote oben.' }));
-      felder.push(U.num(p, 'teile.' + T.id + '.gv_faktor', 'Gebäudevolumen je m² GF', { unit: 'm³/m²', dez: 2, stufe: 'detail',
-        derive: function (r) { return fmt(r.flaechen.teile[T.id].gv) + ' m³ GV'; } }));
-      felder.push(U.num(p, 'teile.' + T.id + '.pp', 'Parkplätze', { unit: 'Stk.', dez: 0 }));
+      felder.push(U.num(p, pfad + 'nwf_manuell', 'NWF direkt', { unit: 'm²', gross: true, stufe: 'detail',
+        hilfe: 'Grösser als 0 überschreibt die Quote.' }));
+      felder.push(U.num(p, pfad + 'pp', 'Parkplätze', { unit: 'Stk.', dez: 0 }));
+      felder.push(U.num(p, pfad + 'flaeche_pro_pp', 'Fläche je Parkplatz', { unit: 'm²', dez: 1,
+        derive: function (r) { return fmt(r.flaechen.teile[T.id].f_aeh) + ' m² Einstellhalle'; } }));
+
+      /* Kubaturen */
+      var kub = [U.seg(p, pfad + 'kubatur_modus', [
+        { id: 'hoehe', label: 'über Höhen' }, { id: 'volumen', label: 'Volumen direkt' }
+      ], 'Kubatur')];
+      if (t.kubatur_modus === 'volumen') {
+        kub.push(U.num(p, pfad + 'v_oi', 'Volumen oberirdisch', { unit: 'm³', gross: true,
+          derive: function (r) { return 'entspricht ' + A.fmt(r.flaechen.teile[T.id].h_oi_ist, 2) + ' m Gesamthöhe'; } }));
+        kub.push(U.num(p, pfad + 'v_ug', 'Volumen Untergeschoss', { unit: 'm³', gross: true,
+          derive: function (r) { return A.fmt(r.flaechen.teile[T.id].h_ug_ist, 2) + ' m'; } }));
+        kub.push(U.num(p, pfad + 'v_aeh', 'Volumen Einstellhalle', { unit: 'm³', gross: true,
+          derive: function (r) { return A.fmt(r.flaechen.teile[T.id].h_aeh_ist, 2) + ' m'; } }));
+      } else {
+        kub.push(U.num(p, pfad + 'h_regel', 'Höhe Regelgeschoss', { unit: 'm', dez: 2 }));
+        kub.push(U.num(p, pfad + 'h_dach', 'Höhe Dachgeschoss', { unit: 'm', dez: 2 }));
+        kub.push(U.num(p, pfad + 'h_ug', 'Höhe Untergeschoss', { unit: 'm', dez: 2 }));
+        kub.push(U.num(p, pfad + 'h_aeh', 'Höhe Einstellhalle', { unit: 'm', dez: 2 }));
+      }
 
       var tabelle = el('div', { class: 'panelbody' });
       U.derived.push(function () {
-        var f = A.state.r.flaechen.teile[T.id];
+        var fo = A.state.r.flaechen.teile[T.id], g = A.state.r.flaechen.geschosse;
+        function z(l, v, u, stark) {
+          return el('tr', { class: stark ? 'sum' : '' }, [
+            el('td', { text: l }), el('td', { class: 'n', text: fmt(v) }),
+            el('td', { class: 'muted', text: u })
+          ]);
+        }
         U.leeren(tabelle).appendChild(U.tabelle(
-          [{ label: 'Flächenkaskade' }, { label: 'Wert', n: true }, { label: 'Einheit' }],
-          [
-            zeile('anrechenbare Geschossfläche aGF', f.agf, 'm²'),
-            zeile('Geschossfläche oberirdisch', f.gf_oi, 'm²'),
-            zeile('Untergeschoss (ohne TG)', f.gf_ug, 'm²'),
-            zeile('Geschossfläche total (Mengenbasis BKP 2)', f.gf, 'm²', true),
-            zeile('Gebäudevolumen GV', f.gv, 'm³'),
-            zeile('Nutzfläche NWF (vermiet-/verkaufbar)', f.nwf, 'm²', true),
-            zeile('Parkplätze', f.pp, 'Stk.')
+          [{ label: 'Flächen- und Volumenkaskade' }, { label: 'Wert', n: true }, { label: 'Einheit' }], [
+            z('anrechenbare Geschossfläche aGF', fo.agf, 'm²'),
+            z('Gebäudegrundfläche (aGF ÷ ' + g + ' Geschosse)', fo.grundflaeche, 'm²'),
+            z('Geschossfläche oberirdisch', fo.gf_oi, 'm²', true),
+            z('Untergeschoss ohne Einstellhalle', fo.gf_ug, 'm²'),
+            z('Einstellhalle', fo.f_aeh, 'm²'),
+            z('Nutzfläche NWF (vermiet-/verkaufbar)', fo.nwf, 'm²', true),
+            z('Volumen oberirdisch (Höhe ' + A.fmt(fo.h_oi_ist, 2) + ' m)', fo.gv_oi, 'm³'),
+            z('Volumen Untergeschoss', fo.gv_ug, 'm³'),
+            z('Volumen Einstellhalle', fo.gv_aeh, 'm³'),
+            z('Volumen total', fo.gv, 'm³', true)
           ]));
       });
-      function zeile(l, v, u, stark) {
-        return el('tr', { class: stark ? 'sum' : '' }, [
-          el('td', { text: l }), el('td', { class: 'n', text: fmt(v) }), el('td', { class: 'muted', text: u })
-        ]);
-      }
 
-      out.appendChild(U.panel(T.label, null, [U.body(felder, 'c4'), tabelle], kopfAktionen));
+      out.appendChild(U.panel(T.label, null, [
+        U.body(felder, 'c4'), U.body(kub, 'c4'), tabelle
+      ], kopfAktionen));
     });
 
-    /* Ausnutzungskontrolle */
     var check = el('div', { class: 'panelbody' });
     U.derived.push(function () {
-      var f = A.state.r.flaechen;
-      U.leeren(check);
-      var quote = f.agf_zulaessig > 0 ? f.agf_genutzt / f.agf_zulaessig * 100 : 0;
-      check.appendChild(el('div', { class: 'cols c4' }, [
-        U.kachel('zulässige aGF', fmt(f.agf_zulaessig) + ' m²'),
-        U.kachel('geplante aGF', fmt(f.agf_genutzt) + ' m²'),
+      var fl = A.state.r.flaechen;
+      var quote = fl.agf_zulaessig > 0 ? fl.agf_genutzt / fl.agf_zulaessig * 100 : 0;
+      U.leeren(check).appendChild(el('div', { class: 'cols c4' }, [
+        U.kachel('zulässige aGF', fmt(fl.agf_zulaessig) + ' m²'),
+        U.kachel('geplante aGF', fmt(fl.agf_genutzt) + ' m²'),
         U.kachel('Ausschöpfung', A.fmtPct(quote), null, quote > 100.5 ? 'neg' : 'pos'),
-        U.kachel('Reserve', fmt(f.agf_zulaessig - f.agf_genutzt) + ' m²')
+        U.kachel('Umgebungsfläche', fmt(fl.umgebung) + ' m²', 'Mengenbasis BKP 4')
       ]));
     });
-    out.appendChild(U.panel('Ausnutzungskontrolle', 'Bestand und Erweiterung zählen mit', [check]));
+    out.appendChild(U.panel('Ausnutzungskontrolle', null, [check]));
 
     return out;
   };
@@ -294,11 +344,27 @@ window.APP = window.APP || {};
 
     out.appendChild(U.panel('Kaufnebenkosten', 'Prozentsätze auf den Kaufpreis', [
       U.body([
-        U.num(p, 'erwerb.notariat', 'Notariat / Beurkundung', { unit: '%', dez: 2, stufe: 'standard' }),
-        U.num(p, 'erwerb.grundbuch', 'Grundbuchgebühren', { unit: '%', dez: 2, stufe: 'standard' }),
-        U.num(p, 'erwerb.handaenderung', 'Handänderungssteuer', { unit: '%', dez: 2, stufe: 'standard' }),
+        U.num(p, 'erwerb.notariat', 'Notariat / Beurkundung', { unit: '%', dez: 2, stufe: 'standard',
+            derive: function (r) {
+              var z = r.erwerb.zeilen.find(function (x) { return x.id === 'notariat'; });
+              return z ? fmt(z.betrag) + ' CHF' : '';
+            } }),
+        U.num(p, 'erwerb.grundbuch', 'Grundbuchgebühren', { unit: '%', dez: 2, stufe: 'standard',
+            derive: function (r) {
+              var z = r.erwerb.zeilen.find(function (x) { return x.id === 'grundbuch'; });
+              return z ? fmt(z.betrag) + ' CHF' : '';
+            } }),
+        U.num(p, 'erwerb.handaenderung', 'Handänderungssteuer', { unit: '%', dez: 2, stufe: 'standard',
+            derive: function (r) {
+              var z = r.erwerb.zeilen.find(function (x) { return x.id === 'handaenderung'; });
+              return z ? fmt(z.betrag) + ' CHF' : '';
+            } }),
         U.num(p, 'erwerb.handaenderung_anteil', 'davon zu Lasten Käufer', { unit: '%', dez: 0, stufe: 'standard' }),
-        U.num(p, 'erwerb.courtage', 'Einkaufskommission / Courtage', { unit: '%', dez: 2, stufe: 'standard' }),
+        U.num(p, 'erwerb.courtage', 'Einkaufskommission / Courtage', { unit: '%', dez: 2, stufe: 'standard',
+            derive: function (r) {
+              var z = r.erwerb.zeilen.find(function (x) { return x.id === 'courtage'; });
+              return z ? fmt(z.betrag) + ' CHF' : '';
+            } }),
         U.num(p, 'erwerb.dd', 'Due Diligence / Altlasten', { unit: 'CHF', gross: true, stufe: 'standard' }),
         U.num(p, 'erwerb.geometer', 'Vermessung / Geometer', { unit: 'CHF', gross: true, stufe: 'detail' }),
         U.num(p, 'erwerb.recht', 'Rechtsberatung / Verträge', { unit: 'CHF', gross: true, stufe: 'detail' })
@@ -406,8 +472,17 @@ window.APP = window.APP || {};
   V.baukosten = function (p) {
     init();
     var out = el('div', {}, [U.kopf('Baukosten',
-      'BKP nach SIA, auf die praxisrelevanten Gruppen verdichtet. Je Zeile wählen Sie die Bezugsgrösse; ' +
-      'die Menge kommt aus den Flächen und lässt sich überschreiben.')]);
+      'BKP 20–29 sind zu Vollkosten je Bereich zusammengefasst — Rohbau, Technik, Ausbau und ' +
+      'Planerhonorare stecken im Kennwert. Die Mengen der oberirdischen Zeilen folgen dem ' +
+      'Nutzungsmix aus «Erträge & Verwertung».')]);
+
+    if (p.baukosten_pruefen) {
+      out.appendChild(U.hinweis('warn',
+        'Die Baukostenstruktur wurde umgestellt. Die früheren Zeilen für Rohbau, Technik, Ausbau, ' +
+        'Parkierung und Honorare sind in den Zeilen <b>BKP 20–29</b> aufgegangen. Diese starten auf ' +
+        'den Kennwerten der Bibliothek — eine rechnerische Umschlüsselung wäre nur scheingenau. ' +
+        '<b>Bitte die Kennwerte prüfen.</b>'));
+    }
 
     ['neubau', 'erweiterung', 'sanierung'].forEach(function (bid) {
       var b = p.bau[bid];
@@ -418,34 +493,58 @@ window.APP = window.APP || {};
       ])];
       if (!b.aktiv) { out.appendChild(U.panel(A.BLOCK_LABELS[bid], 'nicht Teil des Szenarios', [], aktionen)); return; }
 
+      if (!b.eigene) b.eigene = [];
       var kw = A.KENNWERTE[bid];
-      var zeilen = A.BKP_KATALOG.map(function (kat) {
-        var z = b.zeilen[kat.id], band = kw[kat.id];
+      var katalog = A.BKP_KATALOG.concat(b.eigene);
+
+      var zeilen = katalog.map(function (kat, idx) {
+        var eigen = idx >= A.BKP_KATALOG.length;
+        if (!b.zeilen[kat.id]) {
+          b.zeilen[kat.id] = { aktiv: true, basis: 'pauschal', wert: 0, menge_manuell: 0 };
+        }
+        var z = b.zeilen[kat.id], band = kw[kat.id] || {};
         var tr = el('tr', {});
         tr.appendChild(el('td', { class: 'w1' }, [U.zelleChk(z, 'aktiv')]));
         tr.appendChild(el('td', { class: 'w1' }, [el('span', { class: 'bkp', text: kat.bkp })]));
-        tr.appendChild(el('td', {}, [
-          el('span', { text: kat.label }),
-          kat.hilfe && U.sichtbar('detail')
-            ? el('div', { class: 'muted', style: 'font-size:10.5px', text: kat.hilfe }) : null
-        ]));
-        tr.appendChild(el('td', { class: 'w1' }, [U.zelleSel(z, 'basis', Object.keys(A.BASIS_LABELS).map(function (k) {
-          return { id: k, label: A.BASIS_LABELS[k] };
-        }), { rerender: false })]));
+
+        if (eigen) {
+          var bez = el('input', { type: 'text', value: kat.label });
+          bez.addEventListener('input', function () { kat.label = bez.value; A.markDirty(); });
+          tr.appendChild(el('td', {}, [bez]));
+        } else {
+          tr.appendChild(el('td', {}, [
+            el('span', { text: kat.label }),
+            kat.hilfe && U.sichtbar('detail')
+              ? el('div', { class: 'muted', style: 'font-size:10.5px', text: kat.hilfe }) : null
+          ]));
+        }
+
+        tr.appendChild(el('td', { class: 'w1' }, [U.zelleSel(z, 'basis',
+          Object.keys(A.BASIS_LABELS).map(function (k) {
+            return { id: k, label: A.BASIS_LABELS[k] };
+          }), { rerender: false })]));
         tr.appendChild(U.dTd(function (r) {
           var m = menge(r, bid, kat.id);
           return z.basis === 'pauschal' ? '—' : fmt(m, m !== null && m < 100 ? 1 : 0);
         }, 'muted'));
         tr.appendChild(el('td', { style: 'width:110px' }, [
-          U.zelleNum(z, 'wert', { dez: z.basis === 'pct_bkp2' || z.basis === 'pct_bkp1_4' ? 2 : 0,
+          U.zelleNum(z, 'wert', {
+            dez: z.basis.indexOf('pct_') === 0 ? 2 : 0,
             gross: z.basis === 'pauschal' || z.basis === 'pp',
-            /* Bandbreite nur prüfen, wenn die Zeile überhaupt gerechnet wird */
             min: z.aktiv ? band.min : undefined, max: z.aktiv ? band.max : 0 })
         ]));
         tr.appendChild(el('td', { style: 'width:110px' }, [
           U.zelleNum(z, 'menge_manuell', { gross: true, leerBei0: true, platzhalter: 'auto' })
         ]));
         tr.appendChild(U.dTd(function (r) { return fmt(betrag(r, bid, kat.id)); }));
+        tr.appendChild(el('td', { class: 'w1' }, [
+          eigen ? el('button', { class: 'ghost sm schreibend', text: '×',
+            onclick: function () {
+              b.eigene.splice(idx - A.BKP_KATALOG.length, 1);
+              delete b.zeilen[kat.id];
+              A.recompute(); A.render();
+            } }) : null
+        ]));
         return tr;
       });
 
@@ -454,8 +553,19 @@ window.APP = window.APP || {};
         { label: '', w: '1%' }, { label: 'BKP', w: '1%' }, { label: 'Position' },
         { label: 'Bezug', w: '13%' }, { label: 'Menge', n: true, w: '10%' },
         { label: 'Kennwert', n: true, w: '10%' }, { label: 'Menge manuell', n: true, w: '10%' },
-        { label: 'CHF', n: true, w: '12%' }
+        { label: 'CHF', n: true, w: '12%' }, { label: '', w: '1%' }
       ], zeilen));
+
+      var werkzeuge = el('div', { class: 'panelbody' }, [
+        el('button', { class: 'schreibend', text: '+ eigene Zeile', onclick: function () {
+          var id = 'x' + A.uid();
+          b.eigene.push({ id: id, bkp: '5', label: 'Eigene Position' });
+          b.zeilen[id] = { aktiv: true, basis: 'pauschal', wert: 0, menge_manuell: 0 };
+          A.recompute(); A.render();
+        } }),
+        b.reserve > 0 ? el('span', { class: 'tag warn', style: 'margin-left:10px',
+          text: 'Altprojekt: zusätzliche Pauschalreserve ' + A.fmt(b.reserve, 1) + ' % auf BKP 1+2 aktiv' }) : null
+      ]);
 
       var summe = el('div', { class: 'panelbody' });
       U.derived.push(function () {
@@ -464,18 +574,13 @@ window.APP = window.APP || {};
         if (!bl) return;
         summe.appendChild(el('div', { class: 'cols c4' }, [
           U.kachel('BKP 1 Vorbereitung', fmt(bl.bkp1)),
-          U.kachel('BKP 2 Gebäude', fmt(bl.bkp2)),
-          U.kachel('BKP 4 + 5 + 9', fmt(bl.bkp3 + bl.bkp4 + bl.bkp5 + bl.bkp9)),
-          U.kachel('Total inkl. Reserve', fmt(bl.total), fmt(bl.pro_gf) + ' CHF/m² GF')
+          U.kachel('BKP 20–29 inkl. Reserve', fmt(bl.bkp2)),
+          U.kachel('BKP 3 + 4 + 5 + 9', fmt(bl.bkp3 + bl.bkp4 + bl.bkp5 + bl.bkp9)),
+          U.kachel('Total', fmt(bl.total), fmt(bl.pro_gf) + ' CHF/m² GF')
         ]));
       });
 
-      out.appendChild(U.panel(A.BLOCK_LABELS[bid], null, [
-        tabWrap,
-        U.body([U.num(p, 'bau.' + bid + '.reserve', 'Reserve / Unvorhergesehenes',
-          { unit: '% von BKP 1 + 2', dez: 1 })], 'c4'),
-        summe
-      ], aktionen));
+      out.appendChild(U.panel(A.BLOCK_LABELS[bid], null, [tabWrap, werkzeuge, summe], aktionen));
     });
 
     out.appendChild(U.panel('Teuerung & Mehrwertsteuer', null, [
@@ -487,12 +592,7 @@ window.APP = window.APP || {};
           { id: 'inkl', label: 'inkl. MWST' }, { id: 'exkl', label: 'exkl. MWST' }
         ], 'Kennwerte verstehen sich', { stufe: 'standard' }),
         U.num(p, 'bau.mwst_satz', 'MWST-Satz', { unit: '%', dez: 1, stufe: 'detail' })
-      ], 'c4'),
-      p.bau.mwst_modus === 'exkl' ? el('div', { class: 'panelbody' }, [
-        U.hinweis('warn', 'Die Kennwerte sind als <b>exklusive MWST</b> deklariert. Das Modell rechnet die Beträge ' +
-          'unverändert weiter — bei nicht optierten Wohnnutzungen ist die MWST nicht rückforderbar und muss ' +
-          'in den Kennwerten enthalten sein.')
-      ]) : null
+      ], 'c4')
     ]));
 
     var gesamt = el('div', { class: 'panelbody' });
@@ -517,8 +617,9 @@ window.APP = window.APP || {};
   V.ertraege = function (p) {
     init();
     var out = el('div', {}, [U.kopf('Erträge & Verwertung',
-      'Je Gebäudeteil und Nutzung: Fläche, Mietzins, Verkaufspreis und die Verwertungsart. ' +
-      'Halten, Stockwerkeigentum und Exit an einen Investor lassen sich innerhalb eines Projektes mischen.')]);
+      'Je Gebäudeteil beliebig viele Nutzungszeilen. So lassen sich Wohnen im Stockwerkeigentum und ' +
+      'Wohnen zur Miete im selben Projekt trennen — eine Fläche gehört immer genau einer Zeile und ' +
+      'wird deshalb nur einmal gezählt.')]);
 
     out.appendChild(U.panel('Bewertungsannahmen', null, [
       U.body([
@@ -532,62 +633,110 @@ window.APP = window.APP || {};
       var t = p.teile[T.id];
       if (!t.aktiv) return;
 
-      var zeilen = A.NUTZUNGEN.map(function (n) {
-        var cfg = t.nutzungen[n.id];
+      var zeilen = t.nutzungen.map(function (n, i) {
+        var istPP = n.art === 'parkplatz';
+        var band = A.MARKT.miete[n.art] || [0, 0];
+        var bandP = A.MARKT.preis[n.art] || [0, 0];
         var tr = el('tr', {});
-        tr.appendChild(el('td', { text: n.label }));
-        tr.appendChild(el('td', { style: 'width:80px' }, [U.zelleNum(cfg, 'anteil', { dez: 1 })]));
-        tr.appendChild(U.dTd(function (r) { return fmt(r.flaechen.teile[T.id].nutzungen[n.id]); }, 'muted'));
-        tr.appendChild(el('td', { style: 'width:90px' }, [
-          U.zelleNum(cfg, 'miete', { min: A.MARKT.miete[n.id][0], max: A.MARKT.miete[n.id][1] })]));
-        tr.appendChild(el('td', { style: 'width:100px' }, [
-          U.zelleNum(cfg, 'preis', { gross: true, min: A.MARKT.preis[n.id][0], max: A.MARKT.preis[n.id][1] })]));
-        tr.appendChild(el('td', { style: 'width:172px' }, [
-          U.zelleSel(cfg, 'verwertung', opts(A.VERWERTUNG), { rerender: true })]));
-        tr.appendChild(el('td', { style: 'width:80px' }, [
-          cfg.verwertung === 'exit' ? U.zelleNum(cfg, 'exit_rendite', { dez: 2 })
-            : cfg.verwertung === 'halten_selbst' ? U.zelleNum(cfg, 'selbst', { dez: 0 })
-            : el('span', { class: 'muted', text: '—' })]));
+
+        /* Bezeichnung */
+        var bez = el('input', { type: 'text', value: n.bezeichnung });
+        bez.addEventListener('input', function () { n.bezeichnung = bez.value; A.markDirty(); });
+        tr.appendChild(el('td', { style: 'min-width:160px' }, [bez]));
+
+        /* Art */
+        tr.appendChild(el('td', { style: 'width:120px' }, [
+          U.zelleSel(n, 'art', opts(A.NUTZUNGEN), { rerender: true })]));
+
+        /* Anteil */
+        tr.appendChild(el('td', { style: 'width:78px' }, [U.zelleNum(n, 'anteil', { dez: 1 })]));
+
+        /* Menge */
         tr.appendChild(U.dTd(function (r) {
-          var pos = r.ertraege.positionen.find(function (x) { return x.teil === T.id && x.nutzung === n.id; });
-          if (!pos) return '—';
-          return fmt(pos.erloes || pos.wert);
+          var m = r.flaechen.teile[T.id].nutzungen[n.id] || 0;
+          return fmt(m, istPP ? 1 : 0) + ' ' + (istPP ? 'Stk.' : 'm²');
+        }, 'muted'));
+
+        /* Miete */
+        tr.appendChild(el('td', { style: 'width:92px' }, [
+          U.zelleNum(n, 'miete', istPP ? { dez: 0 } : { min: band[0], max: band[1] })]));
+
+        /* Preis */
+        tr.appendChild(el('td', { style: 'width:104px' }, [
+          U.zelleNum(n, 'preis', { gross: true,
+            min: istPP ? undefined : bandP[0], max: istPP ? 0 : bandP[1] })]));
+
+        /* Verwertung */
+        tr.appendChild(el('td', { style: 'width:172px' }, [
+          U.zelleSel(n, 'verwertung', opts(A.VERWERTUNG), { rerender: true })]));
+
+        /* Exit-Rendite — dient allein der Preisfindung beim Verkauf an einen Investor */
+        tr.appendChild(el('td', { style: 'width:80px' }, [
+          n.verwertung === 'exit'
+            ? U.zelleNum(n, 'exit_rendite', { dez: 2 })
+            : el('span', { class: 'muted', text: '—' })]));
+
+        /* Kostengruppe */
+        tr.appendChild(el('td', { style: 'width:150px' }, [
+          istPP ? el('span', { class: 'muted', text: 'Einstellhalle' })
+                : U.zelleSel(n, 'kostengruppe', opts(A.KOSTENGRUPPEN), { rerender: false })]));
+
+        /* Sollmiete und Erlös */
+        tr.appendChild(U.dTd(function (r) {
+          var pos = r.ertraege.positionen.find(function (x) { return x.nutzung === n.id; });
+          return pos && pos.sollmiete ? fmt(pos.sollmiete) : '—';
         }));
+        tr.appendChild(U.dTd(function (r) {
+          var pos = r.ertraege.positionen.find(function (x) { return x.nutzung === n.id; });
+          return pos ? fmt(pos.erloes || pos.wert) : '—';
+        }));
+
+        tr.appendChild(el('td', { class: 'w1' }, [
+          el('button', { class: 'ghost sm schreibend', text: '×', title: 'Zeile entfernen',
+            onclick: function () { t.nutzungen.splice(i, 1); A.recompute(); A.render(); } })
+        ]));
         return tr;
       });
 
-      /* Parkierung */
-      if (t.pp > 0) {
-        var trp = el('tr', { class: 'sum' });
-        trp.appendChild(el('td', { text: 'Parkierung (' + t.pp + ' PP)' }));
-        trp.appendChild(el('td', { class: 'muted', text: '—' }));
-        trp.appendChild(el('td', { class: 'n muted', text: fmt(t.pp) + ' PP' }));
-        trp.appendChild(el('td', {}, [U.zelleNum(t, 'pp_miete', { dez: 0 })]));
-        trp.appendChild(el('td', {}, [U.zelleNum(t, 'pp_preis', { gross: true })]));
-        trp.appendChild(el('td', {}, [U.zelleSel(t, 'pp_verwertung', opts(A.VERWERTUNG), { rerender: true })]));
-        trp.appendChild(el('td', { class: 'muted', text: '—' }));
-        trp.appendChild(U.dTd(function (r) {
-          var pos = r.ertraege.positionen.find(function (x) { return x.teil === T.id && x.nutzung === 'pp'; });
-          return pos ? fmt(pos.erloes || pos.wert) : '—';
-        }));
-        zeilen.push(trp);
-      }
+      var knoepfe = el('div', { class: 'panelbody' }, [
+        el('button', { class: 'schreibend', text: '+ Nutzungszeile', onclick: function () {
+          t.nutzungen.push(A.defNutzung({ bezeichnung: 'Neue Nutzung', art: 'wohnen',
+            anteil: 0, verwertung: 'halten_vermietet' }));
+          A.recompute(); A.render();
+        } }),
+        el('button', { class: 'schreibend', text: '+ Parkplatzzeile', onclick: function () {
+          t.nutzungen.push(A.defNutzung({ bezeichnung: 'Parkplätze', art: 'parkplatz',
+            anteil: 0, miete: 150, preis: 45000, verwertung: 'halten_vermietet' }));
+          A.recompute(); A.render();
+        } }),
+        el('span', { class: 'muted', style: 'margin-left:10px;font-size:11.5px',
+          text: 'Anteil in % der Nutzfläche, bei Parkplätzen in % der Gesamtzahl.' })
+      ]);
 
       out.appendChild(U.panel(T.label, null, [
         el('div', { class: 'panelbody' }, [U.tabelle([
-          { label: 'Nutzung' }, { label: 'Anteil %', n: true }, { label: 'Fläche m²', n: true },
-          { label: 'Miete CHF/m²/a bzw. CHF/Mt.', n: true }, { label: 'Preis CHF/m² bzw. CHF/PP', n: true },
-          { label: 'Verwertung' }, { label: 'Rendite / Eigen %', n: true },
-          { label: 'Erlös bzw. Wert', n: true }
-        ], zeilen)])
+          { label: 'Bezeichnung' }, { label: 'Art' }, { label: 'Anteil %', n: true },
+          { label: 'Menge', n: true }, { label: 'Miete CHF/m²/a bzw. CHF/Mt.', n: true },
+          { label: 'Preis CHF/m² bzw. CHF/PP', n: true }, { label: 'Verwertung' },
+          { label: 'Exit-Rendite %', n: true }, { label: 'Kostengruppe BKP 20–29' },
+          { label: 'Sollmiete CHF/a', n: true }, { label: 'Erlös bzw. Wert', n: true }, { label: '' }
+        ], zeilen)]),
+        knoepfe
       ]));
     });
 
     /* Wohnungsspiegel */
+    var aktiveTeile = A.TEILE.filter(function (T) { return p.teile[T.id].aktiv; });
     var spiegelKoerper = [U.body([
       U.chk(p, 'spiegel.aktiv', 'Wohnungsspiegel verwenden'),
-      p.spiegel.aktiv ? U.sel(p, 'spiegel.teil', A.TEILE.filter(function (T) { return p.teile[T.id].aktiv; })
-        .map(function (T) { return { id: T.id, label: T.label }; }), 'gilt für', { ohneBadge: true }) : null
+      p.spiegel.aktiv ? U.sel(p, 'spiegel.teil',
+        aktiveTeile.map(function (T) { return { id: T.id, label: T.label }; }),
+        'gilt für', { ohneBadge: true }) : null,
+      p.spiegel.aktiv ? U.sel(p, 'spiegel.zeile',
+        (p.teile[p.spiegel.teil] ? p.teile[p.spiegel.teil].nutzungen : [])
+          .filter(function (n) { return n.art !== 'parkplatz'; })
+          .map(function (n) { return { id: n.id, label: n.bezeichnung }; }),
+        'überschreibt Zeile', { ohneBadge: true }) : null
     ], 'c3')];
 
     if (p.spiegel.aktiv) {
@@ -603,17 +752,20 @@ window.APP = window.APP || {};
           el('td', { style: 'width:90px' }, [U.zelleNum(e, 'flaeche', { dez: 0 })]),
           el('td', { style: 'width:110px' }, [U.zelleNum(e, 'preis', { gross: true })]),
           U.dTd(function () { return e.flaeche > 0 ? fmt(e.preis / e.flaeche) : '—'; }, 'muted'),
-          el('td', { class: 'w1' }, [el('button', { class: 'ghost sm', text: '×', title: 'Zeile löschen',
+          el('td', { class: 'w1' }, [el('button', { class: 'ghost sm schreibend', text: '×',
             onclick: function () { p.spiegel.einheiten.splice(i, 1); A.recompute(); A.render(); } })])
         ]);
       });
-      var summeSp = el('tr', { class: 'total' });
-      summeSp.appendChild(el('td', { colspan: 3, text: p.spiegel.einheiten.length + ' Einheiten' }));
-      summeSp.appendChild(U.dTd(function (r) { return fmt(r.flaechen.teile[p.spiegel.teil].spiegel_flaeche || 0); }));
-      summeSp.appendChild(U.dTd(function (r) { return fmt(r.flaechen.teile[p.spiegel.teil].spiegel_erloes || 0); }));
-      summeSp.appendChild(U.dTd(function (r) { return fmt(r.flaechen.teile[p.spiegel.teil].spiegel_preis_m2 || 0); }));
-      summeSp.appendChild(el('td', {}));
-      zs.push(summeSp);
+      var sp = el('tr', { class: 'total' });
+      sp.appendChild(el('td', { colspan: 3, text: p.spiegel.einheiten.length + ' Einheiten' }));
+      ['spiegel_flaeche', 'spiegel_erloes', 'spiegel_preis_m2'].forEach(function (k) {
+        sp.appendChild(U.dTd(function (r) {
+          var fo = r.flaechen.teile[p.spiegel.teil] || {};
+          return fmt(fo[k] || 0);
+        }));
+      });
+      sp.appendChild(el('td', {}));
+      zs.push(sp);
 
       spiegelKoerper.push(el('div', { class: 'panelbody' }, [U.tabelle([
         { label: 'Nr.' }, { label: 'Geschoss', n: true }, { label: 'Zimmer', n: true },
@@ -621,27 +773,27 @@ window.APP = window.APP || {};
         { label: 'CHF/m²', n: true }, { label: '' }
       ], zs)]));
       spiegelKoerper.push(el('div', { class: 'panelbody' }, [
-        el('button', { text: '+ Einheit', onclick: function () {
-          p.spiegel.einheiten.push({ nr: String(p.spiegel.einheiten.length + 1), geschoss: 0, zimmer: 3.5,
-            flaeche: 95, preis: 900000 });
+        el('button', { class: 'schreibend', text: '+ Einheit', onclick: function () {
+          p.spiegel.einheiten.push({ nr: String(p.spiegel.einheiten.length + 1), geschoss: 0,
+            zimmer: 3.5, flaeche: 95, preis: 900000 });
           A.recompute(); A.render();
         } })
       ]));
     }
 
     out.appendChild(U.panel('Wohnungsspiegel', p.spiegel.aktiv
-      ? 'überschreibt Wohnfläche und Preis je m² des gewählten Gebäudeteils'
+      ? 'überschreibt Fläche und Preis je m² der gewählten Zeile'
       : 'solange kein Spiegel vorliegt, rechnet das Modell über Preis je m²', spiegelKoerper));
 
-    /* Zusammenzug */
     var zus = el('div', { class: 'panelbody' });
     U.derived.push(function () {
       var e = A.state.r.ertraege;
       U.leeren(zus).appendChild(el('div', { class: 'cols c4' }, [
         U.kachel('Verkaufserlös Stockwerkeigentum', fmt(e.stwe_erloes)),
-        U.kachel('Exit an Investor', fmt(e.exit_wert)),
+        U.kachel('Exit an Investor', fmt(e.exit_wert), 'zählt nicht zum STWE'),
         U.kachel('Marktwert gehaltener Flächen', fmt(e.halten_wert)),
-        U.kachel('Sollmiete voll ausgebaut', fmt(e.sollmiete) + ' /a')
+        U.kachel('Sollmiete Miet- und Exit-Flächen', fmt(e.sollmiete) + ' /a',
+          'ohne verkaufte STWE-Flächen')
       ]));
     });
     out.appendChild(U.panel('Zusammenzug Verwertung', null, [zus]));
@@ -776,11 +928,21 @@ window.APP = window.APP || {};
           onclick: function () { plan.splice(i, 1); A.recompute(); A.render(); } })])
       ]);
     });
-    var sum = plan.reduce(function (s, r) { return s + r.anteil; }, 0);
+    /* Die Summe muss mitlaufen, wenn eine Rate geändert wird — als
+       fester Text wäre sie nach der ersten Eingabe falsch. */
+    function ratensumme() {
+      return plan.reduce(function (a, r) { return a + U.parseZahl(r.anteil); }, 0);
+    }
+    var summeZelle = U.dTd(function () { return A.fmt(ratensumme(), 1) + ' %'; });
+    var summeHinweis = el('td', {});
+    U.derived.push(function () {
+      var d = Math.abs(ratensumme() - 100) > 0.1;
+      summeZelle.style.color = d ? 'var(--warn)' : '';
+      U.leeren(summeHinweis);
+      if (d) summeHinweis.appendChild(el('span', { class: 'tag warn', text: 'nicht 100 %' }));
+    });
     zp.push(el('tr', { class: 'total' }, [
-      el('td', { text: 'Summe' }), el('td', {}),
-      el('td', { class: 'n', text: A.fmt(sum, 1) + ' %' }),
-      el('td', {})
+      el('td', { text: 'Summe' }), el('td', {}), summeZelle, summeHinweis
     ]));
 
     out.appendChild(U.panel('Zahlungsplan Stockwerkeigentum',
@@ -792,9 +954,8 @@ window.APP = window.APP || {};
         el('button', { text: '+ Rate', onclick: function () {
           plan.push({ label: 'Rate', anteil: 0, bezug: 'fertigstellung' }); A.recompute(); A.render();
         } }),
-        Math.abs(sum - 100) > 0.1 ? U.hinweis('warn',
-          'Die Raten ergeben ' + A.fmt(sum, 1) + ' % statt 100 %. Das Modell verteilt die Erlöse ' +
-          'anteilig auf die erfassten Raten.') : null
+        U.hinweis('info', 'Ergeben die Raten nicht 100 %, verteilt das Modell die Erlöse ' +
+          'anteilig auf die erfassten Raten.')
       ])
     ]));
 

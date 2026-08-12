@@ -34,16 +34,30 @@ Bedienung ändert sich dabei nichts.
 | Bestand · Sanierung | Sanierung ohne Neubauvolumen |
 | Bestand · Sanierung & Erweiterung | Sanierung plus Aufstockung oder Anbau |
 
-**Nutzungen** Wohnen · Büro · Gewerbe · Verkauf (Retail) · Lager · Parkierung —
-je Gebäudeteil frei mischbar.
+**Nutzungen** Je Gebäudeteil beliebig viele frei benannte Zeilen mit einer Art
+aus Wohnen · Büro · Gewerbe · Verkauf (Retail) · Lager · Parkplatz. So lassen
+sich «Wohnen Stockwerkeigentum» und «Wohnen Miete» im selben Projekt trennen —
+eine Fläche gehört immer genau einer Zeile und wird deshalb nur einmal gezählt.
 
 **Verwertung** je Nutzung und Gebäudeteil getrennt wählbar: Halten vermietet,
 Halten selbstgenutzt, Verkauf als Stockwerkeigentum, Exit an einen Investor zu
 einer Zielbruttorendite. Ein Projekt darf alle vier Arten gleichzeitig enthalten.
 
-**Flächen** wahlweise aus der Ausnutzung (Grundstück × AZ) oder direkt aus einer
-Studie. Die Kaskade lautet aGF → GF oberirdisch → Untergeschoss → Nutzfläche NWF;
-jeder Umrechnungsfaktor ist überschreibbar (HNF-Quote standardmässig 78 %).
+**Flächen** wahlweise über die Ausnützungsziffer, als anrechenbare Geschossfläche
+direkt oder aus einer Studie. Die Kaskade:
+
+```
+aGF ÷ Anzahl Geschosse  = Gebäudegrundfläche
+Grundstück − Grundfläche = Umgebungsfläche
+Grundfläche × UG-Quote   = Untergeschoss          (Vorgabe 80 %)
+PP × Fläche je PP        = Einstellhalle
+aGF × Faktor             = Geschossfläche oberirdisch
+GF o.i. × HNF-Quote      = Nutzfläche NWF         (Vorgabe 78 %)
+```
+
+Kubaturen wahlweise über Höhen (Regelgeschoss 3.00 m, Dachgeschoss 3.20 m,
+Untergeschoss und Einstellhalle je 3.40 m) oder als direkt erfasstes Volumen,
+aus dem sich die Höhen ergeben. Regelgeschosse = Anzahl Geschosse − 1.
 
 **Erwerbskosten** Kaufpreis wahlweise als Total, CHF/m² Land oder CHF/m² aGF, dazu
 Notariat, Grundbuch, Handänderungssteuer mit Käuferanteil, Einkaufskommission,
@@ -51,13 +65,28 @@ Entwicklungshonorar, Dritthonorare, Due Diligence, Geometer, Rechtsberatung und
 Mehrwertabgabe. Alternativ Baurecht mit Einmalentschädigung und Baurechtszins.
 Kantonale Richtwerte für AG · SO · ZH · LU · BE · BS · BL sind hinterlegt.
 
-**Baukosten** nach BKP, auf die praxisrelevanten Gruppen verdichtet: BKP 1
-(Rückbau, Altlasten, Anpassungen an bestehende Bauten, Pfählung/Wasserhaltung,
-Erschliessung), BKP 20–22 Rohbau, BKP 23–26 Technik, BKP 27–28 Ausbau,
-Parkierung je Parkplatz, BKP 29 Honorare, BKP 3, 4, 5 und 9. Je Zeile ist die
-Bezugsgrösse wählbar (CHF/m² GF, CHF/m³ GV, CHF/m² NWF, CHF/PP, pauschal oder
-prozentual). Die Reserve läuft auf BKP 1 + 2. Bis zu drei Kostenblöcke
-(Neubau, Erweiterung, Sanierung) mit eigenen Kennwerten.
+**Baukosten** nach BKP, auf die praxisrelevanten Gruppen verdichtet:
+
+| BKP | Zeile | Menge |
+|---|---|---|
+| 1 | Rückbau, Altlasten, Anpassungen an bestehende Bauten, Pfählung/Wasserhaltung, Erschliessung | m³ Bestand bzw. pauschal |
+| 20–29 | Gebäude oberirdisch · Stockwerkeigentum | m² GF aus dem Nutzungsmix |
+| 20–29 | Gebäude oberirdisch · Miete | m² GF aus dem Nutzungsmix |
+| 20–29 | Gebäude oberirdisch · Gewerbe | m² GF aus dem Nutzungsmix |
+| 20–29 | Untergeschoss | m³ |
+| 20–29 | Einstellhalle | m³ |
+| 202 | Reserve | % von BKP 20–29 |
+| 3 · 4 · 5 | Betriebseinrichtungen, Umgebung, Baunebenkosten | pauschal, m², % von BKP 1–4 |
+| 599 | Projektmanagement-Honorar | % von BKP 1–5 |
+| 9 | Ausstattung | m² NWF |
+
+Die Kennwerte der BKP 20–29 sind Vollkosten inklusive Gebäudetechnik, Ausbau und
+Planerhonoraren; der Ausbaustandard unterscheidet sich zwischen verkauftem
+Wohnraum, Mietwohnungen und Gewerbe deutlich, deshalb die Dreiteilung. Welche
+Nutzungszeile in welche Kostengruppe fällt, ist je Zeile einstellbar.
+
+Je Zeile ist die Bezugsgrösse frei wählbar, eigene Zeilen lassen sich ergänzen.
+Bis zu drei Kostenblöcke (Neubau, Erweiterung, Sanierung) mit eigenen Kennwerten.
 
 **Erträge** Mietzinsen je Nutzung, Verkaufspreise je m², optionaler Wohnungsspiegel
 — sobald dieser erfasst ist, ersetzt sein Durchschnittspreis den Preis je m².
@@ -247,8 +276,9 @@ damit gibt es keine zweite Stelle, an der dieselbe Zahl anders entstehen könnte
 
 ## Rechenweise
 
-**Zeitachse** Jahresraster. Phasendauern dürfen dezimal sein (1,5 = achtzehn
-Monate). Zinsen laufen auf dem mittleren Kapitalsaldo des Jahres.
+**Zeitachse** Jahresraster ab dem erfassten Startdatum des Erwerbs; Cashflow und
+Diagramme sind mit Kalenderjahren beschriftet. Phasendauern dürfen dezimal sein
+(1,5 = achtzehn Monate). Zinsen laufen auf dem mittleren Kapitalsaldo des Jahres.
 
 **Baukostenverlauf** S-Kurve oder linear über die Bauzeit, Honorare ab
 Projektbeginn, BKP 1 in der ersten Bauphase.
@@ -266,6 +296,11 @@ die Haltedauer gegenüber.
 **Fixpunkt** Entwicklungshonorar und Bauzinsen hängen von den Anlagekosten ab,
 die beides enthalten. Die Rechnung iteriert bis zur Konvergenz unter einem Franken.
 
+**Sollmiete und Rendite** Verkaufte Stockwerkeigentumsflächen erzeugen keine
+Sollmiete — sie sind verkauft. Die Bruttorendite bezieht sich deshalb auf die
+**anteiligen** Anlagekosten der Ertragsflächen, nicht auf die gesamten; bei
+Mischprojekten wäre der Bezug auf alles verzerrt.
+
 **Steuern** vereinfacht als ein effektiver Satz auf den Projektgewinn.
 Kantonale Feinheiten der Grundstückgewinn- und Gewinnsteuer sind nicht modelliert.
 
@@ -273,10 +308,11 @@ Kantonale Feinheiten der Grundstückgewinn- und Gewinnsteuer sind nicht modellie
 
 ## Selbsttest
 
-`tests/engine.html` im Browser öffnen. Die Seite prüft 26 Referenzfälle —
-Flächenkaskade, Nebenkostensätze, Reservebasis, Verwertungsarten,
-Zeitverteilung, Vorverkaufsstaffel, internen Zinsfuss, Residualwert und die
-Gewinnidentität.
+`tests/engine.html` im Browser öffnen. Die Seite prüft 42 Referenzfälle —
+Flächen- und Volumenkaskade, Nebenkostensätze, Kostengruppen, die Prozentkette
+BKP 202 → 5 → 599, Verwertungsarten, Zeitverteilung, Vorverkaufsstaffel, internen
+Zinsfuss, Residualwert, die Gewinnidentität und die Überführung alter
+Projektdateien.
 
 ---
 

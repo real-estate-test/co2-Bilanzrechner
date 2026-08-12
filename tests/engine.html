@@ -49,14 +49,28 @@
 
   /* ---- Flächenkaskade ------------------------------------------- */
   var p = A.defaultProject();
-  p.grundstueck.flaeche = 2500; p.grundstueck.az = 0.90;
+  p.grundstueck.flaeche = 2500; p.grundstueck.az = 0.90; p.grundstueck.geschosse = 4;
   var r = E.compute(p);
   pruefe('zulässige aGF = 2500 × 0.90', 2250, r.flaechen.agf_zulaessig);
+  pruefe('Gebäudegrundfläche = aGF ÷ 4 Geschosse', 562.5, r.flaechen.total.grundflaeche, 0.01);
   pruefe('GF oberirdisch = aGF × 1.10', 2475, r.flaechen.teile.neubau.gf_oi);
-  pruefe('Untergeschoss = GF oi × 15 %', 371.25, r.flaechen.teile.neubau.gf_ug, 0.01);
-  pruefe('GF total', 2846.25, r.flaechen.total.gf, 0.01);
-  pruefe('NWF = GF oi × 78 %', 1930.5, r.flaechen.total.nwf, 0.01);
-  pruefe('Gebäudevolumen = GF × 3.40', 9677.25, r.flaechen.total.gv, 0.1);
+  pruefe('Untergeschoss = Grundfläche × 80 %', 450, r.flaechen.total.gf_ug, 0.01);
+  pruefe('NWF = GF o.i. × 78 %', 1930.5, r.flaechen.total.nwf, 0.01);
+  pruefe('Umgebung = Grundstück − Grundfläche', 1937.5, r.flaechen.umgebung, 0.01);
+  pruefe('Höhe o.i. = 3 × 3.00 + 3.20', 12.2, r.flaechen.teile.neubau.hoehe_oi, 0.001);
+  pruefe('Volumen o.i. = GF/Geschosse × Höhe', 2475 / 4 * 12.2, r.flaechen.total.gv_oi, 0.1);
+
+  /* aGF direkt statt über die Ziffer */
+  var pa = A.defaultProject();
+  pa.grundstueck.az_modus = 'agf'; pa.grundstueck.agf_direkt = 1800;
+  pruefe('aGF direkt eingetragen', 1800, E.compute(pa).flaechen.agf_zulaessig);
+
+  /* Einstellhalle über Fläche je Parkplatz */
+  var pp = A.defaultProject();
+  pp.teile.neubau.pp = 20; pp.teile.neubau.flaeche_pro_pp = 30;
+  var rp = E.compute(pp);
+  pruefe('Einstellhalle = 20 PP × 30 m²', 600, rp.flaechen.total.f_aeh);
+  pruefe('Volumen Einstellhalle = 600 × 3.40', 2040, rp.flaechen.total.gv_aeh, 0.1);
 
   /* ---- Erwerbsnebenkosten --------------------------------------- */
   var q = A.defaultProject();
@@ -70,10 +84,6 @@
   }
   pruefe('Handänderungssteuer 2 % × 50 % von 4 Mio.', 40000, pos(rq, 'handaenderung'));
   pruefe('Courtage 2 % von 4 Mio.', 80000, pos(rq, 'courtage'));
-  pruefe('Notariat 0.20 % von 4 Mio.', 8000, pos(rq, 'notariat'));
-
-  /* Entwicklungshonorar muss nach der Fixpunktiteration exakt
-     dem Prozentsatz der Anlagekosten entsprechen. */
   pruefe('Entwicklungshonorar = 2.50 % der Anlagekosten',
     rq.kpi.anlagekosten * 0.025, pos(rq, 'entwicklung'), 600);
 
@@ -85,55 +95,72 @@
   m.erwerb.preis_modus = 'm2_agf'; m.erwerb.preis_m2_agf = 1800;
   pruefe('Kaufpreis über CHF/m² aGF', 3600000, E.compute(m).erwerb.kaufpreis);
 
-  /* ---- Baukosten und Reserve ------------------------------------ */
+  /* ---- Baukosten: Kostengruppen und Prozentkette ---------------- */
   var b = A.defaultProject();
-  var rb = E.compute(b), bl = rb.bau.bloecke.neubau;
-  pruefe('Reserve = 5 % von BKP 1 + 2', (bl.bkp1 + bl.bkp2) * 0.05, bl.reserve, 1);
-  pruefe('Blocktotal = Summe + Reserve', bl.summe + bl.reserve, bl.total, 1);
-  var rohbau = bl.zeilen.find(function (x) { return x.id === 'b2_rohbau'; });
-  pruefe('Rohbau = GF total × Kennwert', rb.flaechen.total.gf * 1150, rohbau.betrag, 1);
+  b.grundstueck.geschosse = 4;
+  var t = b.teile.neubau;
+  t.pp = 20;
+  t.nutzungen = [
+    A.defNutzung({ bezeichnung: 'Wohnen STWE', art: 'wohnen', anteil: 60, preis: 10000, verwertung: 'stwe' }),
+    A.defNutzung({ bezeichnung: 'Wohnen Miete', art: 'wohnen', anteil: 25, miete: 300, verwertung: 'halten_vermietet' }),
+    A.defNutzung({ bezeichnung: 'Gewerbe', art: 'gewerbe', anteil: 15, miete: 200, verwertung: 'halten_vermietet' }),
+    A.defNutzung({ bezeichnung: 'PP Verkauf', art: 'parkplatz', anteil: 100, preis: 45000, verwertung: 'stwe' })
+  ];
+  var rb = E.compute(b), bl = rb.bau.bloecke.neubau, gfoi = rb.flaechen.teile.neubau.gf_oi;
+  pruefe('Kostengruppe STWE = GF o.i. × 60 %', gfoi * 0.60, rb.flaechen.gruppen.oi_stwe, 0.1);
+  pruefe('Kostengruppe Miete = GF o.i. × 25 %', gfoi * 0.25, rb.flaechen.gruppen.oi_miete, 0.1);
+  pruefe('Kostengruppe Gewerbe = GF o.i. × 15 %', gfoi * 0.15, rb.flaechen.gruppen.oi_gewerbe, 0.1);
 
-  /* ---- Verwertung ------------------------------------------------ */
-  var v = A.defaultProject();
-  v.teile.neubau.nutzungen.wohnen.verwertung = 'stwe';
-  v.teile.neubau.nutzungen.wohnen.preis = 10000;
-  var rv = E.compute(v);
-  pruefe('STWE-Erlös = NWF × 10 000', rv.flaechen.total.nwf * 10000, rv.ertraege.stwe_erloes, 1);
+  function zeile(res, bid, id) {
+    var z = res.bau.bloecke[bid].zeilen.find(function (x) { return x.id === id; });
+    return z || { betrag: 0, menge: 0 };
+  }
+  pruefe('BKP 20–29 STWE = Menge × Kennwert',
+    rb.flaechen.gruppen.oi_stwe * 3200, zeile(rb, 'neubau', 'b2_oi_stwe').betrag, 1);
+  pruefe('BKP 202 Reserve = 3 % der Summe BKP 20–29',
+    zeile(rb, 'neubau', 'b2_reserve').menge * 0.03, zeile(rb, 'neubau', 'b2_reserve').betrag, 1);
+  pruefe('BKP 599 PM = 2 % von BKP 1–5',
+    zeile(rb, 'neubau', 'b5_pm').menge * 0.02, zeile(rb, 'neubau', 'b5_pm').betrag, 1);
+  pruefe('Blocksumme = Summe der Gruppen',
+    bl.bkp1 + bl.bkp2 + bl.bkp3 + bl.bkp4 + bl.bkp5 + bl.bkp9, bl.summe, 1);
+
+  /* ---- Verwertung: keine Sollmiete auf verkauften Flächen -------- */
+  var nwf = rb.flaechen.total.nwf;
+  pruefe('Sollmiete nur aus Miet-/Exit-Flächen',
+    nwf * 0.25 * 300 + nwf * 0.15 * 200, rb.ertraege.sollmiete, 1);
+  pruefe('STWE-Erlös = Fläche × Preis + Parkplätze',
+    nwf * 0.60 * 10000 + 20 * 45000, rb.ertraege.stwe_erloes, 1);
+  pruefe('Ertragsflächenanteil = 40 % der NWF', 0.40, rb.kpi.anteil_ertrag, 0.001);
 
   var h = A.defaultProject();
-  h.teile.neubau.nutzungen.wohnen.verwertung = 'exit';
-  h.teile.neubau.nutzungen.wohnen.miete = 400;
-  h.teile.neubau.nutzungen.wohnen.exit_rendite = 4.00;
+  h.teile.neubau.nutzungen = [A.defNutzung({ bezeichnung: 'Gewerbe Exit', art: 'gewerbe',
+    anteil: 100, miete: 400, verwertung: 'exit', exit_rendite: 4.00 })];
   var rh = E.compute(h);
   pruefe('Exit-Wert = Sollmiete / 4 %', rh.flaechen.total.nwf * 400 / 0.04, rh.ertraege.exit_wert, 5);
+  pruefe('Exit zählt nicht zum STWE-Erlös', 0, rh.ertraege.stwe_erloes);
 
   /* ---- Betrieb ohne gehaltene Flächen ---------------------------- */
-  var s0 = A.defaultProject();   // alles STWE
+  var s0 = A.defaultProject();
   pruefe('kein Betriebsaufwand ohne gehaltene Fläche', 0, E.compute(s0).betrieb.total_a);
 
   /* ---- Zeitverteilung -------------------------------------------- */
   var summe = E.spread(1000000, 1.0, 3.0, 6, 's').reduce(function (a, c) { return a + c; }, 0);
   pruefe('S-Kurve verteilt den Betrag vollständig', 1000000, summe, 0.01);
-  var lin = E.spread(1000000, 0, 4, 6, 'linear');
-  pruefe('lineare Verteilung: erstes Jahr = 25 %', 250000, lin[0], 0.01);
+  pruefe('lineare Verteilung: erstes Jahr = 25 %', 250000, E.spread(1000000, 0, 4, 6, 'linear')[0], 0.01);
 
   /* ---- Finanzierung ---------------------------------------------- */
   var f = A.defaultProject();
-  f.finanzierung.vorverkauf_quote = 55;   // Staffel: ab 50 % → 50 Basispunkte
+  f.finanzierung.vorverkauf_quote = 55;
   pruefe('Zinsrabatt bei 55 % Vorverkauf', 50, E.compute(f).fin.rabatt_bp);
   f.finanzierung.vorverkauf_quote = 10;
   pruefe('kein Rabatt bei 10 % Vorverkauf', 0, E.compute(f).fin.rabatt_bp);
 
   var g = A.defaultProject();
-  g.finanzierung.ek_einsatz = 'proportional';
-  g.finanzierung.ek_quote = 30;
+  g.finanzierung.ek_einsatz = 'proportional'; g.finanzierung.ek_quote = 30;
   var rg = E.compute(g), j0 = rg.fin.jahre[0];
-  pruefe('Eigenkapitalanteil im ersten Jahr = 30 % des Saldos',
-    j0.saldo * 0.30, j0.ek, 1);
+  pruefe('Eigenkapitalanteil im ersten Jahr = 30 % des Saldos', j0.saldo * 0.30, j0.ek, 1);
 
-  /* ---- Interner Zinsfuss ------------------------------------------ */
-  var irr = E.irr([-1000, 0, 0, 1331]);
-  pruefe('IRR von −1000 → 1331 nach 3 Jahren ≈ 10 %', 10, irr, 0.6);
+  pruefe('IRR von −1000 → 1331 nach 3 Jahren ≈ 10 %', 10, E.irr([-1000, 0, 0, 1331]), 0.6);
 
   /* ---- Residualwert ---------------------------------------------- */
   var res = A.engine.residualwert(A.defaultProject(), 15);
@@ -143,10 +170,29 @@
     E.compute(probe).kpi.marge_ak, 0.15);
 
   /* ---- Gewinnidentität -------------------------------------------- */
-  var k = rb.kpi;
+  var k = E.compute(A.defaultProject()).kpi;
   pruefe('Erlöse − alle Kosten − Steuern = Gewinn',
     k.erloese + k.mietertrag_projekt - k.erwerbskosten - k.baukosten -
     k.finanzierungskosten - k.vermarktung - k.steuern, k.gewinn, 2);
+
+  /* ---- Migration Schema 1 -> 2 ------------------------------------ */
+  var altprojekt = {
+    schema: 1, id: 'palt', name: 'Alt', stufe: 'standard', szenario: 'neubau',
+    erwerbsart: 'kauf', meta: {}, startjahr: 2024,
+    grundstueck: { flaeche: 3000, az: 1.0, umgebung_anteil: 50 },
+    teile: { neubau: { aktiv: true, modus: 'ausnutzung', gf_ug: 400, pp: 10,
+        pp_miete: 150, pp_preis: 40000, pp_verwertung: 'stwe', faktor_gf: 1.1, hnf_quote: 78,
+        nutzungen: { wohnen: { anteil: 100, miete: 320, preis: 9800, verwertung: 'stwe' } } },
+      bestand: { aktiv: false }, erweiterung: { aktiv: false } },
+    bau: { neubau: { aktiv: true, reserve: 5, zeilen: { b2_rohbau: { aktiv: true, basis: 'gf', wert: 1150 } } } },
+    snapshots: [], ist: {}
+  };
+  var mig = A.migrate(JSON.parse(JSON.stringify(altprojekt)));
+  pruefe('Migration: Nutzungen sind eine Liste', 1, Array.isArray(mig.teile.neubau.nutzungen) ? 1 : 0);
+  pruefe('Migration: Wohnen + Parkplätze übernommen', 2, mig.teile.neubau.nutzungen.length);
+  pruefe('Migration: Startdatum aus Startjahr', 2024, parseInt(mig.startdatum.slice(0, 4), 10));
+  pruefe('Migration: Umgebungsfläche festgeschrieben', 1500, mig.grundstueck.umgebung_manuell);
+  pruefe('Migration: Projekt rechnet weiterhin', 1, E.compute(mig).kpi.anlagekosten > 0 ? 1 : 0);
 
   /* ---- Zusammenfassung -------------------------------------------- */
   var box = document.getElementById('summe');

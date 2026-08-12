@@ -8,14 +8,15 @@
      1. Auf supabase.com ein kostenloses Projekt anlegen (Region Frankfurt)
      2. db/schema.sql im SQL-Editor einfügen und ausführen
      3. Aus «Project Settings › API» hier eintragen:
-          url = Project URL
-          key = anon public key
+          url = Project URL — nur der Grundteil, OHNE /rest/v1
+                z. B. https://abcdefgh.supabase.co
+          key = anon public key bzw. Publishable key
         Der anon key ist zur Veröffentlichung bestimmt. Er erlaubt für
         sich genommen keinen Datenzugriff — die Rechteregeln in der
         Datenbank entscheiden, wer was sehen und ändern darf.
    ===================================================================== */
 window.APP_CONFIG = {
-  url: 'https://gpgrcfuhbwaabucmpemf.supabase.co/rest/v1/',
+  url: 'https://gpgrcfuhbwaabucmpemf.supabase.co',
   key: 'sb_publishable_AVNoHya-d3dcdDoKgYmEaQ_XPAOubrr',
 
   /* Wie lange bleibt man angemeldet, ohne sich neu anzumelden (Tage). */

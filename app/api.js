@@ -17,6 +17,20 @@ window.APP = window.APP || {};
   var CFG = window.APP_CONFIG || {};
   var SITZUNG_KEY = 'projektrechner.sitzung';
 
+  /* Das Supabase-Dashboard zeigt die Adresse je nach Unterseite mit
+     angehängtem /rest/v1. Gebraucht wird hier aber nur der Grundteil,
+     weil jeder Aufruf seinen eigenen Pfad mitbringt. Statt den Anwender
+     an dieser Feinheit scheitern zu lassen, räumen wir sie selbst weg. */
+  function grundadresse(roh) {
+    return String(roh || '')
+      .trim()
+      .replace(/\/+$/, '')                 // Schrägstriche am Ende
+      .replace(/\/(rest|auth)\/v1$/i, '')  // versehentlich mitkopierter Pfad
+      .replace(/\/+$/, '');
+  }
+  CFG.url = grundadresse(CFG.url);
+  API.grundadresse = grundadresse;
+
   API.aktiv = function () { return !!(CFG.url && CFG.key); };
 
   /* ---------------------------------------------------------------

@@ -15,8 +15,8 @@
         Datenbank entscheiden, wer was sehen und ändern darf.
    ===================================================================== */
 window.APP_CONFIG = {
-  url: '',
-  key: '',
+  url: 'https://gpgrcfuhbwaabucmpemf.supabase.co/rest/v1/',
+  key: 'sb_publishable_AVNoHya-d3dcdDoKgYmEaQ_XPAOubrr',
 
   /* Wie lange bleibt man angemeldet, ohne sich neu anzumelden (Tage). */
   sitzungstage: 30,

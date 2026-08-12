@@ -145,13 +145,45 @@ Der kostenlose Plan hat zwei Schwächen, die beide kostenlos geschlossen werden.
 Beide Aufträge liegen unter `.github/workflows/` und brauchen nur die Secrets
 unter *Settings › Secrets and variables › Actions*:
 
-| Auftrag | Secret | Wozu |
+| Auftrag | Secrets | Wozu |
 |---|---|---|
 | `wachhalter.yml` | `SUPABASE_URL`, `SUPABASE_ANON_KEY` | Der kostenlose Plan pausiert nach 7 Tagen Ruhe. Zwei Anfragen pro Woche verhindern das. |
-| `sicherung.yml` | `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` | Der kostenlose Plan hält keine Sicherung vor. Wöchentliche Ausleitung nach `sicherungen/`, versioniert über die Git-Historie. |
+| `sicherung.yml` | `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `BACKUP_PASSPHRASE` | Der kostenlose Plan hält keine Sicherung vor. Wöchentliche Ausleitung nach `sicherungen/`, versioniert über die Git-Historie. |
 
 Der `service_role key` umgeht alle Rechteregeln und gehört **ausschliesslich** in
 die GitHub-Secrets — niemals in `app/config.js`.
+
+### Warum die Sicherung verschlüsselt ist
+
+Damit GitHub Pages ohne Bezahlplan ausliefert, muss das Repository öffentlich
+sein. Der Anwendungscode darf das sein — die Projektdaten nicht. Die Ausleitung
+wird deshalb vor dem Ablegen mit AES-256 verschlüsselt. Fehlt
+`BACKUP_PASSPHRASE`, bricht der Auftrag ab, statt Klartext zu veröffentlichen.
+
+Das Kennwort gehört in einen Passwortmanager, **nicht** nur in die
+GitHub-Secrets: Ohne es ist jede Sicherung wertlos.
+
+Wiederherstellen:
+
+```
+gpg --decrypt sicherungen/stand-2026-08-12.json.gpg > stand.json
+```
+
+Die entstehende Datei enthält alle Tabellen und lässt sich im SQL-Editor oder
+über die Import-Funktion der Anwendung zurückspielen.
+
+### Was im öffentlichen Repository sichtbar ist
+
+| | sichtbar | warum unproblematisch |
+|---|---|---|
+| Anwendungscode | ja | enthält keine Geschäftsdaten |
+| `url` und `anon key` in `config.js` | ja | bauartbedingt öffentlich; die Rechteregeln in der Datenbank entscheiden über den Zugriff, nicht der Schlüssel |
+| Projektdaten | **nein** | liegen in Supabase; die Sicherung im Repository ist verschlüsselt |
+| `service_role key`, `BACKUP_PASSPHRASE` | **nein** | ausschliesslich als GitHub-Secrets |
+
+Weil URL und Schlüssel damit jedem zugänglich sind, ist die Sperre der
+Registrierung kein Beiwerk, sondern die eigentliche Zugangskontrolle: Ohne
+freigegebene Firmendomäne kann sich niemand ein Konto anlegen.
 
 ### Rollen
 

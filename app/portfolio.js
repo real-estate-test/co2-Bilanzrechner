@@ -157,10 +157,9 @@ window.APP = window.APP || {};
         var basis = gewaehlt ? gewaehlt.slice() : A.STATUS.slice();
         var i = basis.indexOf(st);
         if (i >= 0) basis.splice(i, 1); else basis.push(st);
-        /* Alles gewählt = kein Filter; nichts gewählt wäre eine leere
-           Auswertung und wird deshalb auf «alle» zurückgesetzt. */
-        if (!basis.length || basis.length === A.STATUS.length) filterSchreiben(null);
-        else filterSchreiben(basis);
+        /* Alles gewählt = kein Filter. Eine leere Auswahl bleibt bestehen —
+           so lässt sich von «keine» aus gezielt eine Phase einschalten. */
+        filterSchreiben(basis.length === A.STATUS.length ? null : basis);
         A.render();
       });
       chips.appendChild(c);
@@ -175,22 +174,33 @@ window.APP = window.APP || {};
       var raus = ['Verworfen'].concat(ohne || []);
       return A.STATUS.slice(i < 0 ? 0 : i).filter(function (x) { return raus.indexOf(x) < 0; });
     }
-    var imPortfolio = abStatus('Entwicklung');
+    /* Entwicklung: von der Prüfung bis und mit Entwicklung — alles vor
+       der Baubewilligung, ohne blosse Ideen. */
+    var vonBis = function (von, bis) {
+      var a = A.STATUS.indexOf(von), b = A.STATUS.indexOf(bis);
+      return A.STATUS.slice(a, b + 1);
+    };
+    var inEntwicklung = vonBis('Prüfung', 'Entwicklung');
     /* Realisation meint die laufenden Projekte — abgeschlossene sind fertig. */
     var inRealisation = abStatus('Baubewilligung', ['Abgeschlossen']);
 
     var werkzeuge = el('div', { style: 'display:flex;gap:8px;margin-top:10px;align-items:center;flex-wrap:wrap' }, [
       el('button', { class: 'sm', text: 'alle', onclick: function () { filterSchreiben(null); A.render(); } }),
-      el('button', { class: 'sm', text: 'nur im Portfolio',
-        title: imPortfolio.join(' · '),
-        onclick: function () { filterSchreiben(imPortfolio); A.render(); } }),
+      el('button', { class: 'sm', text: 'keine',
+        title: 'Auswahl leeren — danach gezielt einzelne Phasen einschalten',
+        onclick: function () { filterSchreiben([]); A.render(); } }),
+      el('button', { class: 'sm', text: 'Entwicklung',
+        title: inEntwicklung.join(' · '),
+        onclick: function () { filterSchreiben(inEntwicklung); A.render(); } }),
       el('button', { class: 'sm', text: 'Realisation',
         title: inRealisation.join(' · '),
         onclick: function () { filterSchreiben(inRealisation); A.render(); } }),
       el('span', { class: 'muted', style: 'font-size:11.5px; margin-left:6px',
-        text: gewaehlt
-          ? projekte.length + ' von ' + alleProjekte.length + ' Projekten — Filter aktiv'
-          : alleProjekte.length + ' Projekte, kein Filter' })
+        text: !gewaehlt
+          ? alleProjekte.length + ' Projekte, kein Filter'
+          : (gewaehlt.length
+              ? projekte.length + ' von ' + alleProjekte.length + ' Projekten — Filter aktiv'
+              : 'keine Phase gewählt') })
     ]);
 
     out.appendChild(U.panel('Auswahl',
@@ -199,8 +209,9 @@ window.APP = window.APP || {};
     ]));
 
     if (!projekte.length) {
-      out.appendChild(U.hinweis('warn', 'Der Filter lässt kein Projekt übrig. ' +
-        'Wählen Sie oben weitere Status hinzu.'));
+      out.appendChild(U.hinweis('info', gewaehlt && !gewaehlt.length
+        ? 'Keine Phase gewählt — schalten Sie oben die Phasen ein, die Sie sehen möchten.'
+        : 'Die gewählten Phasen enthalten kein Projekt. Wählen Sie oben weitere hinzu.'));
       return out;
     }
 

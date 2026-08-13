@@ -501,6 +501,7 @@ window.APP = window.APP || {};
       ziele: { marge: 15, bruttorendite: 4.0 },
 
       ist: {},                           // Ist-Werte je Kostenzeile
+      ist_uebernehmen: true,             // Ist-Werte ersetzen den Soll-Betrag
       snapshots: [],
       archiviert_am: null,               // gesetzt = aus Listen und Portfolio ausgeblendet
       version: 1                         // Zähler gegen stilles Überschreiben

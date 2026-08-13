@@ -12,25 +12,27 @@ window.APP = window.APP || {};
      Kostenzeilen eines Projektes als flache Liste (Basis für Soll/Ist)
      --------------------------------------------------------------- */
 
+  /* «soll» ist immer der gerechnete Betrag — auch dann, wenn ein Ist-Wert
+     ihn in der Kalkulation bereits ersetzt hat. Nur so bleibt der
+     Vergleich aussagekräftig. */
   A.kostenzeilen = function (r) {
     var out = [];
+    function nimm(key, gruppe, label, z) {
+      var soll = z.soll !== undefined ? z.soll : z.betrag;
+      if (Math.abs(soll) < 1 && !z.ist) return;
+      out.push({ key: key, gruppe: gruppe, label: label, soll: soll, uebernommen: !!z.ist });
+    }
     r.erwerb.zeilen.forEach(function (z) {
-      if (Math.abs(z.betrag) < 1) return;
-      out.push({ key: 'erwerb.' + z.id, gruppe: 'Erwerb', label: z.label, soll: z.betrag });
+      nimm('erwerb.' + z.id, 'Erwerb', z.label, z);
     });
     Object.keys(r.bau.bloecke).forEach(function (bid) {
       var b = r.bau.bloecke[bid];
       b.zeilen.forEach(function (z) {
-        if (Math.abs(z.betrag) < 1) return;
-        out.push({ key: 'bau.' + bid + '.' + z.id, gruppe: 'Bau · ' + b.label,
-          label: 'BKP ' + z.bkp + ' · ' + z.label, soll: z.betrag });
+        nimm('bau.' + bid + '.' + z.id, 'Bau · ' + b.label, 'BKP ' + z.bkp + ' · ' + z.label, z);
       });
-      out.push({ key: 'bau.' + bid + '.reserve', gruppe: 'Bau · ' + b.label,
-        label: 'Reserve / Unvorhergesehenes', soll: b.reserve });
     });
     r.vermarktung.zeilen.forEach(function (z) {
-      if (Math.abs(z.betrag) < 1) return;
-      out.push({ key: 'vermarktung.' + z.id, gruppe: 'Vermarktung', label: z.label, soll: z.betrag });
+      nimm('vermarktung.' + z.id, 'Vermarktung', z.label, z);
     });
     out.push({ key: 'finanzierung.bauzinsen', gruppe: 'Finanzierung', label: 'Bauzinsen',
       soll: r.fin.bauzinsen + r.fin.bereitstellung });
@@ -423,12 +425,14 @@ window.APP = window.APP || {};
       inp.addEventListener('input', function () {
         if (inp.value.trim() === '') delete p.ist[z.key];
         else p.ist[z.key] = U.parseZahl(inp.value);
-        malen(); A.markDirty();
+        malen();
+        A.recompute();          // Ist-Wert wirkt sofort auf die Kalkulation
       });
       malen();
       zeilen.push(el('tr', {}, [
-        el('td', { text: z.label }),
-        el('td', { class: 'n', text: fmt(z.soll) }),
+        el('td', {}, [el('span', { text: z.label }),
+          z.uebernommen ? el('span', { class: 'tag pos', style: 'margin-left:7px', text: 'gerechnet' }) : null]),
+        el('td', { class: 'n muted', text: fmt(z.soll) }),
         el('td', { style: 'width:120px' }, [inp]),
         abwZelle,
         el('td', { class: 'n muted', text: z.soll > 0 && p.ist[z.key] !== undefined
@@ -443,7 +447,20 @@ window.APP = window.APP || {};
       el('td', { class: 'n', text: sollT > 0 ? A.fmtPct((istT / sollT - 1) * 100) : '' })
     ]));
 
-    out.appendChild(U.panel('Soll-Ist-Vergleich', 'leere Felder gelten als noch offen und werden mit dem Soll gerechnet', [
+    var schalter = el('div', { class: 'seg' });
+    [['übernehmen', true], ['nur vergleichen', false]].forEach(function (o) {
+      var b = el('button', { type: 'button', text: o[0],
+        class: (p.ist_uebernehmen !== false) === o[1] ? 'on' : '' });
+      b.addEventListener('click', function () {
+        p.ist_uebernehmen = o[1]; A.recompute(); A.render();
+      });
+      schalter.appendChild(b);
+    });
+
+    out.appendChild(U.panel('Soll-Ist-Vergleich',
+      p.ist_uebernehmen !== false
+        ? 'erfasste Ist-Werte ersetzen den Soll-Betrag in der Kalkulation'
+        : 'Ist-Werte werden nur gegenübergestellt, nicht gerechnet', [
       el('div', { class: 'panelbody' }, [U.tabelle([
         { label: 'Position' }, { label: 'Soll CHF', n: true, w: '15%' }, { label: 'Ist CHF', n: true, w: '15%' },
         { label: 'Abweichung', n: true, w: '13%' }, { label: '%', n: true, w: '9%' }
@@ -451,10 +468,15 @@ window.APP = window.APP || {};
       el('div', { class: 'panelbody' }, [
         el('button', { text: 'Ist-Werte aus CSV einlesen', onclick: function () { istImport(p); } }),
         el('button', { class: 'ghost', text: 'Ist-Werte zurücksetzen', onclick: function () {
-          if (confirm('Alle Ist-Werte löschen?')) { p.ist = {}; A.markDirty(); A.render(); }
-        } })
+          if (confirm('Alle Ist-Werte löschen?')) { p.ist = {}; A.recompute(); A.render(); }
+        } }),
+        p.ist_uebernehmen !== false
+          ? U.hinweis('info', 'Ein erfasster Ist-Wert <b>ersetzt</b> den gerechneten Betrag. ' +
+              'Nachgelagerte Grössen — Reserve auf BKP 20–29, Baunebenkosten, ' +
+              'Projektmanagement-Honorar sowie Marge und Rendite — ziehen automatisch nach.')
+          : null
       ])
-    ]));
+    ], [schalter]));
 
     /* Snapshots */
     var snapZeilen = p.snapshots.map(function (sn, i) {

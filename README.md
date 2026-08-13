@@ -124,6 +124,12 @@ zusammengeführte Darstellungen auf gemeinsamer Kalenderachse:
 **Tracking** Soll-Ist-Vergleich je Kostenposition mit CSV-Einlesung sowie
 Snapshots, die einen Projektstand einfrieren und gegen heute stellen.
 
+Ein erfasster **Ist-Wert ersetzt den gerechneten Betrag** in der Kalkulation.
+Nachgelagerte Grössen ziehen automatisch nach: die Reserve auf BKP 20–29, die
+Baunebenkosten, das Projektmanagement-Honorar und damit Marge und Rendite. Leere
+Felder gelten als noch offen und rechnen weiter mit der Schätzung. Über den
+Umschalter lässt sich die Übernahme abstellen, wenn nur verglichen werden soll.
+
 ---
 
 ## Bedienung
@@ -322,7 +328,7 @@ Kantonale Feinheiten der Grundstückgewinn- und Gewinnsteuer sind nicht modellie
 
 ## Selbsttest
 
-`tests/engine.html` im Browser öffnen. Die Seite prüft 57 Referenzfälle —
+`tests/engine.html` im Browser öffnen. Die Seite prüft 67 Referenzfälle —
 Flächen- und Volumenkaskade, Nebenkostensätze, Kostengruppen, die Prozentkette
 BKP 202 → 5 → 599, Verwertungsarten, Zeitverteilung, Vorverkaufsstaffel, internen
 Zinsfuss, Residualwert, die Gewinnidentität und die Überführung alter

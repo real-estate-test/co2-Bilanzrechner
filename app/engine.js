@@ -12,6 +12,18 @@ window.APP = window.APP || {};
   function num(v) { var n = parseFloat(v); return isFinite(n) ? n : 0; }
   function pct(v) { return num(v) / 100; }
 
+  /* Ist-Wert einer Kostenzeile. Ist einer erfasst, ersetzt er den
+     gerechneten Soll-Betrag — und alles, was darauf aufbaut. Ein leeres
+     Feld bedeutet «noch offen» und lässt die Schätzung stehen. */
+  function ist(p, key) {
+    if (!p.ist || p.ist_uebernehmen === false) return null;
+    var v = p.ist[key];
+    if (v === undefined || v === null || v === '') return null;
+    var n = parseFloat(v);
+    return isFinite(n) ? n : null;
+  }
+  E.ist = ist;
+
   /* ---------------------------------------------------------------
      Zeitachse — alle Zeitpunkte in Jahren ab Kaufzeitpunkt t = 0
      --------------------------------------------------------------- */
@@ -274,10 +286,17 @@ window.APP = window.APP || {};
       }
 
       function erfassen(kat, z, betrag, menge) {
+        /* Ein erfasster Ist-Wert ersetzt den gerechneten Betrag. Weil die
+           Gruppensummen daraus entstehen, ziehen Reserve, Baunebenkosten
+           und Projektmanagement-Honorar automatisch nach. */
+        var iv = ist(p, 'bau.' + bid + '.' + kat.id);
+        var wirksam = iv !== null ? iv : betrag;
         out.zeilen.push({ id: kat.id, bkp: kat.bkp, label: kat.label, basis: z.basis,
                           menge: z.basis === 'pauschal' ? null : menge,
-                          kennwert: num(z.wert), betrag: betrag });
-        gruppieren(kat.bkp, betrag);
+                          kennwert: num(z.wert), betrag: wirksam,
+                          soll: betrag, ist: iv !== null });
+        gruppieren(kat.bkp, wirksam);
+        return wirksam;
       }
 
       /* Erste Runde: alle mengenbezogenen Zeilen */
@@ -306,9 +325,8 @@ window.APP = window.APP || {};
         var kat = katalog.find(function (k) { return k.id === r.id; });
         if (!kat) return;
         var basis = r.basis();
-        var betrag = basis * pct(z.wert);
-        erfassen(kat, z, betrag, basis);
-        if (r.id === 'b2_reserve') out.reserve = betrag;
+        var wirksam = erfassen(kat, z, basis * pct(z.wert), basis);
+        if (r.id === 'b2_reserve') out.reserve = wirksam;
       });
 
       /* Übrige prozentuale Zeilen — etwa frei ergänzte */
@@ -352,6 +370,8 @@ window.APP = window.APP || {};
      --------------------------------------------------------------- */
 
   E.kaufpreis = function (p, F) {
+    var iv = ist(p, 'erwerb.kaufpreis');
+    if (iv !== null) return iv;
     var e = p.erwerb;
     if (p.erwerbsart === 'baurecht') return num(e.baurecht_einmal);
     switch (e.preis_modus) {
@@ -366,12 +386,14 @@ window.APP = window.APP || {};
 
     z.push({ id: 'kaufpreis', label: p.erwerbsart === 'baurecht'
       ? 'Einmalentschädigung Baurecht' : 'Kaufpreis Liegenschaft',
-      basis: '—', betrag: kp });
+      basis: '—', betrag: kp, ist: ist(p, 'erwerb.kaufpreis') !== null });
 
     function proz(id, label, satz, basis, anteil) {
       var b = basis * pct(satz) * (anteil === undefined ? 1 : pct(anteil));
-      z.push({ id: id, label: label, basis: A.fmt(satz, 2) + ' %', betrag: b });
-      return b;
+      var iv = ist(p, 'erwerb.' + id);
+      z.push({ id: id, label: label, basis: A.fmt(satz, 2) + ' %',
+               betrag: iv !== null ? iv : b, soll: b, ist: iv !== null });
+      return iv !== null ? iv : b;
     }
 
     proz('notariat', 'Notariat / Beurkundung', e.notariat, kp);
@@ -385,26 +407,33 @@ window.APP = window.APP || {};
                  : e.entwicklung_basis === 'gewinn' ? Math.max(0, gewinn_schaetz || 0)
                  : (anlagekosten_schaetz || 0);
     var ent = basisEnt * pct(e.entwicklung_pct);
+    var entIst = ist(p, 'erwerb.entwicklung');
     z.push({ id: 'entwicklung', label: 'Entwicklungshonorar (' +
       ({ anlagekosten: 'auf Anlagekosten', landwert: 'auf Landwert', gewinn: 'auf Gewinn' })[e.entwicklung_basis] + ')',
-      basis: A.fmt(e.entwicklung_pct, 2) + ' %', betrag: ent });
+      basis: A.fmt(e.entwicklung_pct, 2) + ' %',
+      betrag: entIst !== null ? entIst : ent, soll: ent, ist: entIst !== null });
 
     /* Dritthonorare */
     var dritt = e.dritthonorare_basis === 'pauschal'
       ? num(e.dritthonorare_fix)
       : (anlagekosten_schaetz || 0) * pct(e.dritthonorare_pct);
-    z.push({ id: 'dritthonorare', label: 'Dritthonorare',
-      basis: e.dritthonorare_basis === 'pauschal' ? 'pauschal' : A.fmt(e.dritthonorare_pct, 2) + ' %',
-      betrag: dritt });
-
-    z.push({ id: 'dd', label: 'Due Diligence / Altlastenabklärung', basis: 'pauschal', betrag: num(e.dd) });
-    z.push({ id: 'geometer', label: 'Vermessung / Geometer', basis: 'pauschal', betrag: num(e.geometer) });
-    z.push({ id: 'recht', label: 'Rechtsberatung / Verträge', basis: 'pauschal', betrag: num(e.recht) });
+    function fest(id, label, basisText, wert) {
+      var iv = ist(p, 'erwerb.' + id);
+      z.push({ id: id, label: label, basis: basisText,
+               betrag: iv !== null ? iv : wert, soll: wert, ist: iv !== null });
+    }
+    fest('dritthonorare', 'Dritthonorare',
+      e.dritthonorare_basis === 'pauschal' ? 'pauschal' : A.fmt(e.dritthonorare_pct, 2) + ' %', dritt);
+    fest('dd', 'Due Diligence / Altlastenabklärung', 'pauschal', num(e.dd));
+    fest('geometer', 'Vermessung / Geometer', 'pauschal', num(e.geometer));
+    fest('recht', 'Rechtsberatung / Verträge', 'pauschal', num(e.recht));
 
     if (p.grundstueck.mehrwertabgabe_aktiv) {
       var mw = num(p.grundstueck.mehrwert_basis) * pct(p.grundstueck.mehrwertabgabe_pct);
+      var mwIst = ist(p, 'erwerb.mehrwert');
       z.push({ id: 'mehrwert', label: 'Mehrwertabgabe (Planungsmehrwert)',
-        basis: A.fmt(p.grundstueck.mehrwertabgabe_pct, 0) + ' %', betrag: mw });
+        basis: A.fmt(p.grundstueck.mehrwertabgabe_pct, 0) + ' %',
+        betrag: mwIst !== null ? mwIst : mw, soll: mw, ist: mwIst !== null });
     }
 
     var total = z.reduce(function (s, x) { return s + x.betrag; }, 0);
@@ -502,24 +531,26 @@ window.APP = window.APP || {};
     var v = p.vermarktung, z = [];
     var verkaufsbasis = ERT.stwe_erloes + ERT.exit_wert;
 
-    z.push({ id: 'verkauf', label: 'Verkaufsprovision STWE',
-      basis: A.fmt(v.verkauf_pct, 2) + ' %', betrag: ERT.stwe_erloes * pct(v.verkauf_pct) });
-    z.push({ id: 'beurkundung', label: 'Beurkundung Verkauf (Anteil Verkäufer)',
-      basis: A.fmt(v.beurkundung_verkauf, 2) + ' %', betrag: ERT.stwe_erloes * pct(v.beurkundung_verkauf) });
-    z.push({ id: 'exit_nk', label: 'Verkaufsnebenkosten Exit an Investor',
-      basis: A.fmt(v.exit_nebenkosten, 2) + ' %', betrag: ERT.exit_wert * pct(v.exit_nebenkosten) });
+    function zeile(id, label, basisText, wert) {
+      var iv = ist(p, 'vermarktung.' + id);
+      z.push({ id: id, label: label, basis: basisText,
+               betrag: iv !== null ? iv : wert, soll: wert, ist: iv !== null });
+    }
 
-    var vermietung = ERT.sollmiete_halten / 12 * num(v.vermietung_monate);
-    z.push({ id: 'vermietung', label: 'Erstvermietungsprovision',
-      basis: A.fmt(v.vermietung_monate, 2) + ' Monatsmieten', betrag: vermietung });
-
-    var mk = v.marketing_basis === 'pauschal'
-      ? num(v.marketing_fix)
-      : (verkaufsbasis + ERT.halten_wert) * pct(v.marketing_pct);
-    z.push({ id: 'marketing', label: 'Marketing / Werbung',
-      basis: v.marketing_basis === 'pauschal' ? 'pauschal' : A.fmt(v.marketing_pct, 2) + ' %', betrag: mk });
-    z.push({ id: 'muster', label: 'Musterwohnung / Visualisierung',
-      basis: 'pauschal', betrag: num(v.muster) });
+    zeile('verkauf', 'Verkaufsprovision STWE', A.fmt(v.verkauf_pct, 2) + ' %',
+      ERT.stwe_erloes * pct(v.verkauf_pct));
+    zeile('beurkundung', 'Beurkundung Verkauf (Anteil Verkäufer)',
+      A.fmt(v.beurkundung_verkauf, 2) + ' %', ERT.stwe_erloes * pct(v.beurkundung_verkauf));
+    zeile('exit_nk', 'Verkaufsnebenkosten Exit an Investor',
+      A.fmt(v.exit_nebenkosten, 2) + ' %', ERT.exit_wert * pct(v.exit_nebenkosten));
+    zeile('vermietung', 'Erstvermietungsprovision',
+      A.fmt(v.vermietung_monate, 2) + ' Monatsmieten',
+      ERT.sollmiete_halten / 12 * num(v.vermietung_monate));
+    zeile('marketing', 'Marketing / Werbung',
+      v.marketing_basis === 'pauschal' ? 'pauschal' : A.fmt(v.marketing_pct, 2) + ' %',
+      v.marketing_basis === 'pauschal' ? num(v.marketing_fix)
+        : (verkaufsbasis + ERT.halten_wert) * pct(v.marketing_pct));
+    zeile('muster', 'Musterwohnung / Visualisierung', 'pauschal', num(v.muster));
 
     var total = z.reduce(function (s, x) { return s + x.betrag; }, 0);
     return { zeilen: z, total: total };
@@ -875,7 +906,8 @@ window.APP = window.APP || {};
     }
 
     var mietertrag_projekt = TR.det.miete.reduce(function (s, x) { return s + x; }, 0);
-    var finKosten = FIN.bauzinsen + FIN.bereitstellung;
+    var finIst = ist(p, 'finanzierung.bauzinsen');
+    var finKosten = finIst !== null ? finIst : (FIN.bauzinsen + FIN.bereitstellung);
     var aktiviert = p.finanzierung.bauzinsen_aktivieren;
 
     var erloese = ERT.stwe_erloes + ERT.exit_wert + ERT.halten_wert;
@@ -919,6 +951,22 @@ window.APP = window.APP || {};
         A.fmt(bruttorendite, 2) + ' % (Ziel ' + A.fmt(p.ziele.bruttorendite, 2) + ' %).' });
     }
 
+    /* Wie viele Positionen rechnen mit einem Ist-Wert statt mit der Schätzung? */
+    var istAnzahl = 0, istZeilen = [];
+    ERW.zeilen.forEach(function (z) { if (z.ist) { istAnzahl++; istZeilen.push(z.label); } });
+    Object.keys(BAU.bloecke).forEach(function (bid) {
+      BAU.bloecke[bid].zeilen.forEach(function (z) {
+        if (z.ist) { istAnzahl++; istZeilen.push(BAU.bloecke[bid].label + ' · ' + z.label); }
+      });
+    });
+    VER.zeilen.forEach(function (z) { if (z.ist) { istAnzahl++; istZeilen.push(z.label); } });
+    if (finIst !== null) { istAnzahl++; istZeilen.push('Bauzinsen'); }
+    if (istAnzahl > 0) {
+      warn.push({ art: 'info', text: '<b>' + istAnzahl + ' Position(en)</b> rechnen mit erfassten ' +
+        'Ist-Werten statt mit der Schätzung. Nachgelagerte Grössen wie Reserve, Baunebenkosten und ' +
+        'Marge ziehen automatisch nach.' });
+    }
+
     var anteilHalten = erloese > 0 ? (ERT.halten_wert + ERT.exit_wert) / erloese : 0;
     var BES = E.bestandsrechnung(p, BET, anlagekosten * anteilHalten);
 
@@ -926,6 +974,8 @@ window.APP = window.APP || {};
       zeit: Z, flaechen: F, bau: BAU, erwerb: ERW, ertraege: ERT,
       vermarktung: VER, betrieb: BET, reihen: TR, fin: FIN, bestand: BES,
       warnungen: warn,
+      ist_anzahl: istAnzahl,
+      ist_zeilen: istZeilen,
       kpi: {
         anlagekosten: anlagekosten,
         gesamtinvestition: gesamtinvestition,
@@ -1028,6 +1078,9 @@ window.APP = window.APP || {};
       q.erwerbsart = 'kauf';
       q.erwerb.preis_modus = 'total';
       q.erwerb.preis_total = preis;
+      /* Ein erfasster Ist-Kaufpreis würde jede Variation überschreiben und
+         die Rückwärtsrechnung sinnlos machen. */
+      if (q.ist) delete q.ist['erwerb.kaufpreis'];
       return E.compute(q).kpi.marge_ak;
     }
     if (margeBei(lo) < ziel) return { preis: 0, erreichbar: false, marge_bei_null: margeBei(lo) };

@@ -220,6 +220,45 @@
   pruefe('STWE-Erlös folgt dem Spiegel', 2160000, rs.ertraege.stwe_erloes, 1);
   pruefe('Mietzeile bleibt Sollmiete', 80 * 300, rs.ertraege.sollmiete, 1);
 
+  /* ---- Ist-Werte ersetzen den Soll-Betrag -------------------------- */
+  var pi = A.defaultProject();
+  pi.grundstueck.geschosse = 4;
+  var ri0 = E.compute(pi);
+  var sollRohbau = zeile(ri0, 'neubau', 'b2_oi_stwe').betrag;
+  var sollReserve = zeile(ri0, 'neubau', 'b2_reserve').betrag;
+
+  pi.ist['bau.neubau.b2_oi_stwe'] = sollRohbau + 500000;
+  var ri1 = E.compute(pi);
+  pruefe('Ist-Wert ersetzt den Betrag der Zeile',
+    sollRohbau + 500000, zeile(ri1, 'neubau', 'b2_oi_stwe').betrag, 1);
+  pruefe('Reserve zieht mit dem Ist-Wert nach',
+    sollReserve + 500000 * 0.03, zeile(ri1, 'neubau', 'b2_reserve').betrag, 1);
+  pruefe('Anlagekosten steigen um mehr als den Ist-Zuschlag (Folgekosten)',
+    1, ri1.kpi.anlagekosten - ri0.kpi.anlagekosten > 500000 ? 1 : 0);
+  pruefe('Zahl der übernommenen Positionen', 1, ri1.ist_anzahl);
+  pruefe('Marge sinkt gegenüber dem Soll', 1, ri1.kpi.marge_ak < ri0.kpi.marge_ak ? 1 : 0);
+
+  /* Umschalter: nur vergleichen, nicht rechnen */
+  pi.ist_uebernehmen = false;
+  var ri2 = E.compute(pi);
+  pruefe('ohne Übernahme bleibt der Soll-Betrag stehen',
+    sollRohbau, zeile(ri2, 'neubau', 'b2_oi_stwe').betrag, 1);
+  pruefe('ohne Übernahme keine übernommenen Positionen', 0, ri2.ist_anzahl);
+  pi.ist_uebernehmen = true;
+
+  /* Ist-Kaufpreis wirkt auf die Nebenkosten, blockiert aber nicht die
+     Rückwärtsrechnung des Landwerts. */
+  var pk = A.defaultProject();
+  pk.erwerb.preis_modus = 'total'; pk.erwerb.preis_total = 3000000;
+  pk.erwerb.courtage = 2.0;
+  pk.ist['erwerb.kaufpreis'] = 4000000;
+  var rk = E.compute(pk);
+  pruefe('Ist-Kaufpreis wird übernommen', 4000000, rk.erwerb.kaufpreis, 1);
+  pruefe('Courtage rechnet auf dem Ist-Kaufpreis', 80000, pos(rk, 'courtage'), 1);
+  var rwk = A.engine.residualwert(pk, 15);
+  pruefe('Rückwärtsrechnung ignoriert den Ist-Kaufpreis', 1,
+    rwk.erreichbar && Math.abs(rwk.preis - 4000000) > 1 ? 1 : 0);
+
   /* ---- Migration Schema 1 -> 2 ------------------------------------ */
   var altprojekt = {
     schema: 1, id: 'palt', name: 'Alt', stufe: 'standard', szenario: 'neubau',

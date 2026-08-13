@@ -514,7 +514,10 @@ window.APP = window.APP || {};
     zeilen.push(el('tr', { class: 'grp' }, [el('td', { colspan: 2, text: 'Erwerb' })]));
     r.erwerb.zeilen.forEach(function (z) {
       if (Math.abs(z.betrag) < 1) return;
-      zeilen.push(el('tr', {}, [el('td', { text: z.label }), el('td', { class: 'n', text: fmt(z.betrag) })]));
+      zeilen.push(el('tr', {}, [
+        el('td', {}, [el('span', { text: z.label }),
+          z.ist ? el('span', { class: 'tag pos', style: 'margin-left:7px', text: 'Ist' }) : null]),
+        el('td', { class: 'n', text: fmt(z.betrag) })]));
     });
     zeilen.push(el('tr', { class: 'sum' }, [el('td', { text: 'Erwerbskosten' }),
       el('td', { class: 'n', text: fmt(r.erwerb.total) })]));
@@ -525,7 +528,8 @@ window.APP = window.APP || {};
       b.zeilen.forEach(function (z) {
         if (Math.abs(z.betrag) < 1) return;
         zeilen.push(el('tr', {}, [
-          el('td', {}, [el('span', { class: 'bkp', text: 'BKP ' + z.bkp + '  ' }), el('span', { text: z.label })]),
+          el('td', {}, [el('span', { class: 'bkp', text: 'BKP ' + z.bkp + '  ' }), el('span', { text: z.label }),
+            z.ist ? el('span', { class: 'tag pos', style: 'margin-left:7px', text: 'Ist' }) : null]),
           el('td', { class: 'n', text: fmt(z.betrag) })]));
       });
       zeilen.push(el('tr', {}, [el('td', { text: 'Reserve / Unvorhergesehenes' }),

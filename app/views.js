@@ -32,8 +32,8 @@ window.APP = window.APP || {};
   V.projekt = function (p) {
     init();
     var out = el('div', {}, [U.kopf('Projekt & Phasen',
-      'Rahmendaten, Szenario und Zeitachse. Alle Zeitpunkte laufen in Jahren ab dem Erwerb; ' +
-      'Phasendauern dürfen dezimal sein (1,5 = achtzehn Monate).')]);
+      'Rahmendaten, Szenario und Zeitachse. Phasendauern werden in Monaten erfasst und ' +
+      'bauen auf dem Startdatum auf.')]);
 
     /* Stammdaten */
     out.appendChild(U.panel('Stammdaten', null, [
@@ -113,14 +113,14 @@ window.APP = window.APP || {};
 
     /* Zeitachse */
     var zeitBody = U.body([
-      U.num(p, 'zeit.dauer_entwicklung', 'Erwerb → Baueingabe', { unit: 'Jahre', dez: 2 }),
-      U.num(p, 'zeit.dauer_bewilligung', 'Baueingabe → Bewilligung', { unit: 'Jahre', dez: 2 }),
-      U.num(p, 'zeit.dauer_vorbereitung', 'Bewilligung → Baustart', { unit: 'Jahre', dez: 2, stufe: 'standard' }),
-      U.num(p, 'zeit.dauer_bau', 'Bauzeit', { unit: 'Jahre', dez: 2 }),
-      U.num(p, 'zeit.verkaufsstart_rel_bb', 'Verkaufsstart ab Bewilligung', { unit: 'Jahre', dez: 2, stufe: 'standard',
+      U.num(p, 'zeit.dauer_entwicklung', 'Erwerb → Baueingabe', { unit: 'Monate', dez: 0 }),
+      U.num(p, 'zeit.dauer_bewilligung', 'Baueingabe → Bewilligung', { unit: 'Monate', dez: 0 }),
+      U.num(p, 'zeit.dauer_vorbereitung', 'Bewilligung → Baustart', { unit: 'Monate', dez: 0, stufe: 'standard' }),
+      U.num(p, 'zeit.dauer_bau', 'Bauzeit', { unit: 'Monate', dez: 0 }),
+      U.num(p, 'zeit.verkaufsstart_rel_bb', 'Verkaufsstart ab Bewilligung', { unit: 'Monate', dez: 0, stufe: 'standard',
         hilfe: 'Negativ = Vermarktung startet bereits vor der Baubewilligung.' }),
-      U.num(p, 'zeit.dauer_verkauf', 'Dauer Vermarktung', { unit: 'Jahre', dez: 2, stufe: 'standard' }),
-      U.num(p, 'zeit.exit_verzoegerung', 'Exit nach Fertigstellung', { unit: 'Jahre', dez: 2, stufe: 'detail' }),
+      U.num(p, 'zeit.dauer_verkauf', 'Dauer Vermarktung', { unit: 'Monate', dez: 0, stufe: 'standard' }),
+      U.num(p, 'zeit.exit_verzoegerung', 'Exit nach Fertigstellung', { unit: 'Monate', dez: 0, stufe: 'detail' }),
       U.seg(p, 'zeit.kostenkurve', [
         { id: 's', label: 'S-Kurve' }, { id: 'linear', label: 'linear' }
       ], 'Verlauf der Baukosten', { stufe: 'detail' })
@@ -184,14 +184,38 @@ window.APP = window.APP || {};
           ? U.num(p, 'grundstueck.agf_direkt', 'Anrechenbare Geschossfläche', { unit: 'm²', gross: true })
           : U.num(p, 'grundstueck.az', 'Ausnützungsziffer AZ', { dez: 2,
               derive: function (r) { return 'ergibt ' + fmt(r.flaechen.agf_zulaessig) + ' m² aGF'; } }),
-        U.num(p, 'grundstueck.geschosse', 'Anzahl Geschosse oberirdisch', { dez: 0,
-          hilfe: 'Inklusive Dachgeschoss. Regelgeschosse = Anzahl − 1.',
+        istAgf ? null : U.num(p, 'grundstueck.az_bonus', 'Bonus auf die Ziffer', { unit: '%', dez: 1,
+          hilfe: 'Arealbonus o. ä. — aGF = Grundstück × Ziffer × (1 + Bonus).' }),
+        U.num(p, 'grundstueck.geschosse', 'Anzahl Vollgeschosse', { dez: 0,
+          hilfe: 'Ohne Attika. Die Attika wird unten separat erfasst.',
           derive: function (r) { return 'Gebäudegrundfläche ' + fmt(r.flaechen.total.grundflaeche) + ' m²'; } }),
         U.num(p, 'grundstueck.umgebung_manuell', 'Umgebungsfläche manuell', { unit: 'm²', gross: true, stufe: 'detail',
           hilfe: 'Leer = Grundstück minus Gebäudegrundfläche.',
           derive: function (r) { return 'gerechnet: ' + fmt(r.flaechen.umgebung) + ' m²'; } }),
-        U.chk(p, 'grundstueck.mehrwertabgabe_aktiv', 'Mehrwertabgabe bei Auf-/Einzonung', { stufe: 'standard' })
+        U.chk(p, 'grundstueck.mehrwertabgabe_aktiv', 'Mehrwertabgabe bei Auf-/Einzonung', { stufe: 'standard' }),
+        U.txt(p, 'grundstueck.bemerkung', 'Bemerkung zur Ausnutzung',
+          { platzhalter: 'z. B. Arealbonus gemäss Vorentscheid 04/26' })
       ], 'c3'),
+
+      /* Attikageschoss — es zählt nur dann zur aGF, wenn es anrechenbar ist.
+         Der Fussabdruck bemisst sich immer am Vollgeschoss. */
+      el('div', { class: 'panelbody' }, [
+        el('div', { class: 'cols c3' }, [
+          el('div', { class: 'f' }, [
+            el('label', {}, [el('span', { text: 'Attikageschoss anrechenbar' })]),
+            U.seg(p, 'grundstueck.attika_anrechenbar', [
+              { id: true, label: 'ja' }, { id: false, label: 'nein' }
+            ]),
+            el('div', { class: 'hilfe', text: p.grundstueck.attika_anrechenbar
+              ? 'Die Attika steckt in der anrechenbaren Geschossfläche und wird nicht separat gezählt.'
+              : 'Die Attikafläche kommt zusätzlich zur aGF hinzu.' })
+          ]),
+          p.grundstueck.attika_anrechenbar ? null
+            : U.num(p, 'grundstueck.attika_pct', 'Attika', { unit: '% der Gebäudegrundfläche', dez: 0,
+                hilfe: 'Die Attika ist in der Regel kleiner als das Geschoss darunter — sonst wäre sie ein Vollgeschoss.',
+                derive: function (r) { return fmt(r.flaechen.total.attika) + ' m² Attikafläche'; } })
+        ])
+      ]),
       p.grundstueck.mehrwertabgabe_aktiv ? U.body([
         U.num(p, 'grundstueck.mehrwert_basis', 'Planungsmehrwert', { unit: 'CHF', gross: true }),
         U.num(p, 'grundstueck.mehrwertabgabe_pct', 'Abgabesatz', { unit: '%', dez: 0 })
@@ -267,8 +291,8 @@ window.APP = window.APP || {};
         }
         U.leeren(tabelle).appendChild(U.tabelle(
           [{ label: 'Flächen- und Volumenkaskade' }, { label: 'Wert', n: true }, { label: 'Einheit' }], [
-            z('anrechenbare Geschossfläche aGF', fo.agf, 'm²'),
-            z('Gebäudegrundfläche (aGF ÷ ' + g + ' Geschosse)', fo.grundflaeche, 'm²'),
+            z('Gebäudegrundfläche (÷ ' + g + ' Vollgeschosse)', fo.grundflaeche, 'm²'),
+            fo.attika > 0 ? z('Attikageschoss (nicht anrechenbar)', fo.attika, 'm²') : null,
             z('Geschossfläche oberirdisch', fo.gf_oi, 'm²', true),
             z('Untergeschoss ohne Einstellhalle', fo.gf_ug, 'm²'),
             z('Einstellhalle', fo.f_aeh, 'm²'),
@@ -277,7 +301,7 @@ window.APP = window.APP || {};
             z('Volumen Untergeschoss', fo.gv_ug, 'm³'),
             z('Volumen Einstellhalle', fo.gv_aeh, 'm³'),
             z('Volumen total', fo.gv, 'm³', true)
-          ]));
+          ].filter(Boolean)));
       });
 
       out.appendChild(U.panel(T.label, null, [
@@ -344,23 +368,23 @@ window.APP = window.APP || {};
 
     out.appendChild(U.panel('Kaufnebenkosten', 'Prozentsätze auf den Kaufpreis', [
       U.body([
-        U.num(p, 'erwerb.notariat', 'Notariat / Beurkundung', { unit: '%', dez: 2, stufe: 'standard',
+        U.num(p, 'erwerb.notariat', 'Notariat / Beurkundung', { unit: '%', dez: 2,
             derive: function (r) {
               var z = r.erwerb.zeilen.find(function (x) { return x.id === 'notariat'; });
               return z ? fmt(z.betrag) + ' CHF' : '';
             } }),
-        U.num(p, 'erwerb.grundbuch', 'Grundbuchgebühren', { unit: '%', dez: 2, stufe: 'standard',
+        U.num(p, 'erwerb.grundbuch', 'Grundbuchgebühren', { unit: '%', dez: 2,
             derive: function (r) {
               var z = r.erwerb.zeilen.find(function (x) { return x.id === 'grundbuch'; });
               return z ? fmt(z.betrag) + ' CHF' : '';
             } }),
-        U.num(p, 'erwerb.handaenderung', 'Handänderungssteuer', { unit: '%', dez: 2, stufe: 'standard',
+        U.num(p, 'erwerb.handaenderung', 'Handänderungssteuer', { unit: '%', dez: 2,
             derive: function (r) {
               var z = r.erwerb.zeilen.find(function (x) { return x.id === 'handaenderung'; });
               return z ? fmt(z.betrag) + ' CHF' : '';
             } }),
         U.num(p, 'erwerb.handaenderung_anteil', 'davon zu Lasten Käufer', { unit: '%', dez: 0, stufe: 'standard' }),
-        U.num(p, 'erwerb.courtage', 'Einkaufskommission / Courtage', { unit: '%', dez: 2, stufe: 'standard',
+        U.num(p, 'erwerb.courtage', 'Einkaufskommission / Courtage', { unit: '%', dez: 2,
             derive: function (r) {
               var z = r.erwerb.zeilen.find(function (x) { return x.id === 'courtage'; });
               return z ? fmt(z.betrag) + ' CHF' : '';
@@ -725,65 +749,86 @@ window.APP = window.APP || {};
       ]));
     });
 
-    /* Wohnungsspiegel */
+    /* Wohnungsspiegel — jede Einheit ist einer Nutzungszeile zugeordnet und
+       erbt von dort Art und Verwertung. */
     var aktiveTeile = A.TEILE.filter(function (T) { return p.teile[T.id].aktiv; });
+    var spiegelTeil = p.teile[p.spiegel.teil] || p.teile.neubau;
+    var zeilenAuswahl = (spiegelTeil.nutzungen || [])
+      .filter(function (n) { return n.art !== 'parkplatz'; })
+      .map(function (n) { return { id: n.id, label: n.bezeichnung }; });
+
     var spiegelKoerper = [U.body([
       U.chk(p, 'spiegel.aktiv', 'Wohnungsspiegel verwenden'),
       p.spiegel.aktiv ? U.sel(p, 'spiegel.teil',
         aktiveTeile.map(function (T) { return { id: T.id, label: T.label }; }),
-        'gilt für', { ohneBadge: true }) : null,
-      p.spiegel.aktiv ? U.sel(p, 'spiegel.zeile',
-        (p.teile[p.spiegel.teil] ? p.teile[p.spiegel.teil].nutzungen : [])
-          .filter(function (n) { return n.art !== 'parkplatz'; })
-          .map(function (n) { return { id: n.id, label: n.bezeichnung }; }),
-        'überschreibt Zeile', { ohneBadge: true }) : null
+        'gilt für', { ohneBadge: true }) : null
     ], 'c3')];
 
     if (p.spiegel.aktiv) {
       var zs = p.spiegel.einheiten.map(function (e, i) {
-        return el('tr', {}, [
-          el('td', { style: 'width:70px' }, [(function () {
-            var inp = el('input', { type: 'text', value: e.nr || '' });
-            inp.addEventListener('input', function () { e.nr = inp.value; A.markDirty(); });
-            return inp;
-          })()]),
-          el('td', { style: 'width:70px' }, [U.zelleNum(e, 'geschoss', { dez: 0 })]),
-          el('td', { style: 'width:70px' }, [U.zelleNum(e, 'zimmer', { dez: 1 })]),
-          el('td', { style: 'width:90px' }, [U.zelleNum(e, 'flaeche', { dez: 0 })]),
-          el('td', { style: 'width:110px' }, [U.zelleNum(e, 'preis', { gross: true })]),
-          U.dTd(function () { return e.flaeche > 0 ? fmt(e.preis / e.flaeche) : '—'; }, 'muted'),
-          el('td', { class: 'w1' }, [el('button', { class: 'ghost sm schreibend', text: '×',
-            onclick: function () { p.spiegel.einheiten.splice(i, 1); A.recompute(); A.render(); } })])
-        ]);
+        var zeile = (spiegelTeil.nutzungen || []).find(function (n) { return n.id === e.zeile; });
+        var tr = el('tr', {});
+        tr.appendChild(el('td', { style: 'width:66px' }, [(function () {
+          var inp = el('input', { type: 'text', value: e.nr || '' });
+          inp.addEventListener('input', function () { e.nr = inp.value; A.markDirty(); });
+          return inp;
+        })()]));
+        tr.appendChild(el('td', { style: 'width:66px' }, [U.zelleNum(e, 'geschoss', { dez: 0 })]));
+        tr.appendChild(el('td', { style: 'width:66px' }, [U.zelleNum(e, 'zimmer', { dez: 1 })]));
+        tr.appendChild(el('td', { style: 'width:86px' }, [U.zelleNum(e, 'flaeche', { dez: 0 })]));
+        tr.appendChild(el('td', { style: 'width:106px' }, [U.zelleNum(e, 'preis', { gross: true })]));
+        tr.appendChild(U.dTd(function () { return e.flaeche > 0 ? fmt(e.preis / e.flaeche) : '—'; }, 'muted'));
+        tr.appendChild(el('td', { style: 'width:180px' }, [
+          zeilenAuswahl.length
+            ? U.zelleSel(e, 'zeile', zeilenAuswahl, { rerender: true })
+            : el('span', { class: 'muted', text: 'keine Nutzungszeile' })]));
+        tr.appendChild(el('td', { class: 'muted', style: 'width:150px',
+          text: zeile ? ((A.NUTZUNGEN.find(function (x) { return x.id === zeile.art; }) || {}).label + ' · ' +
+                (A.VERWERTUNG.find(function (x) { return x.id === zeile.verwertung; }) || {}).label) : '—' }));
+        tr.appendChild(el('td', { class: 'w1' }, [el('button', { class: 'ghost sm schreibend', text: '×',
+          onclick: function () { p.spiegel.einheiten.splice(i, 1); A.recompute(); A.render(); } })]));
+        return tr;
       });
-      var sp = el('tr', { class: 'total' });
-      sp.appendChild(el('td', { colspan: 3, text: p.spiegel.einheiten.length + ' Einheiten' }));
-      ['spiegel_flaeche', 'spiegel_erloes', 'spiegel_preis_m2'].forEach(function (k) {
-        sp.appendChild(U.dTd(function (r) {
-          var fo = r.flaechen.teile[p.spiegel.teil] || {};
-          return fmt(fo[k] || 0);
-        }));
+
+      /* Zwischentotale je Nutzungszeile */
+      zeilenAuswahl.forEach(function (za) {
+        zs.push(U.el('tr', { class: 'sum' }, [
+          el('td', { colspan: 3, text: 'Total ' + za.label }),
+          U.dTd(function (r) { var g = (r.flaechen.teile[p.spiegel.teil].spiegel || {})[za.id];
+            return g ? fmt(g.flaeche) : '—'; }),
+          U.dTd(function (r) { var g = (r.flaechen.teile[p.spiegel.teil].spiegel || {})[za.id];
+            return g ? fmt(g.erloes) : '—'; }),
+          U.dTd(function (r) { var g = (r.flaechen.teile[p.spiegel.teil].spiegel || {})[za.id];
+            return g ? fmt(g.preis_m2) : '—'; }),
+          el('td', { colspan: 3, class: 'muted' }, [U.d(function (r) {
+            var g = (r.flaechen.teile[p.spiegel.teil].spiegel || {})[za.id];
+            return g ? g.anzahl + ' Einheiten' : '';
+          }, 'muted')])
+        ]));
       });
-      sp.appendChild(el('td', {}));
-      zs.push(sp);
 
       spiegelKoerper.push(el('div', { class: 'panelbody' }, [U.tabelle([
         { label: 'Nr.' }, { label: 'Geschoss', n: true }, { label: 'Zimmer', n: true },
-        { label: 'Fläche m²', n: true }, { label: 'Preis CHF', n: true },
-        { label: 'CHF/m²', n: true }, { label: '' }
+        { label: 'Fläche m²', n: true }, { label: 'Preis CHF', n: true }, { label: 'CHF/m²', n: true },
+        { label: 'Nutzungszeile' }, { label: 'Art · Verwertung' }, { label: '' }
       ], zs)]));
+
       spiegelKoerper.push(el('div', { class: 'panelbody' }, [
         el('button', { class: 'schreibend', text: '+ Einheit', onclick: function () {
           p.spiegel.einheiten.push({ nr: String(p.spiegel.einheiten.length + 1), geschoss: 0,
-            zimmer: 3.5, flaeche: 95, preis: 900000 });
+            zimmer: 3.5, flaeche: 95, preis: 900000,
+            zeile: zeilenAuswahl.length ? zeilenAuswahl[0].id : null });
           A.recompute(); A.render();
-        } })
+        } }),
+        U.hinweis('info', 'Die Flächen der zugeordneten Nutzungszeilen werden durch den Spiegel ' +
+          '<b>ersetzt</b>, ebenso deren Preis je m². Gewerbe, Lager und Parkplätze laufen weiterhin ' +
+          'über die Nutzungszeilen.')
       ]));
     }
 
     out.appendChild(U.panel('Wohnungsspiegel', p.spiegel.aktiv
-      ? 'überschreibt Fläche und Preis je m² der gewählten Zeile'
-      : 'solange kein Spiegel vorliegt, rechnet das Modell über Preis je m²', spiegelKoerper));
+      ? 'Einheiten einzeln bepreisen — sie speisen die zugeordneten Nutzungszeilen'
+      : 'solange kein Spiegel vorliegt, gilt der Durchschnittspreis der Nutzungszeile', spiegelKoerper));
 
     var zus = el('div', { class: 'panelbody' });
     U.derived.push(function () {

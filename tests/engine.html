@@ -52,13 +52,37 @@
   p.grundstueck.flaeche = 2500; p.grundstueck.az = 0.90; p.grundstueck.geschosse = 4;
   var r = E.compute(p);
   pruefe('zulässige aGF = 2500 × 0.90', 2250, r.flaechen.agf_zulaessig);
-  pruefe('Gebäudegrundfläche = aGF ÷ 4 Geschosse', 562.5, r.flaechen.total.grundflaeche, 0.01);
-  pruefe('GF oberirdisch = aGF × 1.10', 2475, r.flaechen.teile.neubau.gf_oi);
+  pruefe('Gebäudegrundfläche = aGF ÷ 4 Vollgeschosse', 562.5, r.flaechen.total.grundflaeche, 0.01);
+  pruefe('GF oberirdisch = aGF × 1.00', 2250, r.flaechen.teile.neubau.gf_oi);
   pruefe('Untergeschoss = Grundfläche × 80 %', 450, r.flaechen.total.gf_ug, 0.01);
-  pruefe('NWF = GF o.i. × 78 %', 1930.5, r.flaechen.total.nwf, 0.01);
+  pruefe('NWF = GF o.i. × 78 %', 1755, r.flaechen.total.nwf, 0.01);
   pruefe('Umgebung = Grundstück − Grundfläche', 1937.5, r.flaechen.umgebung, 0.01);
-  pruefe('Höhe o.i. = 3 × 3.00 + 3.20', 12.2, r.flaechen.teile.neubau.hoehe_oi, 0.001);
-  pruefe('Volumen o.i. = GF/Geschosse × Höhe', 2475 / 4 * 12.2, r.flaechen.total.gv_oi, 0.1);
+  pruefe('Höhe o.i. = 4 × 3.00 (Attika anrechenbar)', 12.0, r.flaechen.teile.neubau.hoehe_oi, 0.001);
+  pruefe('Volumen o.i. = Grundfläche × 4 × 3.00', 562.5 * 4 * 3, r.flaechen.total.gv_oi, 0.1);
+
+  /* Ausnutzungsbonus und nicht anrechenbares Attikageschoss */
+  var pb = A.defaultProject();
+  pb.grundstueck.flaeche = 2500; pb.grundstueck.az = 0.90; pb.grundstueck.az_bonus = 10;
+  pb.grundstueck.geschosse = 4;
+  pb.grundstueck.attika_anrechenbar = false; pb.grundstueck.attika_pct = 60;
+  var rbn = E.compute(pb), ob = rbn.flaechen.teile.neubau;
+  pruefe('aGF mit 10 % Bonus = 2500 × 0.90 × 1.10', 2475, rbn.flaechen.agf_zulaessig, 0.01);
+  pruefe('Gebäudegrundfläche ohne Attika = aGF ÷ 4', 618.75, ob.grundflaeche, 0.01);
+  pruefe('Attika = Grundfläche × 60 %', 371.25, ob.attika, 0.01);
+  pruefe('GF o.i. = aGF + Attika', 2475 + 371.25, ob.gf_oi, 0.01);
+  pruefe('Umgebung bleibt ohne Attika', 2500 - 618.75, rbn.flaechen.umgebung, 0.01);
+  pruefe('Höhe o.i. = 4 × 3.00 + 3.20', 15.2, ob.hoehe_oi, 0.001);
+  pruefe('Volumen o.i. = Vollgeschosse + Attika',
+    618.75 * 4 * 3 + 371.25 * 3.2, ob.gv_oi, 0.5);
+
+  /* Phasendauern in Monaten */
+  var pz = A.defaultProject();
+  pz.zeit.dauer_entwicklung = 18; pz.zeit.dauer_bewilligung = 12;
+  pz.zeit.dauer_vorbereitung = 3; pz.zeit.dauer_bau = 24;
+  var Z = E.zeitachse(pz);
+  pruefe('18 Monate Entwicklung = 1.5 Jahre', 1.5, Z.t_baueingabe, 0.001);
+  pruefe('Baubewilligung nach 30 Monaten', 2.5, Z.t_bb, 0.001);
+  pruefe('Bauende nach 57 Monaten', 57 / 12, Z.t_bauende, 0.001);
 
   /* aGF direkt statt über die Ziffer */
   var pa = A.defaultProject();
@@ -174,6 +198,27 @@
   pruefe('Erlöse − alle Kosten − Steuern = Gewinn',
     k.erloese + k.mietertrag_projekt - k.erwerbskosten - k.baukosten -
     k.finanzierungskosten - k.vermarktung - k.steuern, k.gewinn, 2);
+
+  /* ---- Wohnungsspiegel speist die Nutzungszeilen ------------------- */
+  var ps = A.defaultProject();
+  var zStwe = A.defNutzung({ bezeichnung: 'Wohnen STWE', art: 'wohnen', anteil: 70,
+    preis: 9000, verwertung: 'stwe' });
+  var zMiete = A.defNutzung({ bezeichnung: 'Wohnen Miete', art: 'wohnen', anteil: 30,
+    miete: 300, verwertung: 'halten_vermietet' });
+  ps.teile.neubau.nutzungen = [zStwe, zMiete];
+  ps.spiegel.aktiv = true; ps.spiegel.teil = 'neubau';
+  ps.spiegel.einheiten = [
+    { nr: '1', flaeche: 100, preis: 1000000, zeile: zStwe.id },
+    { nr: '2', flaeche: 120, preis: 1160000, zeile: zStwe.id },
+    { nr: '3', flaeche: 80,  preis: 0,       zeile: zMiete.id }
+  ];
+  var rs = E.compute(ps), os = rs.flaechen.teile.neubau;
+  pruefe('Spiegel setzt Fläche der STWE-Zeile', 220, os.nutzungen[zStwe.id], 0.01);
+  pruefe('Spiegel setzt Fläche der Mietzeile', 80, os.nutzungen[zMiete.id], 0.01);
+  pruefe('Durchschnittspreis der STWE-Zeile aus dem Spiegel',
+    2160000 / 220, os.spiegel[zStwe.id].preis_m2, 0.01);
+  pruefe('STWE-Erlös folgt dem Spiegel', 2160000, rs.ertraege.stwe_erloes, 1);
+  pruefe('Mietzeile bleibt Sollmiete', 80 * 300, rs.ertraege.sollmiete, 1);
 
   /* ---- Migration Schema 1 -> 2 ------------------------------------ */
   var altprojekt = {

@@ -6,7 +6,7 @@ window.APP = window.APP || {};
 (function (A) {
   'use strict';
 
-  A.SCHEMA = 2;
+  A.SCHEMA = 3;
 
   /* ---------------------------------------------------------------
      Stammlisten
@@ -301,7 +301,7 @@ window.APP = window.APP || {};
       modus: modus,            // 'ausnutzung' | 'studie'
       gf_oi: 0,                // Studie: Geschossfläche oberirdisch m²
       nwf_manuell: 0,          // Studie: NWF direkt (überschreibt hnf_quote)
-      faktor_gf: 1.10,         // GF oberirdisch je m² aGF
+      faktor_gf: 1.00,         // Aufschlag GF oberirdisch je m² aGF
       hnf_quote: 78,           // NWF in % der GF oberirdisch
       ug_quote: 80,            // Untergeschoss in % der Gebäudegrundfläche
       pp: 0,                   // Anzahl Parkplätze
@@ -357,8 +357,12 @@ window.APP = window.APP || {};
         flaeche: 2500,
         az_modus: 'az',                  // 'az' = über Ausnützungsziffer, 'agf' = direkt
         az: 0.90,
+        az_bonus: 0,                     // % Zuschlag auf die Ziffer (Arealbonus o. ä.)
         agf_direkt: 0,                   // anrechenbare Geschossfläche, wenn keine AZ vorliegt
-        geschosse: 4,                    // oberirdisch, inklusive Dachgeschoss
+        bemerkung: '',                   // Notiz zur Ausnutzung
+        geschosse: 4,                    // VOLLGESCHOSSE, ohne Attika
+        attika_anrechenbar: true,        // false = Attika kommt zusätzlich zur aGF
+        attika_pct: 60,                  // % der Gebäudegrundfläche, wenn nicht anrechenbar
         umgebung_manuell: 0,             // >0 überschreibt Grundstück − Gebäudegrundfläche
         mehrwertabgabe_aktiv: false,
         mehrwertabgabe_pct: 20,
@@ -415,7 +419,11 @@ window.APP = window.APP || {};
       spiegel: {
         aktiv: false,
         teil: 'neubau',
-        einheiten: []                    // {nr, geschoss, zimmer, flaeche, preis}
+        /* Je Einheit: {nr, geschoss, zimmer, flaeche, preis, zeile}
+           «zeile» verweist auf eine Nutzungszeile — darüber erbt die
+           Einheit Art und Verwertung. Ohne Spiegel gilt der
+           Durchschnittspreis der Zeile. */
+        einheiten: []
       },
 
       vermarktung: {
@@ -445,14 +453,15 @@ window.APP = window.APP || {};
         erstvermietung: 0.5              // Jahre bis Vollvermietung
       },
 
+      /* Alle Dauern in MONATEN. Der Rechenkern teilt intern durch 12. */
       zeit: {
-        dauer_entwicklung: 1.50,         // Kauf → Baueingabe
-        dauer_bewilligung: 1.00,         // Baueingabe → rechtskräftige BB
-        dauer_vorbereitung: 0.25,        // BB → Baustart
-        dauer_bau: 1.75,
-        verkaufsstart_rel_bb: 0.00,      // Jahre relativ zur Baubewilligung
-        dauer_verkauf: 2.00,
-        exit_verzoegerung: 0.25,         // Jahre nach Fertigstellung
+        dauer_entwicklung: 18,           // Erwerb → Baueingabe
+        dauer_bewilligung: 12,           // Baueingabe → rechtskräftige Bewilligung
+        dauer_vorbereitung: 3,           // Bewilligung → Baustart
+        dauer_bau: 21,
+        verkaufsstart_rel_bb: 0,         // Monate relativ zur Baubewilligung
+        dauer_verkauf: 24,
+        exit_verzoegerung: 3,            // Monate nach Fertigstellung
         kostenkurve: 's'                 // s | linear
       },
 
@@ -487,7 +496,7 @@ window.APP = window.APP || {};
         exit_netto: false                // true = Nettorendite statt Brutto beim Exit
       },
 
-      steuern: { aktiv: true, satz: 20 },
+      steuern: { aktiv: false, satz: 20 },
 
       ziele: { marge: 15, bruttorendite: 4.0 },
 
@@ -584,10 +593,29 @@ window.APP = window.APP || {};
   A.migrate = function (p) {
     if (!p || typeof p !== 'object') return null;
 
+    var version = p.schema || 1;
+
+    /* --- Schema 2 -> 3: Phasendauern in Monaten, Vollgeschosse ohne
+       Attika, Umrechnungsfaktor neutral. -------------------------------- */
+    if (version < 3) {
+      if (p.zeit) {
+        ['dauer_entwicklung', 'dauer_bewilligung', 'dauer_vorbereitung', 'dauer_bau',
+         'verkaufsstart_rel_bb', 'dauer_verkauf', 'exit_verzoegerung'].forEach(function (k) {
+          if (typeof p.zeit[k] === 'number') p.zeit[k] = Math.round(p.zeit[k] * 12 * 10) / 10;
+        });
+      }
+      /* Bisher zählte das oberste Geschoss als Dachgeschoss mit; neu sind
+         die Geschosse Vollgeschosse und die Attika kommt separat dazu. */
+      if (p.grundstueck && p.grundstueck.geschosse > 1 && p.grundstueck.attika_anrechenbar === undefined) {
+        p.grundstueck.attika_anrechenbar = true;
+      }
+      p.zeit_in_monaten = true;
+    }
+
     /* --- Schema 1 -> 2: Nutzungen wurden von festen Feldern zu freien
        Zeilen, die Kubatur bekam eigene Bereiche für Untergeschoss und
        Einstellhalle. --------------------------------------------------- */
-    var altesSchema = (p.schema || 1) < 2;
+    var altesSchema = version < 2;
 
     if (altesSchema) {
       A.TEILE.forEach(function (T) {
@@ -676,6 +704,18 @@ window.APP = window.APP || {};
       if (!Array.isArray(t.nutzungen)) t.nutzungen = [];
       t.nutzungen = t.nutzungen.map(function (n) { return A.defNutzung(n); });
     });
+
+    /* Einheiten des Wohnungsspiegels einer Nutzungszeile zuordnen */
+    if (p.spiegel && Array.isArray(p.spiegel.einheiten)) {
+      var teil = p.teile[p.spiegel.teil];
+      var standard = teil && teil.nutzungen
+        ? (teil.nutzungen.find(function (n) { return n.art === 'wohnen'; }) || {}).id
+        : null;
+      p.spiegel.einheiten.forEach(function (e) {
+        if (!e.zeile) e.zeile = p.spiegel.zeile || standard || null;
+      });
+      delete p.spiegel.zeile;
+    }
 
     /* Startdatum aus einem vorhandenen Startjahr ableiten */
     if (!p.startdatum && p.startjahr) p.startdatum = p.startjahr + '-01-01';

@@ -47,17 +47,23 @@ einer Zielbruttorendite. Ein Projekt darf alle vier Arten gleichzeitig enthalten
 direkt oder aus einer Studie. Die Kaskade:
 
 ```
-aGF ÷ Anzahl Geschosse  = Gebäudegrundfläche
-Grundstück − Grundfläche = Umgebungsfläche
-Grundfläche × UG-Quote   = Untergeschoss          (Vorgabe 80 %)
-PP × Fläche je PP        = Einstellhalle
-aGF × Faktor             = Geschossfläche oberirdisch
-GF o.i. × HNF-Quote      = Nutzfläche NWF         (Vorgabe 78 %)
+aGF = Grundstück × Ziffer × (1 + Bonus)     oder direkt erfasst
+aGF ÷ Vollgeschosse       = Gebäudegrundfläche     ← ohne Attika
+Grundstück − Grundfläche  = Umgebungsfläche
+Grundfläche × UG-Quote    = Untergeschoss          (Vorgabe 80 %)
+PP × Fläche je PP         = Einstellhalle
+aGF × Faktor + Attika     = Geschossfläche oberirdisch
+GF o.i. × HNF-Quote       = Nutzfläche NWF         (Vorgabe 78 %)
 ```
 
-Kubaturen wahlweise über Höhen (Regelgeschoss 3.00 m, Dachgeschoss 3.20 m,
+**Geschosse sind Vollgeschosse ohne Attika.** Ist die Attika nicht anrechenbar,
+kommt ihre Fläche (Vorgabe 60 % der Gebäudegrundfläche) zusätzlich zur aGF hinzu;
+ist sie anrechenbar, steckt sie bereits darin. Der Fussabdruck — und damit die
+Umgebungsfläche — bemisst sich immer am Vollgeschoss.
+
+Kubaturen wahlweise über Höhen (Regelgeschoss 3.00 m, Attika 3.20 m,
 Untergeschoss und Einstellhalle je 3.40 m) oder als direkt erfasstes Volumen,
-aus dem sich die Höhen ergeben. Regelgeschosse = Anzahl Geschosse − 1.
+aus dem sich die Höhen ergeben.
 
 **Erwerbskosten** Kaufpreis wahlweise als Total, CHF/m² Land oder CHF/m² aGF, dazu
 Notariat, Grundbuch, Handänderungssteuer mit Käuferanteil, Einkaufskommission,
@@ -88,8 +94,11 @@ Nutzungszeile in welche Kostengruppe fällt, ist je Zeile einstellbar.
 Je Zeile ist die Bezugsgrösse frei wählbar, eigene Zeilen lassen sich ergänzen.
 Bis zu drei Kostenblöcke (Neubau, Erweiterung, Sanierung) mit eigenen Kennwerten.
 
-**Erträge** Mietzinsen je Nutzung, Verkaufspreise je m², optionaler Wohnungsspiegel
-— sobald dieser erfasst ist, ersetzt sein Durchschnittspreis den Preis je m².
+**Erträge** Mietzinsen je Nutzungszeile, Verkaufspreise je m². Der optionale
+**Wohnungsspiegel** kommt zum Zug, sobald einzelne Einheiten bepreist werden
+sollen: Jede Einheit wird einer Nutzungszeile zugeordnet und erbt von dort Art
+und Verwertung; Fläche und Durchschnittspreis der Zeile ergeben sich dann aus den
+Einheiten. Ohne Spiegel gilt der erfasste Durchschnittswert.
 
 **Finanzierung** Eigenkapitalquote und Belehnungsdeckel, getrennte Zinssätze vor
 und nach der Baubewilligung, Bereitstellungskommission, kalkulatorische
@@ -104,9 +113,13 @@ Wasserfalldarstellung, Cashflow und Kapitalbindung im Jahresraster.
 **Analyse** Sensitivität als Tornado über sieben Parameter sowie die
 Rückwärtsrechnung des residualen Landwerts bei Zielmarge.
 
-**Portfolio** Kennzahlen aller Projekte, Ampeln gegen die Zielwerte und der über
-Kalenderjahre zusammengeführte Kapitalbedarf — er zeigt, wann sich Projekte in
-der Finanzierung überlagern.
+**Portfolio** Kennzahlen aller Projekte mit Ampeln gegen die Zielwerte, dazu drei
+zusammengeführte Darstellungen auf gemeinsamer Kalenderachse:
+
+- **Terminplan** — ein Balken je Projekt mit allen Phasen, darunter die Anzahl
+  gleichzeitig in Ausführung stehender Projekte
+- **Kapitalbedarf** — gebundene Eigen- und Fremdmittel je Jahr
+- **Cashflow** — Ausgaben, Einnahmen und kumulierter Saldo je Jahr
 
 **Tracking** Soll-Ist-Vergleich je Kostenposition mit CSV-Einlesung sowie
 Snapshots, die einen Projektstand einfrieren und gegen heute stellen.
@@ -276,9 +289,10 @@ damit gibt es keine zweite Stelle, an der dieselbe Zahl anders entstehen könnte
 
 ## Rechenweise
 
-**Zeitachse** Jahresraster ab dem erfassten Startdatum des Erwerbs; Cashflow und
-Diagramme sind mit Kalenderjahren beschriftet. Phasendauern dürfen dezimal sein
-(1,5 = achtzehn Monate). Zinsen laufen auf dem mittleren Kapitalsaldo des Jahres.
+**Zeitachse** Phasendauern werden in **Monaten** erfasst und bauen auf dem
+Startdatum des Erwerbs auf. Gerechnet wird im Jahresraster; Cashflow und
+Diagramme sind mit Kalenderjahren beschriftet. Zinsen laufen auf dem mittleren
+Kapitalsaldo des Jahres.
 
 **Baukostenverlauf** S-Kurve oder linear über die Bauzeit, Honorare ab
 Projektbeginn, BKP 1 in der ersten Bauphase.
@@ -308,7 +322,7 @@ Kantonale Feinheiten der Grundstückgewinn- und Gewinnsteuer sind nicht modellie
 
 ## Selbsttest
 
-`tests/engine.html` im Browser öffnen. Die Seite prüft 42 Referenzfälle —
+`tests/engine.html` im Browser öffnen. Die Seite prüft 57 Referenzfälle —
 Flächen- und Volumenkaskade, Nebenkostensätze, Kostengruppen, die Prozentkette
 BKP 202 → 5 → 599, Verwertungsarten, Zeitverteilung, Vorverkaufsstaffel, internen
 Zinsfuss, Residualwert, die Gewinnidentität und die Überführung alter

@@ -17,15 +17,17 @@ window.APP = window.APP || {};
      --------------------------------------------------------------- */
 
   E.zeitachse = function (p) {
-    var z = p.zeit;
-    var t_baueingabe = num(z.dauer_entwicklung);
-    var t_bb        = t_baueingabe + num(z.dauer_bewilligung);
-    var t_baustart  = t_bb + num(z.dauer_vorbereitung);
-    var t_bauende   = t_baustart + Math.max(0.25, num(z.dauer_bau));
-    var t_rohbau    = t_baustart + Math.max(0.25, num(z.dauer_bau)) * 0.55;
-    var t_vk_start  = Math.max(0, t_bb + num(z.verkaufsstart_rel_bb));
-    var t_vk_ende   = t_vk_start + Math.max(0.25, num(z.dauer_verkauf));
-    var t_ende      = Math.max(t_bauende + num(z.exit_verzoegerung), t_vk_ende);
+    /* Eingabe erfolgt in Monaten, gerechnet wird in Jahren. */
+    var z = p.zeit, M = function (k) { return num(z[k]) / 12; };
+    var bauzeit     = Math.max(1 / 12, M('dauer_bau'));
+    var t_baueingabe = M('dauer_entwicklung');
+    var t_bb        = t_baueingabe + M('dauer_bewilligung');
+    var t_baustart  = t_bb + M('dauer_vorbereitung');
+    var t_bauende   = t_baustart + bauzeit;
+    var t_rohbau    = t_baustart + bauzeit * 0.55;
+    var t_vk_start  = Math.max(0, t_bb + M('verkaufsstart_rel_bb'));
+    var t_vk_ende   = t_vk_start + Math.max(1 / 12, M('dauer_verkauf'));
+    var t_ende      = Math.max(t_bauende + M('exit_verzoegerung'), t_vk_ende);
     return {
       t_baueingabe: t_baueingabe, t_bb: t_bb, t_baustart: t_baustart,
       t_rohbau: t_rohbau, t_bauende: t_bauende,
@@ -70,24 +72,26 @@ window.APP = window.APP || {};
     var g = p.grundstueck;
     var res = { teile: {}, total: {
       gf_oi: 0, gf_ug: 0, f_aeh: 0, gf: 0, gv: 0, gv_oi: 0, gv_ug: 0, gv_aeh: 0,
-      nwf: 0, pp: 0, grundflaeche: 0
+      nwf: 0, pp: 0, grundflaeche: 0, attika: 0
     }, gruppen: { oi_stwe: 0, oi_miete: 0, oi_gewerbe: 0 } };
 
-    /* Anrechenbare Geschossfläche: entweder über die Ausnützungsziffer
-       oder direkt erfasst, wenn keine Ziffer vorliegt. */
+    /* Anrechenbare Geschossfläche: über die Ausnützungsziffer samt
+       allfälligem Bonus, oder direkt erfasst. */
     var agf_zul = g.az_modus === 'agf'
       ? num(g.agf_direkt)
-      : num(g.flaeche) * num(g.az);
+      : num(g.flaeche) * (num(g.az) * (1 + pct(g.az_bonus)));
     res.agf_zulaessig = agf_zul;
 
+    /* Geschosse sind VOLLGESCHOSSE ohne Attika. */
     var geschosse = Math.max(1, num(g.geschosse) || 1);
     res.geschosse = geschosse;
+    res.attika_anrechenbar = !!g.attika_anrechenbar;
 
     var agf_genutzt = 0;
 
     A.TEILE.forEach(function (T) {
       var t = p.teile[T.id];
-      var o = { aktiv: !!t.aktiv, gf_oi: 0, gf_ug: 0, f_aeh: 0, gf: 0,
+      var o = { aktiv: !!t.aktiv, gf_oi: 0, gf_ug: 0, f_aeh: 0, gf: 0, attika: 0,
                 gv_oi: 0, gv_ug: 0, gv_aeh: 0, gv: 0, nwf: 0,
                 pp: num(t.pp), grundflaeche: 0, nutzungen: {}, zeilen: [],
                 gruppen: { oi_stwe: 0, oi_miete: 0, oi_gewerbe: 0 } };
@@ -101,25 +105,30 @@ window.APP = window.APP || {};
           o.agf = o.gf_oi / Math.max(0.01, num(t.faktor_gf));
         }
 
-        /* Gebäudegrundfläche = anrechenbare Geschossfläche je Geschoss */
+        /* Gebäudegrundfläche = anrechenbare Geschossfläche je Vollgeschoss.
+           Bewusst OHNE Attika — der Fussabdruck bemisst sich am Vollgeschoss. */
         o.grundflaeche = o.agf / geschosse;
+        /* Ist die Attika nicht anrechenbar, kommt ihre Fläche zusätzlich
+           zur aGF hinzu; andernfalls steckt sie bereits darin. */
+        o.attika = g.attika_anrechenbar ? 0 : o.grundflaeche * pct(g.attika_pct);
+        o.gf_oi += o.attika;
         o.gf_ug  = o.grundflaeche * pct(t.ug_quote);
         o.f_aeh  = o.pp * num(t.flaeche_pro_pp);
         o.gf     = o.gf_oi + o.gf_ug;
         o.nwf    = num(t.nwf_manuell) > 0 ? num(t.nwf_manuell) : o.gf_oi * pct(t.hnf_quote);
 
-        /* Kubaturen. Regelgeschosse = Geschosse − 1, Dachgeschoss immer eines. */
-        var hoehe_oi = (geschosse - 1) * num(t.h_regel) + num(t.h_dach);
+        /* Kubaturen: Vollgeschosse zur Regelhöhe, die Attika separat. */
+        var hoehe_oi = geschosse * num(t.h_regel) + (o.attika > 0 ? num(t.h_dach) : 0);
         o.hoehe_oi = hoehe_oi;
         if (t.kubatur_modus === 'volumen') {
           o.gv_oi  = num(t.v_oi);
           o.gv_ug  = num(t.v_ug);
           o.gv_aeh = num(t.v_aeh);
-          o.h_oi_ist  = o.grundflaeche > 0 ? o.gv_oi / (o.gf_oi / geschosse) : 0;
+          o.h_oi_ist  = o.grundflaeche > 0 ? o.gv_oi / o.grundflaeche : 0;
           o.h_ug_ist  = o.gf_ug > 0 ? o.gv_ug / o.gf_ug : 0;
           o.h_aeh_ist = o.f_aeh > 0 ? o.gv_aeh / o.f_aeh : 0;
         } else {
-          o.gv_oi  = (o.gf_oi / geschosse) * hoehe_oi;
+          o.gv_oi  = o.grundflaeche * geschosse * num(t.h_regel) + o.attika * num(t.h_dach);
           o.gv_ug  = o.gf_ug * num(t.h_ug);
           o.gv_aeh = o.f_aeh * num(t.h_aeh);
           o.h_oi_ist = hoehe_oi; o.h_ug_ist = num(t.h_ug); o.h_aeh_ist = num(t.h_aeh);
@@ -152,18 +161,29 @@ window.APP = window.APP || {};
         }
       });
 
-      /* Wohnungsspiegel überschreibt eine bestimmte Nutzungszeile */
+      /* Wohnungsspiegel speist die Nutzungszeilen: Jede Einheit ist einer
+         Zeile zugeordnet und erbt von dort Art und Verwertung. Solange kein
+         Spiegel vorliegt, gilt der Durchschnittspreis der Zeile. */
+      o.spiegel = {};
       if (p.spiegel.aktiv && p.spiegel.teil === T.id && p.spiegel.einheiten.length) {
         var sf = 0, sp = 0;
-        p.spiegel.einheiten.forEach(function (e) { sf += num(e.flaeche); sp += num(e.preis); });
-        if (sf > 0) {
-          o.spiegel_preis_m2 = sp / sf;
-          o.spiegel_flaeche = sf;
-          o.spiegel_erloes = sp;
-          var ziel = p.spiegel.zeile ||
-            ((t.nutzungen.find(function (n) { return n.art === 'wohnen'; }) || {}).id);
-          if (ziel && o.nutzungen[ziel] !== undefined) o.nutzungen[ziel] = sf;
-        }
+        p.spiegel.einheiten.forEach(function (e) {
+          var zid = e.zeile;
+          if (!zid || o.nutzungen[zid] === undefined) return;
+          if (!o.spiegel[zid]) o.spiegel[zid] = { flaeche: 0, erloes: 0, anzahl: 0 };
+          o.spiegel[zid].flaeche += num(e.flaeche);
+          o.spiegel[zid].erloes  += num(e.preis);
+          o.spiegel[zid].anzahl  += 1;
+          sf += num(e.flaeche); sp += num(e.preis);
+        });
+        Object.keys(o.spiegel).forEach(function (zid) {
+          var g = o.spiegel[zid];
+          g.preis_m2 = g.flaeche > 0 ? g.erloes / g.flaeche : 0;
+          o.nutzungen[zid] = g.flaeche;
+        });
+        o.spiegel_flaeche = sf;
+        o.spiegel_erloes = sp;
+        o.spiegel_preis_m2 = sf > 0 ? sp / sf : 0;
       }
 
       if (t.aktiv && Math.abs(summeFlaeche - 100) > 0.5) {
@@ -177,7 +197,7 @@ window.APP = window.APP || {};
 
       res.teile[T.id] = o;
       if (t.aktiv) {
-        ['gf_oi', 'gf_ug', 'f_aeh', 'gf', 'gv', 'gv_oi', 'gv_ug', 'gv_aeh', 'nwf', 'pp', 'grundflaeche']
+        ['gf_oi', 'gf_ug', 'f_aeh', 'gf', 'gv', 'gv_oi', 'gv_ug', 'gv_aeh', 'nwf', 'pp', 'grundflaeche', 'attika']
           .forEach(function (k) { res.total[k] += o[k]; });
         Object.keys(o.gruppen).forEach(function (k) { res.gruppen[k] += o.gruppen[k]; });
       }
@@ -417,10 +437,8 @@ window.APP = window.APP || {};
 
         var istPP = n.art === 'parkplatz';
         var preis = num(n.preis);
-        if (p.spiegel.aktiv && p.spiegel.teil === T.id && fo.spiegel_preis_m2 &&
-            (p.spiegel.zeile ? p.spiegel.zeile === n.id : n.art === 'wohnen')) {
-          preis = fo.spiegel_preis_m2;   // Wohnungsspiegel schlägt durch
-        }
+        var sp = fo.spiegel && fo.spiegel[n.id];
+        if (sp && sp.preis_m2 > 0) preis = sp.preis_m2;   // Spiegel schlägt durch
 
         /* Parkplätze werden je Monat erfasst, Flächen je Jahr und m². */
         var miete_a = istPP ? menge * num(n.miete) * 12 : menge * num(n.miete);
@@ -636,7 +654,7 @@ window.APP = window.APP || {};
     });
 
     /* Exit an Investor und kalkulatorische Realisierung des Halteanteils */
-    var tExit = Z.t_bauende + num(p.zeit.exit_verzoegerung);
+    var tExit = Z.t_bauende + num(p.zeit.exit_verzoegerung) / 12;
     addArr(det.exit, punkt(ERT.exit_wert, tExit, N));
     addArr(det.halten, punkt(ERT.halten_wert, Math.min(tExit, Z.t_ende), N));
 

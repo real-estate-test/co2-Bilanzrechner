@@ -191,44 +191,191 @@ window.APP = window.APP || {};
       ], zeilen)])
     ], [archivSchalter]));
 
-    /* Kapitalbedarf über die Kalenderjahre */
-    var jahre = {};
+    /* ---------------------------------------------------------------
+       Terminplan: eine Zeile je Projekt auf gemeinsamer Kalenderachse
+       --------------------------------------------------------------- */
+    var PHASENFARBEN = [
+      { key: 'entwicklung', label: 'Entwicklung',  f: '#7c93b3' },
+      { key: 'bewilligung', label: 'Bewilligung',  f: '#b0871f' },
+      { key: 'vorbereitung',label: 'Vorbereitung', f: '#8a8f99' },
+      { key: 'bau',         label: 'Bau',          f: '#1f5fd0' },
+      { key: 'vermarktung', label: 'Vermarktung',  f: '#0d7a45' }
+    ];
+
+    var termine = berechnet.map(function (x) {
+      var Z = x.r.zeit, start = x.p.startjahr || new Date().getFullYear();
+      var startFrac = 0;
+      if (x.p.startdatum) {
+        var d = new Date(x.p.startdatum);
+        if (!isNaN(d)) startFrac = (d.getMonth() + d.getDate() / 30.4) / 12;
+      }
+      var b = start + startFrac;
+      return {
+        p: x.p, r: x.r, von: b, bis: b + Z.t_ende,
+        phasen: [
+          { key: 'entwicklung',  t0: b,                  t1: b + Z.t_baueingabe },
+          { key: 'bewilligung',  t0: b + Z.t_baueingabe, t1: b + Z.t_bb },
+          { key: 'vorbereitung', t0: b + Z.t_bb,         t1: b + Z.t_baustart },
+          { key: 'bau',          t0: b + Z.t_baustart,   t1: b + Z.t_bauende },
+          { key: 'vermarktung',  t0: b + Z.t_vk_start,   t1: b + Z.t_vk_ende, reihe: 1 }
+        ]
+      };
+    });
+
+    if (termine.length) {
+      var tVon = Math.floor(Math.min.apply(null, termine.map(function (t) { return t.von; })));
+      var tBis = Math.ceil(Math.max.apply(null, termine.map(function (t) { return t.bis; })));
+      var jahre = Math.max(1, tBis - tVon);
+      var W = 980, zeileH = 40, links = 190, kopf = 26;
+      var fussH = 46;
+      var H = kopf + termine.length * zeileH + fussH;
+      var px = function (t) { return links + (t - tVon) / jahre * (W - links - 12); };
+
+      var kinder = [];
+      /* Jahresraster */
+      for (var jj = 0; jj <= jahre; jj++) {
+        var xj = px(tVon + jj);
+        kinder.push(s('line', { x1: xj, y1: kopf - 12, x2: xj, y2: H - fussH + 6, stroke: '#e2e6ec' }));
+        kinder.push(s('text', { x: xj + 3, y: kopf - 16, 'font-size': 10, fill: '#6b7484', class: 'n' },
+          String(tVon + jj)));
+      }
+      /* Heute-Linie */
+      var heute = new Date();
+      var heuteT = heute.getFullYear() + (heute.getMonth() + heute.getDate() / 30.4) / 12;
+      if (heuteT >= tVon && heuteT <= tBis) {
+        kinder.push(s('line', { x1: px(heuteT), y1: kopf - 12, x2: px(heuteT), y2: H - fussH + 6,
+          stroke: '#c02e26', 'stroke-width': 1.4 }));
+        kinder.push(s('text', { x: px(heuteT) + 4, y: H - fussH + 18, 'font-size': 10, fill: '#c02e26' }, 'heute'));
+      }
+
+      termine.forEach(function (t, i) {
+        var y0 = kopf + i * zeileH;
+        kinder.push(s('text', { x: 0, y: y0 + 15, 'font-size': 11.5, fill: '#10151c' },
+          t.p.name.length > 26 ? t.p.name.slice(0, 25) + '…' : t.p.name));
+        kinder.push(s('text', { x: 0, y: y0 + 28, 'font-size': 10, fill: '#6b7484' }, t.p.status || ''));
+        t.phasen.forEach(function (ph) {
+          var farbe = PHASENFARBEN.find(function (f) { return f.key === ph.key; });
+          var breite = Math.max(2, px(ph.t1) - px(ph.t0));
+          kinder.push(s('rect', { x: px(ph.t0), y: y0 + (ph.reihe ? 19 : 4), width: breite, height: 14,
+            rx: 2.5, fill: farbe.f, opacity: ph.reihe ? .75 : .92 }));
+        });
+      });
+
+      /* Auslastung: wie viele Projekte sind je Jahr in Ausführung? */
+      var auslastung = [];
+      for (var a = 0; a < jahre; a++) {
+        var jahrVon = tVon + a, jahrBis = jahrVon + 1, n = 0;
+        termine.forEach(function (t) {
+          var bau = t.phasen.find(function (x) { return x.key === 'bau'; });
+          if (bau.t0 < jahrBis && bau.t1 > jahrVon) n++;
+        });
+        auslastung.push(n);
+      }
+      var maxA = Math.max(1, Math.max.apply(null, auslastung));
+      auslastung.forEach(function (n, a) {
+        if (!n) return;
+        var x0 = px(tVon + a), x1 = px(tVon + a + 1);
+        var hoehe = 16 * n / maxA;
+        kinder.push(s('rect', { x: x0 + 1, y: H - fussH + 26 - hoehe, width: x1 - x0 - 2, height: hoehe,
+          fill: '#1f5fd0', opacity: .28, rx: 1.5 }));
+        kinder.push(s('text', { x: (x0 + x1) / 2, y: H - fussH + 38, 'text-anchor': 'middle',
+          'font-size': 9.5, fill: '#6b7484', class: 'n' }, String(n)));
+      });
+      kinder.push(s('text', { x: 0, y: H - fussH + 32, 'font-size': 10, fill: '#6b7484' },
+        'in Ausführung'));
+
+      out.appendChild(U.panel('Terminplan', 'Phasen aller Projekte auf gemeinsamer Kalenderachse', [
+        el('div', { class: 'panelbody' }, [
+          U.svg(W, H, kinder, { h: H }),
+          el('div', { class: 'legende' }, PHASENFARBEN.map(function (f) {
+            return el('span', {}, [el('i', { style: 'background:' + f.f }), el('span', { text: f.label })]);
+          }))
+        ])
+      ]));
+    }
+
+    /* ---------------------------------------------------------------
+       Kapitalbedarf und Cashflow über die Kalenderjahre
+       --------------------------------------------------------------- */
+    var jahreDaten = {};
     berechnet.forEach(function (x) {
       x.r.fin.jahre.forEach(function (j) {
         var kj = (x.p.startjahr || new Date().getFullYear()) + j.jahr;
-        if (!jahre[kj]) jahre[kj] = { ek: 0, fk: 0, projekte: [] };
-        jahre[kj].ek += j.ek; jahre[kj].fk += j.fk;
-        if (j.ek + j.fk > 0) jahre[kj].projekte.push(x.p.name);
+        if (!jahreDaten[kj]) jahreDaten[kj] = { ek: 0, fk: 0, aus: 0, ein: 0, projekte: [] };
+        jahreDaten[kj].ek += j.ek; jahreDaten[kj].fk += j.fk;
+        jahreDaten[kj].aus += j.ausgaben; jahreDaten[kj].ein += j.einnahmen;
+        if (j.ek + j.fk > 0) jahreDaten[kj].projekte.push(x.p.name);
       });
     });
-    var keys = Object.keys(jahre).map(Number).sort(function (a, b) { return a - b; });
+    var keys = Object.keys(jahreDaten).map(Number).sort(function (a, b) { return a - b; });
+
     if (keys.length) {
-      var W = 900, H = 210, oben = 16, unten = 44, links = 58;
-      var max = Math.max.apply(null, keys.map(function (k) { return jahre[k].ek + jahre[k].fk; }).concat([1]));
-      var y = function (v) { return oben + (max - v) / max * (H - oben - unten); };
-      var gap = (W - links) / keys.length, bw = gap * 0.55;
-      var kinder = [s('line', { x1: links, y1: y(0), x2: W, y2: y(0), stroke: '#a9b3c0' })];
-      [max, max / 2].forEach(function (v) {
-        kinder.push(s('line', { x1: links, y1: y(v), x2: W, y2: y(v), stroke: '#eef1f5' }));
-        kinder.push(s('text', { x: links - 6, y: y(v) + 3.5, 'text-anchor': 'end', 'font-size': 10,
+      /* Kapitalbindung */
+      var W2 = 980, H2 = 210, oben = 16, unten = 44, links2 = 62;
+      var maxK = Math.max.apply(null, keys.map(function (k) {
+        return jahreDaten[k].ek + jahreDaten[k].fk; }).concat([1]));
+      var yK = function (v) { return oben + (maxK - v) / maxK * (H2 - oben - unten); };
+      var gap2 = (W2 - links2) / keys.length, bw2 = gap2 * 0.55;
+      var kk = [s('line', { x1: links2, y1: yK(0), x2: W2, y2: yK(0), stroke: '#a9b3c0' })];
+      [maxK, maxK / 2].forEach(function (v) {
+        kk.push(s('line', { x1: links2, y1: yK(v), x2: W2, y2: yK(v), stroke: '#eef1f5' }));
+        kk.push(s('text', { x: links2 - 6, y: yK(v) + 3.5, 'text-anchor': 'end', 'font-size': 10,
           fill: '#6b7484', class: 'n' }, A.fmtMio(v)));
       });
       keys.forEach(function (kj, i) {
-        var d = jahre[kj], x0 = links + i * gap + (gap - bw) / 2;
-        kinder.push(s('rect', { x: x0, y: y(d.ek), width: bw, height: Math.max(0, y(0) - y(d.ek)),
+        var d = jahreDaten[kj], x0 = links2 + i * gap2 + (gap2 - bw2) / 2;
+        kk.push(s('rect', { x: x0, y: yK(d.ek), width: bw2, height: Math.max(0, yK(0) - yK(d.ek)),
           fill: '#7c93b3', rx: 1.5 }));
-        kinder.push(s('rect', { x: x0, y: y(d.ek + d.fk), width: bw, height: Math.max(0, y(0) - y(d.fk)),
+        kk.push(s('rect', { x: x0, y: yK(d.ek + d.fk), width: bw2, height: Math.max(0, yK(0) - yK(d.fk)),
           fill: '#c0662e', rx: 1.5 }));
-        kinder.push(s('text', { x: x0 + bw / 2, y: H - unten + 15, 'text-anchor': 'middle',
+        kk.push(s('text', { x: x0 + bw2 / 2, y: H2 - unten + 15, 'text-anchor': 'middle',
           'font-size': 10, fill: '#6b7484', class: 'n' }, String(kj)));
-        kinder.push(s('text', { x: x0 + bw / 2, y: H - unten + 28, 'text-anchor': 'middle',
+        kk.push(s('text', { x: x0 + bw2 / 2, y: H2 - unten + 28, 'text-anchor': 'middle',
           'font-size': 9.5, fill: '#a2abb8' }, d.projekte.length + ' Proj.'));
       });
-      out.appendChild(U.panel('Kapitalbedarf über alle Projekte', 'Summe der gebundenen Mittel je Kalenderjahr', [
-        el('div', { class: 'panelbody' }, [U.svg(W, H, kinder, { h: H }),
+      out.appendChild(U.panel('Kapitalbedarf über alle Projekte',
+        'Summe der gebundenen Mittel je Kalenderjahr', [
+        el('div', { class: 'panelbody' }, [U.svg(W2, H2, kk, { h: H2 }),
           el('div', { class: 'legende' }, [
             el('span', {}, [el('i', { style: 'background:#7c93b3' }), el('span', { text: 'Eigenkapital' })]),
             el('span', {}, [el('i', { style: 'background:#c0662e' }), el('span', { text: 'Fremdkapital' })])
+          ])])
+      ]));
+
+      /* Cashflow über alle Projekte */
+      var H3 = 240, oben3 = 18, unten3 = 40;
+      var maxC = Math.max.apply(null, keys.map(function (k) {
+        return Math.max(jahreDaten[k].aus, jahreDaten[k].ein); }).concat([1]));
+      var yC = function (v) { return oben3 + (maxC - v) / (2 * maxC) * (H3 - oben3 - unten3); };
+      var kc = [s('line', { x1: links2, y1: yC(0), x2: W2, y2: yC(0), stroke: '#a9b3c0' })];
+      [maxC, maxC / 2, -maxC / 2, -maxC].forEach(function (v) {
+        kc.push(s('line', { x1: links2, y1: yC(v), x2: W2, y2: yC(v), stroke: '#eef1f5' }));
+        kc.push(s('text', { x: links2 - 6, y: yC(v) + 3.5, 'text-anchor': 'end', 'font-size': 10,
+          fill: '#6b7484', class: 'n' }, A.fmtMio(v)));
+      });
+      var bw3 = gap2 * 0.30, kum = 0, punkte = [];
+      keys.forEach(function (kj, i) {
+        var d = jahreDaten[kj], x0 = links2 + i * gap2 + gap2 / 2;
+        kc.push(s('rect', { x: x0 - bw3 - 2, y: yC(0), width: bw3,
+          height: Math.max(1, Math.abs(yC(d.aus) - yC(0))), rx: 1.5, fill: '#1f5fd0', opacity: .8 }));
+        kc.push(s('rect', { x: x0 + 2, y: yC(d.ein), width: bw3,
+          height: Math.max(1, yC(0) - yC(d.ein)), rx: 1.5, fill: '#0d7a45', opacity: .8 }));
+        kum += d.ein - d.aus;
+        punkte.push([x0, yC(Math.max(-maxC, Math.min(maxC, kum)))]);
+        kc.push(s('text', { x: x0, y: H3 - unten3 + 16, 'text-anchor': 'middle', 'font-size': 10,
+          fill: '#6b7484', class: 'n' }, String(kj)));
+      });
+      kc.push(s('polyline', { points: punkte.map(function (q) { return q.join(','); }).join(' '),
+        fill: 'none', stroke: '#10151c', 'stroke-width': 1.6 }));
+      punkte.forEach(function (q) { kc.push(s('circle', { cx: q[0], cy: q[1], r: 3, fill: '#10151c' })); });
+
+      out.appendChild(U.panel('Cashflow über alle Projekte',
+        'Ausgaben, Einnahmen und kumulierter Saldo je Kalenderjahr', [
+        el('div', { class: 'panelbody' }, [U.svg(W2, H3, kc, { h: H3 }),
+          el('div', { class: 'legende' }, [
+            el('span', {}, [el('i', { style: 'background:#1f5fd0' }), el('span', { text: 'Ausgaben' })]),
+            el('span', {}, [el('i', { style: 'background:#0d7a45' }), el('span', { text: 'Einnahmen' })]),
+            el('span', {}, [el('i', { style: 'background:#10151c' }), el('span', { text: 'kumulierter Saldo' })])
           ])])
       ]));
     }

@@ -148,7 +148,7 @@ window.APP = window.APP || {};
       var an = !gewaehlt || gewaehlt.indexOf(st) >= 0;
       var anzahl = proStatus[st] || 0;
       var c = el('button', { type: 'button',
-        class: 'chip' + (an ? ' on' : '') + (anzahl ? '' : ' leer'),
+        class: 'chip' + (an ? ' on' : ''),
         title: anzahl ? anzahl + ' Projekt(e)' : 'kein Projekt in diesem Status' }, [
         el('span', { text: st }),
         el('span', { class: 'zahl', text: String(anzahl) })
@@ -166,19 +166,25 @@ window.APP = window.APP || {};
       chips.appendChild(c);
     });
 
+    /* Voreinstellungen aus der Reihenfolge in A.STATUS ableiten, damit sie
+       nicht auseinanderlaufen, wenn die Statusliste einmal wächst.
+       «Verworfen» bleibt draussen — ein aufgegebenes Projekt gehört in
+       keine Auswertung. */
+    function abStatus(name) {
+      var i = A.STATUS.indexOf(name);
+      return A.STATUS.slice(i < 0 ? 0 : i).filter(function (x) { return x !== 'Verworfen'; });
+    }
+    var imPortfolio = abStatus('Entwicklung');
+    var inRealisation = abStatus('Baubewilligung');
+
     var werkzeuge = el('div', { style: 'display:flex;gap:8px;margin-top:10px;align-items:center;flex-wrap:wrap' }, [
       el('button', { class: 'sm', text: 'alle', onclick: function () { filterSchreiben(null); A.render(); } }),
-      el('button', { class: 'sm', text: 'nur im Portfolio', title:
-        'Realisierung, Vermarktung und Abgeschlossen — ohne Akquisition und Prüfung',
-        onclick: function () {
-          filterSchreiben(['Baubewilligung', 'Realisierung', 'Vermarktung', 'Abgeschlossen']);
-          A.render();
-        } }),
-      el('button', { class: 'sm', text: 'nur in Arbeit', title: 'Entwicklung, Baubewilligung und Realisierung',
-        onclick: function () {
-          filterSchreiben(['Entwicklung', 'Baubewilligung', 'Realisierung']);
-          A.render();
-        } }),
+      el('button', { class: 'sm', text: 'nur im Portfolio',
+        title: imPortfolio.join(' · '),
+        onclick: function () { filterSchreiben(imPortfolio); A.render(); } }),
+      el('button', { class: 'sm', text: 'Realisation',
+        title: inRealisation.join(' · '),
+        onclick: function () { filterSchreiben(inRealisation); A.render(); } }),
       el('span', { class: 'muted', style: 'font-size:11.5px; margin-left:6px',
         text: gewaehlt
           ? projekte.length + ' von ' + alleProjekte.length + ' Projekten — Filter aktiv'

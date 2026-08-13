@@ -254,7 +254,6 @@ textarea:focus { outline: none; border-color: var(--accent); }
 .chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 .chip.on:hover { background: #1a51b4; color: #fff; }
 .chip .zahl { opacity: .7; margin-left: 5px; font-family: var(--mono); font-size: 11px; }
-.chip.leer { opacity: .45; }
 
 /* ---------------------------------------------------------------- Anmeldung */
 

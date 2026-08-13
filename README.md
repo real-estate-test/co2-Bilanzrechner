@@ -120,8 +120,8 @@ Ein **Statusfilter mit Mehrfachauswahl** steuert die ganze Seite, nicht nur die
 Liste — Summen, Terminplan, Kapitalbedarf und Cashflow folgen ihm. So bleiben
 Projekte aus Akquisition und Prüfung aus dem Reporting draussen. Drei
 Voreinstellungen stehen bereit: *alle*, *nur im Portfolio* (ab Entwicklung) und
-*Realisation* (ab Baubewilligung). Beide lassen «Verworfen» aussen vor — ein
-aufgegebenes Projekt gehört in keine Auswertung. Die Auswahl bleibt über
+*Realisation* (Baubewilligung bis Vermarktung — die laufenden Projekte). Beide
+lassen «Verworfen» aussen vor, «Realisation» zusätzlich «Abgeschlossen». Die Auswahl bleibt über
 Sitzungen hinweg erhalten.
 
 - **Terminplan** — ein Balken je Projekt mit allen Phasen, darunter die Anzahl

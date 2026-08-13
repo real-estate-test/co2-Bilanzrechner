@@ -168,14 +168,16 @@ window.APP = window.APP || {};
 
     /* Voreinstellungen aus der Reihenfolge in A.STATUS ableiten, damit sie
        nicht auseinanderlaufen, wenn die Statusliste einmal wächst.
-       «Verworfen» bleibt draussen — ein aufgegebenes Projekt gehört in
-       keine Auswertung. */
-    function abStatus(name) {
+       «Verworfen» bleibt immer draussen — ein aufgegebenes Projekt gehört
+       in keine Auswertung. */
+    function abStatus(name, ohne) {
       var i = A.STATUS.indexOf(name);
-      return A.STATUS.slice(i < 0 ? 0 : i).filter(function (x) { return x !== 'Verworfen'; });
+      var raus = ['Verworfen'].concat(ohne || []);
+      return A.STATUS.slice(i < 0 ? 0 : i).filter(function (x) { return raus.indexOf(x) < 0; });
     }
     var imPortfolio = abStatus('Entwicklung');
-    var inRealisation = abStatus('Baubewilligung');
+    /* Realisation meint die laufenden Projekte — abgeschlossene sind fertig. */
+    var inRealisation = abStatus('Baubewilligung', ['Abgeschlossen']);
 
     var werkzeuge = el('div', { style: 'display:flex;gap:8px;margin-top:10px;align-items:center;flex-wrap:wrap' }, [
       el('button', { class: 'sm', text: 'alle', onclick: function () { filterSchreiben(null); A.render(); } }),

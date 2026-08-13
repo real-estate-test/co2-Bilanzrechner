@@ -97,15 +97,102 @@ window.APP = window.APP || {};
 
   var zeigeArchiv = { wert: false };
 
+  /* Der Statusfilter ist eine Ansichtseinstellung, kein Projektinhalt —
+     er bleibt deshalb lokal gespeichert und gilt für alle Auswertungen
+     dieser Seite, nicht nur für die Liste. */
+  var FILTER_KEY = 'projektrechner.statusfilter';
+
+  function filterLesen() {
+    try {
+      var roh = localStorage.getItem(FILTER_KEY);
+      if (!roh) return null;                       // null = alle
+      var l = JSON.parse(roh);
+      return Array.isArray(l) ? l : null;
+    } catch (e) { return null; }
+  }
+
+  function filterSchreiben(liste) {
+    try {
+      if (!liste) localStorage.removeItem(FILTER_KEY);
+      else localStorage.setItem(FILTER_KEY, JSON.stringify(liste));
+    } catch (e) { /* privater Modus: gilt dann nur für diese Sitzung */ }
+  }
+
+  A.statusFilter = filterLesen;
+
   V.portfolio = function () {
     var out = el('div', {}, [U.kopf('Portfolio',
       'Alle gespeicherten Projekte im Überblick. Der Kapitalbedarf wird über das Kalenderjahr des Erwerbs ' +
       'zusammengeführt — das zeigt, wann sich Projekte in der Finanzierung überlagern.')]);
 
-    var projekte = A.store.alle(zeigeArchiv.wert);
-    if (!projekte.length) {
+    var alleProjekte = A.store.alle(zeigeArchiv.wert);
+    if (!alleProjekte.length) {
       out.appendChild(U.hinweis('info', 'Noch keine Projekte gespeichert. Das aktuelle Projekt wird ' +
         'automatisch gesichert, sobald Sie es bearbeiten.'));
+      return out;
+    }
+
+    /* --- Statusfilter ------------------------------------------------ */
+    var gewaehlt = filterLesen();
+    var projekte = gewaehlt
+      ? alleProjekte.filter(function (x) { return gewaehlt.indexOf(x.status) >= 0; })
+      : alleProjekte;
+
+    var proStatus = {};
+    alleProjekte.forEach(function (x) {
+      proStatus[x.status] = (proStatus[x.status] || 0) + 1;
+    });
+
+    var chips = el('div', { class: 'chips' });
+    A.STATUS.forEach(function (st) {
+      var an = !gewaehlt || gewaehlt.indexOf(st) >= 0;
+      var anzahl = proStatus[st] || 0;
+      var c = el('button', { type: 'button',
+        class: 'chip' + (an ? ' on' : '') + (anzahl ? '' : ' leer'),
+        title: anzahl ? anzahl + ' Projekt(e)' : 'kein Projekt in diesem Status' }, [
+        el('span', { text: st }),
+        el('span', { class: 'zahl', text: String(anzahl) })
+      ]);
+      c.addEventListener('click', function () {
+        var basis = gewaehlt ? gewaehlt.slice() : A.STATUS.slice();
+        var i = basis.indexOf(st);
+        if (i >= 0) basis.splice(i, 1); else basis.push(st);
+        /* Alles gewählt = kein Filter; nichts gewählt wäre eine leere
+           Auswertung und wird deshalb auf «alle» zurückgesetzt. */
+        if (!basis.length || basis.length === A.STATUS.length) filterSchreiben(null);
+        else filterSchreiben(basis);
+        A.render();
+      });
+      chips.appendChild(c);
+    });
+
+    var werkzeuge = el('div', { style: 'display:flex;gap:8px;margin-top:10px;align-items:center;flex-wrap:wrap' }, [
+      el('button', { class: 'sm', text: 'alle', onclick: function () { filterSchreiben(null); A.render(); } }),
+      el('button', { class: 'sm', text: 'nur im Portfolio', title:
+        'Realisierung, Vermarktung und Abgeschlossen — ohne Akquisition und Prüfung',
+        onclick: function () {
+          filterSchreiben(['Baubewilligung', 'Realisierung', 'Vermarktung', 'Abgeschlossen']);
+          A.render();
+        } }),
+      el('button', { class: 'sm', text: 'nur in Arbeit', title: 'Entwicklung, Baubewilligung und Realisierung',
+        onclick: function () {
+          filterSchreiben(['Entwicklung', 'Baubewilligung', 'Realisierung']);
+          A.render();
+        } }),
+      el('span', { class: 'muted', style: 'font-size:11.5px; margin-left:6px',
+        text: gewaehlt
+          ? projekte.length + ' von ' + alleProjekte.length + ' Projekten — Filter aktiv'
+          : alleProjekte.length + ' Projekte, kein Filter' })
+    ]);
+
+    out.appendChild(U.panel('Auswahl',
+      'gilt für sämtliche Auswertungen dieser Seite', [
+      el('div', { class: 'panelbody' }, [chips, werkzeuge])
+    ]));
+
+    if (!projekte.length) {
+      out.appendChild(U.hinweis('warn', 'Der Filter lässt kein Projekt übrig. ' +
+        'Wählen Sie oben weitere Status hinzu.'));
       return out;
     }
 
@@ -122,7 +209,11 @@ window.APP = window.APP || {};
       sum.gewinn += x.r.kpi.gewinn; sum.ek += x.r.kpi.ek_max;
       sum.peak += x.r.kpi.kapital_peak; sum.nwf += x.r.flaechen.total.nwf;
     });
-    out.appendChild(U.panel('Summen über alle Projekte', berechnet.length + ' Projekte', [
+    /* Die Überschriften nennen die Auswahl, sobald gefiltert wird —
+       «über alle Projekte» wäre bei aktivem Filter schlicht falsch. */
+    var umfang = gewaehlt ? 'über die Auswahl' : 'über alle Projekte';
+    out.appendChild(U.panel('Summen ' + umfang,
+      berechnet.length + ' Projekte' + (gewaehlt ? ' von ' + alleProjekte.length : ''), [
       el('div', { class: 'panelbody' }, [el('div', { class: 'cols c4' }, [
         U.kachel('Anlagekosten', fmt(sum.ak)),
         U.kachel('Erlöse', fmt(sum.erloes)),
@@ -159,7 +250,6 @@ window.APP = window.APP || {};
         class: 'tag ' + (k.marge_ak >= x.p.ziele.marge ? 'pos' : 'neg'),
         text: A.fmtPct(k.marge_ak) })]));
       tr.appendChild(el('td', { class: 'n', text: k.irr === null ? '–' : A.fmtPct(k.irr) }));
-      tr.appendChild(el('td', { class: 'n', text: fmt(k.kapital_peak) }));
       tr.appendChild(el('td', { class: 'w1', style: 'white-space:nowrap' }, [
         x.p.archiviert_am
           ? el('button', { class: 'ghost sm schreibend', text: 'zurückholen',
@@ -189,7 +279,7 @@ window.APP = window.APP || {};
       el('div', { class: 'panelbody' }, [U.tabelle([
         { label: 'Projekt' }, { label: 'Status' }, { label: 'Start' }, { label: 'NWF m²', n: true },
         { label: 'Anlagekosten', n: true }, { label: 'Erlöse', n: true }, { label: 'Gewinn', n: true },
-        { label: 'Marge', n: true }, { label: 'IRR', n: true }, { label: 'Kapitalspitze', n: true }, { label: '' }
+        { label: 'Marge', n: true }, { label: 'IRR', n: true }, { label: '' }
       ], zeilen)])
     ], [archivSchalter]));
 
@@ -286,7 +376,8 @@ window.APP = window.APP || {};
       kinder.push(s('text', { x: 0, y: H - fussH + 32, 'font-size': 10, fill: '#6b7484' },
         'in Ausführung'));
 
-      out.appendChild(U.panel('Terminplan', 'Phasen aller Projekte auf gemeinsamer Kalenderachse', [
+      out.appendChild(U.panel('Terminplan',
+        'Phasen ' + (gewaehlt ? 'der Auswahl' : 'aller Projekte') + ' auf gemeinsamer Kalenderachse', [
         el('div', { class: 'panelbody' }, [
           U.svg(W, H, kinder, { h: H }),
           el('div', { class: 'legende' }, PHASENFARBEN.map(function (f) {
@@ -335,7 +426,7 @@ window.APP = window.APP || {};
         kk.push(s('text', { x: x0 + bw2 / 2, y: H2 - unten + 28, 'text-anchor': 'middle',
           'font-size': 9.5, fill: '#a2abb8' }, d.projekte.length + ' Proj.'));
       });
-      out.appendChild(U.panel('Kapitalbedarf über alle Projekte',
+      out.appendChild(U.panel('Kapitalbedarf ' + umfang,
         'Summe der gebundenen Mittel je Kalenderjahr', [
         el('div', { class: 'panelbody' }, [U.svg(W2, H2, kk, { h: H2 }),
           el('div', { class: 'legende' }, [
@@ -371,7 +462,7 @@ window.APP = window.APP || {};
         fill: 'none', stroke: '#10151c', 'stroke-width': 1.6 }));
       punkte.forEach(function (q) { kc.push(s('circle', { cx: q[0], cy: q[1], r: 3, fill: '#10151c' })); });
 
-      out.appendChild(U.panel('Cashflow über alle Projekte',
+      out.appendChild(U.panel('Cashflow ' + umfang,
         'Ausgaben, Einnahmen und kumulierter Saldo je Kalenderjahr', [
         el('div', { class: 'panelbody' }, [U.svg(W2, H3, kc, { h: H3 }),
           el('div', { class: 'legende' }, [

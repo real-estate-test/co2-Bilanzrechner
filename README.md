@@ -114,7 +114,13 @@ Wasserfalldarstellung, Cashflow und Kapitalbindung im Jahresraster.
 Rückwärtsrechnung des residualen Landwerts bei Zielmarge.
 
 **Portfolio** Kennzahlen aller Projekte mit Ampeln gegen die Zielwerte, dazu drei
-zusammengeführte Darstellungen auf gemeinsamer Kalenderachse:
+zusammengeführte Darstellungen auf gemeinsamer Kalenderachse.
+
+Ein **Statusfilter mit Mehrfachauswahl** steuert die ganze Seite, nicht nur die
+Liste — Summen, Terminplan, Kapitalbedarf und Cashflow folgen ihm. So bleiben
+Projekte aus Akquisition und Prüfung aus dem Reporting draussen. Drei
+Voreinstellungen stehen bereit: *alle*, *nur im Portfolio* (ab Baubewilligung)
+und *nur in Arbeit*. Die Auswahl bleibt über Sitzungen hinweg erhalten.
 
 - **Terminplan** — ein Balken je Projekt mit allen Phasen, darunter die Anzahl
   gleichzeitig in Ausführung stehender Projekte

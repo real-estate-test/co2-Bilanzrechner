@@ -67,24 +67,38 @@ aus dem sich die Höhen ergeben.
 
 **Erwerbskosten** Kaufpreis wahlweise als Total, CHF/m² Land oder CHF/m² aGF, dazu
 Notariat, Grundbuch, Handänderungssteuer mit Käuferanteil, Einkaufskommission,
-Entwicklungshonorar, Dritthonorare, Due Diligence, Geometer, Rechtsberatung und
-Mehrwertabgabe. Alternativ Baurecht mit Einmalentschädigung und Baurechtszins.
+Entwicklungshonorar, Due Diligence, Geometer, Rechtsberatung und
+Mehrwertabgabe. Die Bezugsgrösse des Entwicklungshonorars sind in der Vorgabe
+die Erwerbskosten ohne dieses Honorar zuzüglich der Baukosten ohne
+Projektmanagement- und Dritthonorar — ein Honorar bemisst sich nicht an
+Honoraren. Wahlweise auch auf Anlagekosten, Landwert oder Projektgewinn. Alternativ Baurecht mit Einmalentschädigung und Baurechtszins.
 Kantonale Richtwerte für AG · SO · ZH · LU · BE · BS · BL sind hinterlegt.
 
 **Baukosten** nach BKP, auf die praxisrelevanten Gruppen verdichtet:
 
 | BKP | Zeile | Menge |
 |---|---|---|
-| 1 | Rückbau, Altlasten, Anpassungen an bestehende Bauten, Pfählung/Wasserhaltung, Erschliessung | m³ Bestand bzw. pauschal |
-| 20–29 | Gebäude oberirdisch · Stockwerkeigentum | m² GF aus dem Nutzungsmix |
-| 20–29 | Gebäude oberirdisch · Miete | m² GF aus dem Nutzungsmix |
-| 20–29 | Gebäude oberirdisch · Gewerbe | m² GF aus dem Nutzungsmix |
+| 1 | Rückbau, Altlasten | m³ Bestand bzw. pauschal |
+| 1 | Vorbereitungsarbeiten | % von BKP 20–29 vor Reserve |
+| 1 | Anpassungen an bestehende Bauten | m² Grundstücksfläche |
+| 1 | Pfählung/Wasserhaltung, Erschliessung | pauschal |
+| 20–29 | Gebäude oberirdisch · Stockwerkeigentum | m³ Kubatur aus dem Nutzungsmix |
+| 20–29 | Gebäude oberirdisch · Miete | m³ Kubatur aus dem Nutzungsmix |
+| 20–29 | Gebäude oberirdisch · Gewerbe | m³ Kubatur aus dem Nutzungsmix |
 | 20–29 | Untergeschoss | m³ |
 | 20–29 | Einstellhalle | m³ |
-| 202 | Reserve | % von BKP 20–29 |
-| 3 · 4 · 5 | Betriebseinrichtungen, Umgebung, Baunebenkosten | pauschal, m², % von BKP 1–4 |
+| 202 | Reserve | % von BKP 20–29 vor Reserve |
+| 3 · 4 | Betriebseinrichtungen, Umgebung | pauschal, m² |
+| 558.1 | Dritthonorare | % von BKP 1–4 |
+| 5 | Baunebenkosten | % von BKP 1–4 |
 | 599 | Projektmanagement-Honorar | % von BKP 1–5 |
 | 9 | Ausstattung | m² NWF |
+
+Die prozentualen Zeilen laufen in fester Reihenfolge, weil sie aufeinander
+aufbauen: Vorbereitungsarbeiten und Reserve beziehen sich beide auf die fünf
+Gebäudezeilen BKP 20–29 — die Vorbereitungsarbeiten erhöhen die Reserve also
+nicht. Danach folgen Dritthonorare und Baunebenkosten auf BKP 1–4 inklusive
+Reserve, zuletzt das Projektmanagement-Honorar auf BKP 1–5 ohne sich selbst.
 
 Die Kennwerte der BKP 20–29 sind Vollkosten inklusive Gebäudetechnik, Ausbau und
 Planerhonoraren; der Ausbaustandard unterscheidet sich zwischen verkauftem

@@ -6,7 +6,7 @@ window.APP = window.APP || {};
 (function (A) {
   'use strict';
 
-  A.SCHEMA = 3;
+  A.SCHEMA = 4;
 
   /* ---------------------------------------------------------------
      Stammlisten
@@ -88,11 +88,13 @@ window.APP = window.APP || {};
        gf            CHF je m² Geschossfläche (oberirdisch + UG ohne TG)
        gf_oi         CHF je m² Geschossfläche oberirdisch
        gv            CHF je m³ Gebäudevolumen
+       gv_oi_*       CHF je m³ Kubatur oberirdisch je Kostengruppe
        nwf           CHF je m² Nutzfläche
        pp            CHF je Parkplatz
        umgebung      CHF je m² Umgebungsfläche
+       gsf           CHF je m² Grundstücksfläche
        gv_bestand    CHF je m³ Gebäudevolumen Bestand (Abbruch)
-       pct_bkp2      % der Summe BKP 2
+       pct_bkp2      % der Summe BKP 20–29 vor Reserve
        pct_bkp1_4    % der Summe BKP 1–4
      --------------------------------------------------------------- */
 
@@ -105,6 +107,9 @@ window.APP = window.APP || {};
     gf_oi_gewerbe: 'CHF/m² GF Gewerbe',
     gv:            'CHF/m³ GV',
     gv_oi:         'CHF/m³ o.i.',
+    gv_oi_stwe:    'CHF/m³ STWE',
+    gv_oi_miete:   'CHF/m³ Miete',
+    gv_oi_gewerbe: 'CHF/m³ Gewerbe',
     gv_ug:         'CHF/m³ UG',
     gv_aeh:        'CHF/m³ Einstellhalle',
     f_ug:          'CHF/m² UG',
@@ -112,6 +117,7 @@ window.APP = window.APP || {};
     nwf:           'CHF/m² NWF',
     pp:            'CHF/PP',
     umgebung:      'CHF/m² Umgeb.',
+    gsf:           'CHF/m² GSF',
     gv_bestand:    'CHF/m³ GV Bestand',
     pct_bkp2:      '% von BKP 20–29',
     pct_bkp1_4:    '% von BKP 1–4',
@@ -122,8 +128,12 @@ window.APP = window.APP || {};
     { id: 'b1_abbruch',   bkp: '1',     label: 'Abbruch / Rückbau Bestand',
       hilfe: 'Nur relevant, wenn der Bestand zurückgebaut wird. Menge = Gebäudevolumen Bestand.' },
     { id: 'b1_altlasten', bkp: '1',     label: 'Altlasten / Entsorgung' },
+    { id: 'b1_vorbereitung', bkp: '1',  label: 'Vorbereitungsarbeiten',
+      hilfe: 'Prozentual auf BKP 20–29 vor Reserve — also auf Stockwerkeigentum, Miete, ' +
+             'Gewerbe, Untergeschoss und Einstellhalle.' },
     { id: 'b1_anpassung', bkp: '1',     label: 'Anpassungen an bestehende Bauten',
-      hilfe: 'Anschlüsse, Unterfangungen, Sicherungen an Nachbar- oder Bestandsbauten.' },
+      hilfe: 'Anschlüsse, Unterfangungen, Sicherungen an Nachbar- oder Bestandsbauten. ' +
+             'Menge = Grundstücksfläche.' },
     { id: 'b1_pfaehlung', bkp: '1',     label: 'Pfählung / Wasserhaltung / Spezialtiefbau',
       hilfe: 'Baugrundbedingte Zusatzkosten: Pfähle, Spundwände, Grundwasserhaltung.' },
     { id: 'b1_erschl',    bkp: '1',     label: 'Erschliessung / Werkleitungen' },
@@ -140,6 +150,8 @@ window.APP = window.APP || {};
 
     { id: 'b3_betrieb',   bkp: '3',     label: 'Betriebseinrichtungen' },
     { id: 'b4_umgebung',  bkp: '4',     label: 'Umgebung' },
+    { id: 'b5_dritt',     bkp: '558.1', label: 'Dritthonorare',
+      hilfe: 'Externe Fachplanung und Beratung ausserhalb der Kennwerte der BKP 20–29.' },
     { id: 'b5_bnk',       bkp: '5',     label: 'Baunebenkosten, Bewilligungen, Versicherungen' },
     { id: 'b5_pm',        bkp: '599',   label: 'Projektmanagement-Honorar',
       hilfe: 'Prozentual auf BKP 1–5 ohne diese Zeile selbst.' },
@@ -153,17 +165,19 @@ window.APP = window.APP || {};
     neubau: {
       b1_abbruch:    { basis: 'gv_bestand', wert: 0,     min: 60,   max: 140   },
       b1_altlasten:  { basis: 'pauschal',   wert: 0,     min: 0,    max: 0     },
-      b1_anpassung:  { basis: 'pauschal',   wert: 0,     min: 0,    max: 0     },
+      b1_vorbereitung: { basis: 'pct_bkp2',    wert: 2,    min: 0,    max: 12   },
+      b1_anpassung:  { basis: 'gsf',          wert: 0,    min: 0,    max: 250  },
       b1_pfaehlung:  { basis: 'pauschal',   wert: 0,     min: 0,    max: 0     },
       b1_erschl:     { basis: 'pauschal',   wert: 120000,min: 0,    max: 0     },
-      b2_oi_stwe:    { basis: 'gf_oi_stwe',    wert: 3200, min: 2400, max: 4400 },
-      b2_oi_miete:   { basis: 'gf_oi_miete',   wert: 2900, min: 2200, max: 3900 },
-      b2_oi_gewerbe: { basis: 'gf_oi_gewerbe', wert: 2400, min: 1600, max: 3400 },
+      b2_oi_stwe:    { basis: 'gv_oi_stwe',    wert: 1050, min: 800,  max: 1470 },
+      b2_oi_miete:   { basis: 'gv_oi_miete',   wert: 970,  min: 730,  max: 1300 },
+      b2_oi_gewerbe: { basis: 'gv_oi_gewerbe', wert: 800,  min: 530,  max: 1130 },
       b2_ug:         { basis: 'gv_ug',         wert: 550,  min: 380,  max: 780  },
       b2_aeh:        { basis: 'gv_aeh',        wert: 400,  min: 270,  max: 620  },
       b2_reserve:    { basis: 'pct_bkp2',      wert: 3,    min: 0,    max: 10   },
       b3_betrieb:    { basis: 'pauschal',   wert: 0,     min: 0,    max: 0     },
-      b4_umgebung:   { basis: 'umgebung',   wert: 280,   min: 150,  max: 550   },
+      b4_umgebung:   { basis: 'umgebung',   wert: 150,   min: 80,   max: 550   },
+      b5_dritt:      { basis: 'pct_bkp1_4', wert: 0.5,   min: 0,    max: 4     },
       b5_bnk:        { basis: 'pct_bkp1_4', wert: 3,     min: 1.5,  max: 6     },
       b5_pm:         { basis: 'pct_bkp1_5', wert: 2.0,   min: 0.5,  max: 5     },
       b9_ausstat:    { basis: 'nwf',        wert: 60,    min: 0,    max: 250   }
@@ -171,17 +185,19 @@ window.APP = window.APP || {};
     erweiterung: {
       b1_abbruch:    { basis: 'gv_bestand', wert: 0,     min: 0,    max: 0     },
       b1_altlasten:  { basis: 'pauschal',   wert: 0,     min: 0,    max: 0     },
-      b1_anpassung:  { basis: 'pauschal',   wert: 150000,min: 0,    max: 0     },
+      b1_vorbereitung: { basis: 'pct_bkp2',    wert: 2,    min: 0,    max: 12   },
+      b1_anpassung:  { basis: 'gsf',          wert: 30,   min: 0,    max: 250  },
       b1_pfaehlung:  { basis: 'pauschal',   wert: 0,     min: 0,    max: 0     },
       b1_erschl:     { basis: 'pauschal',   wert: 0,     min: 0,    max: 0     },
-      b2_oi_stwe:    { basis: 'gf_oi_stwe',    wert: 3500, min: 2500, max: 5000 },
-      b2_oi_miete:   { basis: 'gf_oi_miete',   wert: 3200, min: 2300, max: 4500 },
-      b2_oi_gewerbe: { basis: 'gf_oi_gewerbe', wert: 2700, min: 1700, max: 3900 },
+      b2_oi_stwe:    { basis: 'gv_oi_stwe',    wert: 1150, min: 830,  max: 1670 },
+      b2_oi_miete:   { basis: 'gv_oi_miete',   wert: 1070, min: 770,  max: 1500 },
+      b2_oi_gewerbe: { basis: 'gv_oi_gewerbe', wert: 900,  min: 570,  max: 1300 },
       b2_ug:         { basis: 'gv_ug',         wert: 0,    min: 0,    max: 0    },
       b2_aeh:        { basis: 'gv_aeh',        wert: 0,    min: 0,    max: 0    },
       b2_reserve:    { basis: 'pct_bkp2',      wert: 3,    min: 0,    max: 10   },
       b3_betrieb:    { basis: 'pauschal',   wert: 0,     min: 0,    max: 0     },
       b4_umgebung:   { basis: 'umgebung',   wert: 0,     min: 0,    max: 0     },
+      b5_dritt:      { basis: 'pct_bkp1_4', wert: 0.5,   min: 0,    max: 4     },
       b5_bnk:        { basis: 'pct_bkp1_4', wert: 3,     min: 1.5,  max: 6     },
       b5_pm:         { basis: 'pct_bkp1_5', wert: 2.0,   min: 0.5,  max: 5     },
       b9_ausstat:    { basis: 'nwf',        wert: 60,    min: 0,    max: 250   }
@@ -189,17 +205,19 @@ window.APP = window.APP || {};
     sanierung: {
       b1_abbruch:    { basis: 'gv_bestand', wert: 0,     min: 0,    max: 0     },
       b1_altlasten:  { basis: 'pauschal',   wert: 60000, min: 0,    max: 0     },
-      b1_anpassung:  { basis: 'pauschal',   wert: 0,     min: 0,    max: 0     },
+      b1_vorbereitung: { basis: 'pct_bkp2',    wert: 2,    min: 0,    max: 12   },
+      b1_anpassung:  { basis: 'gsf',          wert: 0,    min: 0,    max: 250  },
       b1_pfaehlung:  { basis: 'pauschal',   wert: 0,     min: 0,    max: 0     },
       b1_erschl:     { basis: 'pauschal',   wert: 0,     min: 0,    max: 0     },
-      b2_oi_stwe:    { basis: 'gf_oi_stwe',    wert: 1800, min: 700,  max: 3200 },
-      b2_oi_miete:   { basis: 'gf_oi_miete',   wert: 1500, min: 600,  max: 2800 },
-      b2_oi_gewerbe: { basis: 'gf_oi_gewerbe', wert: 1200, min: 400,  max: 2400 },
+      b2_oi_stwe:    { basis: 'gv_oi_stwe',    wert: 600,  min: 230,  max: 1070 },
+      b2_oi_miete:   { basis: 'gv_oi_miete',   wert: 500,  min: 200,  max: 930  },
+      b2_oi_gewerbe: { basis: 'gv_oi_gewerbe', wert: 400,  min: 130,  max: 800  },
       b2_ug:         { basis: 'gv_ug',         wert: 180,  min: 0,    max: 450  },
       b2_aeh:        { basis: 'gv_aeh',        wert: 0,    min: 0,    max: 0    },
       b2_reserve:    { basis: 'pct_bkp2',      wert: 5,    min: 0,    max: 15   },
       b3_betrieb:    { basis: 'pauschal',   wert: 0,     min: 0,    max: 0     },
       b4_umgebung:   { basis: 'umgebung',   wert: 0,     min: 0,    max: 0     },
+      b5_dritt:      { basis: 'pct_bkp1_4', wert: 0.5,   min: 0,    max: 4     },
       b5_bnk:        { basis: 'pct_bkp1_4', wert: 3,     min: 1.5,  max: 6     },
       b5_pm:         { basis: 'pct_bkp1_5', wert: 2.5,   min: 0.5,  max: 5     },
       b9_ausstat:    { basis: 'nwf',        wert: 40,    min: 0,    max: 250   }
@@ -395,11 +413,10 @@ window.APP = window.APP || {};
         handaenderung: 0.00,             // % Kaufpreis (Total)
         handaenderung_anteil: 50,        // % davon zu Lasten Käufer
         courtage: 2.00,                  // % Kaufpreis
-        entwicklung_basis: 'anlagekosten', // anlagekosten | landwert | gewinn
+        /* erwerb_bau = Erwerbskosten (ohne dieses Honorar) + Baukosten
+           ohne Projektmanagement- und Dritthonorare. */
+        entwicklung_basis: 'erwerb_bau', // erwerb_bau | anlagekosten | landwert | gewinn
         entwicklung_pct: 2.50,
-        dritthonorare_basis: 'pct_ak',   // pct_ak | pauschal
-        dritthonorare_pct: 0.50,
-        dritthonorare_fix: 0,
         dd: 25000,
         geometer: 15000,
         recht: 20000
@@ -716,6 +733,73 @@ window.APP = window.APP || {};
         if (!e.zeile) e.zeile = p.spiegel.zeile || standard || null;
       });
       delete p.spiegel.zeile;
+    }
+
+    /* --- Schema 3 -> 4: Dritthonorare wandern in die Baukosten (BKP 558.1),
+       BKP 20–29 rechnen neu über die Kubatur, «Anpassungen an bestehende
+       Bauten» über die Grundstücksfläche, neue Zeile BKP 1 Vorbereitungs-
+       arbeiten. Läuft bewusst nach dem Zusammenführen mit den Vorgaben,
+       damit die Geometrie für die Umrechnung vollständig vorliegt.
+       Alle Umstellungen sind betragsneutral: der Kennwert wird so
+       umgerechnet, dass derselbe Frankenbetrag herauskommt. ------------- */
+    if (version < 4) {
+      var geo = null;
+      try { geo = A.engine.flaechen(p, []); } catch (e) { geo = null; }
+
+      function umbasieren(z, bid, neu) {
+        if (!geo || !z || z.basis === neu) return;
+        var alt = A.engine.mengeFor(z.basis, bid, geo, p);
+        var neuM = A.engine.mengeFor(neu, bid, geo, p);
+        var betrag = z.basis === 'pauschal' ? num0(z.wert) : alt * num0(z.wert);
+        z.basis = neu;
+        z.wert = neuM > 0 ? Math.round(betrag / neuM * 100) / 100 : 0;
+      }
+
+      ['neubau', 'erweiterung', 'sanierung'].forEach(function (bid) {
+        var b = p.bau && p.bau[bid];
+        if (!b || !b.zeilen) return;
+        umbasieren(b.zeilen.b2_oi_stwe,    bid, 'gv_oi_stwe');
+        umbasieren(b.zeilen.b2_oi_miete,   bid, 'gv_oi_miete');
+        umbasieren(b.zeilen.b2_oi_gewerbe, bid, 'gv_oi_gewerbe');
+        umbasieren(b.zeilen.b1_anpassung,  bid, 'gsf');
+
+        /* Neue Zeile Vorbereitungsarbeiten: startet auf 0 %, damit die
+           Umstellung an bestehenden Kalkulationen nichts verschiebt. Der
+           Prozentwert ist von Hand zu setzen — neue Projekte starten auf
+           dem Kennwert der Bibliothek. */
+        b.zeilen.b1_vorbereitung = b.zeilen.b1_vorbereitung ||
+          { aktiv: true, menge_manuell: 0 };
+        b.zeilen.b1_vorbereitung.basis = 'pct_bkp2';
+        b.zeilen.b1_vorbereitung.wert = 0;
+
+        /* Dritthonorare aus den Erwerbskosten übernehmen. Der Prozentsatz
+           bezog sich früher auf die Anlagekosten, neu auf BKP 1–4 — der
+           Betrag ändert sich dadurch. */
+        var e = p.erwerb || {};
+        var traeger = (p.bau.neubau && p.bau.neubau.aktiv) ? 'neubau'
+                    : (p.bau.sanierung && p.bau.sanierung.aktiv) ? 'sanierung' : 'erweiterung';
+        b.zeilen.b5_dritt = b.zeilen.b5_dritt || { aktiv: true, menge_manuell: 0 };
+        b.zeilen.b5_dritt.basis = 'pct_bkp1_4';
+        b.zeilen.b5_dritt.wert = 0;
+        if (bid === traeger) {
+          if (e.dritthonorare_basis === 'pauschal' && num0(e.dritthonorare_fix) > 0) {
+            b.zeilen.b5_dritt.basis = 'pauschal';
+            b.zeilen.b5_dritt.wert = num0(e.dritthonorare_fix);
+          } else {
+            b.zeilen.b5_dritt.wert = num0(e.dritthonorare_pct);
+          }
+        }
+      });
+
+      if (p.erwerb) {
+        delete p.erwerb.dritthonorare_basis;
+        delete p.erwerb.dritthonorare_pct;
+        delete p.erwerb.dritthonorare_fix;
+        if (p.erwerb.entwicklung_basis === 'anlagekosten') p.erwerb.entwicklung_basis = 'erwerb_bau';
+      }
+      if (p.ist) {
+        delete p.ist['erwerb.dritthonorare'];
+      }
     }
 
     /* Startdatum aus einem vorhandenen Startjahr ableiten */

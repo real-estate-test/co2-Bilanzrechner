@@ -207,6 +207,14 @@ window.APP = window.APP || {};
           A.fmt(summePP, 1) + ' % verteilt statt zu 100 %.' });
       }
 
+      /* Kubatur je Kostengruppe — Mengenbasis der BKP 20–29, wenn diese
+         über CHF/m³ gerechnet werden. Die oberirdische Kubatur verteilt
+         sich im Verhältnis der Geschossflächen auf die Gruppen. */
+      o.gruppen_gv = {};
+      Object.keys(o.gruppen).forEach(function (k) {
+        o.gruppen_gv[k] = o.gf_oi > 0 ? o.gv_oi * (o.gruppen[k] / o.gf_oi) : 0;
+      });
+
       res.teile[T.id] = o;
       if (t.aktiv) {
         ['gf_oi', 'gf_ug', 'f_aeh', 'gf', 'gv', 'gv_oi', 'gv_ug', 'gv_aeh', 'nwf', 'pp', 'grundflaeche', 'attika']
@@ -248,6 +256,9 @@ window.APP = window.APP || {};
       case 'gf_oi_gewerbe': return (o.gruppen && o.gruppen.oi_gewerbe) || 0;
       case 'gv':            return o.gv || 0;
       case 'gv_oi':         return o.gv_oi || 0;
+      case 'gv_oi_stwe':    return (o.gruppen_gv && o.gruppen_gv.oi_stwe) || 0;
+      case 'gv_oi_miete':   return (o.gruppen_gv && o.gruppen_gv.oi_miete) || 0;
+      case 'gv_oi_gewerbe': return (o.gruppen_gv && o.gruppen_gv.oi_gewerbe) || 0;
       case 'gv_ug':         return o.gv_ug || 0;
       case 'gv_aeh':        return o.gv_aeh || 0;
       case 'f_ug':          return o.gf_ug || 0;
@@ -255,6 +266,7 @@ window.APP = window.APP || {};
       case 'nwf':           return o.nwf || 0;
       case 'pp':            return o.pp || 0;
       case 'umgebung':      return F.umgebung || 0;
+      case 'gsf':           return num(p.grundstueck.flaeche) || 0;
       case 'gv_bestand':    return F.gv_bestand || 0;
       default:              return 1;   // pauschal, pct_*
     }
@@ -263,15 +275,20 @@ window.APP = window.APP || {};
 
   var PROZENTBASEN = ['pct_bkp2', 'pct_bkp1_4', 'pct_bkp1_5'];
 
+  /* Zeilen mit fester Rechenreihenfolge — sie bauen aufeinander auf und
+     werden deshalb nicht in der ersten Runde erfasst. */
+  var GEORDNET = ['b1_vorbereitung', 'b2_reserve', 'b5_dritt', 'b5_bnk', 'b5_pm'];
+
   E.baukosten = function (p, F, warn) {
-    var res = { bloecke: {}, total: 0, teuerung: 0, basis_ohne_teuerung: 0 };
+    var res = { bloecke: {}, total: 0, teuerung: 0, basis_ohne_teuerung: 0,
+                honorare_basis: 0, honorare: 0, ohne_honorare: 0 };
 
     ['neubau', 'erweiterung', 'sanierung'].forEach(function (bid) {
       var b = p.bau[bid];
       if (!b.aktiv) return;
       var out = { id: bid, label: A.BLOCK_LABELS[bid], zeilen: [],
                   bkp1: 0, bkp2: 0, bkp3: 0, bkp4: 0, bkp5: 0, bkp9: 0,
-                  summe: 0, reserve: 0, total: 0 };
+                  summe: 0, reserve: 0, honorare: 0, total: 0 };
 
       var katalog = A.BKP_KATALOG.concat(b.eigene || []);
 
@@ -299,8 +316,10 @@ window.APP = window.APP || {};
         return wirksam;
       }
 
-      /* Erste Runde: alle mengenbezogenen Zeilen */
+      /* Erste Runde: alle mengenbezogenen Zeilen ausser jenen, deren
+         Reihenfolge feststeht (siehe unten) */
       katalog.forEach(function (kat) {
+        if (GEORDNET.indexOf(kat.id) >= 0) return;
         var z = b.zeilen[kat.id];
         if (!z || !z.aktiv) return;
         if (PROZENTBASEN.indexOf(z.basis) >= 0) return;
@@ -311,22 +330,40 @@ window.APP = window.APP || {};
 
       /* Zweite Runde in fester Reihenfolge, weil die Bezugsgrössen
          aufeinander aufbauen:
-           202 Reserve   -> auf BKP 20–29
-           BKP 5  BNK    -> auf BKP 1–4 (inkl. Reserve)
-           BKP 599 PM    -> auf BKP 1–5 ohne sich selbst                  */
+           BKP 1 Vorbereitung -> auf BKP 20–29 VOR Reserve
+           202 Reserve        -> auf BKP 20–29 (dieselbe Bezugsgrösse)
+           BKP 558.1 Dritth.  -> auf BKP 1–4 (inkl. Reserve)
+           BKP 5  BNK         -> auf BKP 1–4 (inkl. Reserve, ohne BKP 5)
+           BKP 599 PM         -> auf BKP 1–5 ohne sich selbst
+         Die Vorbereitungsarbeiten laufen zuerst, damit ihr eigener Betrag
+         nicht in die Reserve zurückschlägt — beide beziehen sich auf die
+         reinen Gebäudekosten Stockwerkeigentum, Miete, Gewerbe, UG und
+         Einstellhalle. */
+      var bkp2_roh = out.bkp2;
       var reihenfolge = [
-        { id: 'b2_reserve', basis: function () { return out.bkp2; } },
+        { id: 'b1_vorbereitung', basis: function () { return bkp2_roh; } },
+        { id: 'b2_reserve', basis: function () { return bkp2_roh; } },
+        { id: 'b5_dritt',   basis: function () { return out.bkp1 + out.bkp2 + out.bkp3 + out.bkp4; } },
         { id: 'b5_bnk',     basis: function () { return out.bkp1 + out.bkp2 + out.bkp3 + out.bkp4; } },
         { id: 'b5_pm',      basis: function () { return out.bkp1 + out.bkp2 + out.bkp3 + out.bkp4 + out.bkp5; } }
       ];
       reihenfolge.forEach(function (r) {
         var z = b.zeilen[r.id];
-        if (!z || !z.aktiv || PROZENTBASEN.indexOf(z.basis) < 0) return;
+        if (!z || !z.aktiv) return;
         var kat = katalog.find(function (k) { return k.id === r.id; });
         if (!kat) return;
-        var basis = r.basis();
-        var wirksam = erfassen(kat, z, basis * pct(z.wert), basis);
+        var wirksam;
+        if (PROZENTBASEN.indexOf(z.basis) >= 0) {
+          var basis = r.basis();
+          wirksam = erfassen(kat, z, basis * pct(z.wert), basis);
+        } else {
+          /* Auch pauschal oder mengenbezogen erfassbar — dann in dieser
+             Runde, damit die Reihenfolge der Bezugsgrössen erhalten bleibt. */
+          var menge = num(z.menge_manuell) > 0 ? num(z.menge_manuell) : mengeFor(z.basis, bid, F, p);
+          wirksam = erfassen(kat, z, z.basis === 'pauschal' ? num(z.wert) : menge * num(z.wert), menge);
+        }
         if (r.id === 'b2_reserve') out.reserve = wirksam;
+        if (r.id === 'b5_dritt' || r.id === 'b5_pm') out.honorare += wirksam;
       });
 
       /* Übrige prozentuale Zeilen — etwa frei ergänzte */
@@ -347,19 +384,34 @@ window.APP = window.APP || {};
       out.reserve_pauschal = altReserve;
       out.total = out.summe + altReserve;
 
+      /* Kennwerte des Blocks. Die Kubatur umfasst die gebauten Volumen —
+         oberirdisch, Untergeschoss und Einstellhalle. */
       var gf = mengeFor('gf', bid, F, p);
+      var teilO = F.teile[{ neubau: 'neubau', erweiterung: 'erweiterung', sanierung: 'bestand' }[bid]] || {};
+      out.gv_rel = (teilO.gv_oi || 0) + (teilO.gv_ug || 0) + (teilO.gv_aeh || 0);
+      out.nwf = teilO.nwf || 0;
       out.pro_gf = gf > 0 ? out.total / gf : 0;
+      out.pro_nwf = out.nwf > 0 ? out.total / out.nwf : 0;
+      out.pro_gv = out.gv_rel > 0 ? out.total / out.gv_rel : 0;
       res.bloecke[bid] = out;
       res.basis_ohne_teuerung += out.total;
+      res.honorare_basis += out.honorare;
     });
 
+    var tf = 1;
     if (p.bau.teuerung_aktiv) {
       var Z = E.zeitachse(p);
       var mitte = (Z.t_baustart + Z.t_bauende) / 2;
-      var f = Math.pow(1 + pct(p.bau.teuerung_pct), mitte);
-      res.teuerung = res.basis_ohne_teuerung * (f - 1);
+      tf = Math.pow(1 + pct(p.bau.teuerung_pct), mitte);
+      res.teuerung = res.basis_ohne_teuerung * (tf - 1);
     }
     res.total = res.basis_ohne_teuerung + res.teuerung;
+
+    /* Baukosten ohne Projektmanagement- und Dritthonorar — Bezugsgrösse
+       des Entwicklungshonorars. Ein Honorar bemisst sich nicht an anderen
+       Honoraren. */
+    res.honorare = res.honorare_basis * tf;
+    res.ohne_honorare = res.total - res.honorare;
 
     if (res.total <= 0) warn.push({ art: 'info', text: 'Es sind noch keine Baukosten erfasst.' });
     return res;
@@ -381,7 +433,7 @@ window.APP = window.APP || {};
     }
   };
 
-  E.erwerbskosten = function (p, F, anlagekosten_schaetz, gewinn_schaetz) {
+  E.erwerbskosten = function (p, F, anlagekosten_schaetz, gewinn_schaetz, bau_ohne_honorare) {
     var e = p.erwerb, z = [], kp = E.kaufpreis(p, F);
 
     z.push({ id: 'kaufpreis', label: p.erwerbsart === 'baurecht'
@@ -402,28 +454,11 @@ window.APP = window.APP || {};
       A.fmt(e.handaenderung_anteil, 0) + ' %)', e.handaenderung, kp, e.handaenderung_anteil);
     proz('courtage', 'Einkaufskommission / Courtage', e.courtage, kp);
 
-    /* Entwicklungshonorar */
-    var basisEnt = e.entwicklung_basis === 'landwert' ? kp
-                 : e.entwicklung_basis === 'gewinn' ? Math.max(0, gewinn_schaetz || 0)
-                 : (anlagekosten_schaetz || 0);
-    var ent = basisEnt * pct(e.entwicklung_pct);
-    var entIst = ist(p, 'erwerb.entwicklung');
-    z.push({ id: 'entwicklung', label: 'Entwicklungshonorar (' +
-      ({ anlagekosten: 'auf Anlagekosten', landwert: 'auf Landwert', gewinn: 'auf Gewinn' })[e.entwicklung_basis] + ')',
-      basis: A.fmt(e.entwicklung_pct, 2) + ' %',
-      betrag: entIst !== null ? entIst : ent, soll: ent, ist: entIst !== null });
-
-    /* Dritthonorare */
-    var dritt = e.dritthonorare_basis === 'pauschal'
-      ? num(e.dritthonorare_fix)
-      : (anlagekosten_schaetz || 0) * pct(e.dritthonorare_pct);
     function fest(id, label, basisText, wert) {
       var iv = ist(p, 'erwerb.' + id);
       z.push({ id: id, label: label, basis: basisText,
                betrag: iv !== null ? iv : wert, soll: wert, ist: iv !== null });
     }
-    fest('dritthonorare', 'Dritthonorare',
-      e.dritthonorare_basis === 'pauschal' ? 'pauschal' : A.fmt(e.dritthonorare_pct, 2) + ' %', dritt);
     fest('dd', 'Due Diligence / Altlastenabklärung', 'pauschal', num(e.dd));
     fest('geometer', 'Vermessung / Geometer', 'pauschal', num(e.geometer));
     fest('recht', 'Rechtsberatung / Verträge', 'pauschal', num(e.recht));
@@ -436,8 +471,29 @@ window.APP = window.APP || {};
         betrag: mwIst !== null ? mwIst : mw, soll: mw, ist: mwIst !== null });
     }
 
+    /* Entwicklungshonorar zuletzt, weil sich die Vorgabe «erwerb_bau» auf
+       die Summe aller übrigen Erwerbskosten stützt. Das Honorar selbst
+       bleibt aussen vor — es bemisst sich nicht an sich selbst; ebenso
+       wenig an den Honoraren in den Baukosten (Projektmanagement,
+       Dritthonorare, BKP 558.1). */
+    var erwerbOhneHonorar = z.reduce(function (s, x) { return s + x.betrag; }, 0);
+    var basisText = { erwerb_bau: 'auf Erwerbs- und Baukosten', anlagekosten: 'auf Anlagekosten',
+                      landwert: 'auf Landwert', gewinn: 'auf Gewinn' };
+    var basisEnt = e.entwicklung_basis === 'landwert' ? kp
+                 : e.entwicklung_basis === 'gewinn' ? Math.max(0, gewinn_schaetz || 0)
+                 : e.entwicklung_basis === 'anlagekosten' ? (anlagekosten_schaetz || 0)
+                 : erwerbOhneHonorar + (bau_ohne_honorare || 0);
+    var ent = basisEnt * pct(e.entwicklung_pct);
+    var entIst = ist(p, 'erwerb.entwicklung');
+    z.push({ id: 'entwicklung',
+      label: 'Entwicklungshonorar (' + (basisText[e.entwicklung_basis] || basisText.erwerb_bau) + ')',
+      basis: A.fmt(e.entwicklung_pct, 2) + ' %',
+      betrag: entIst !== null ? entIst : ent, soll: ent, ist: entIst !== null,
+      bezugsgroesse: basisEnt });
+
     var total = z.reduce(function (s, x) { return s + x.betrag; }, 0);
-    return { zeilen: z, total: total, kaufpreis: kp, nebenkosten: total - kp };
+    return { zeilen: z, total: total, kaufpreis: kp, nebenkosten: total - kp,
+             entwicklung_basis_betrag: basisEnt };
   };
 
   /* ---------------------------------------------------------------
@@ -608,9 +664,9 @@ window.APP = window.APP || {};
                 exit: new Array(N).fill(0), halten: new Array(N).fill(0) };
 
     /* Erwerb: Kaufpreis und Kaufnebenkosten bei t = 0,
-       Entwicklungs- und Dritthonorare über die Entwicklungsphase. */
+       das Entwicklungshonorar über die Entwicklungsphase. */
     ERW.zeilen.forEach(function (z) {
-      if (z.id === 'entwicklung' || z.id === 'dritthonorare') {
+      if (z.id === 'entwicklung') {
         addArr(det.erwerb, spread(z.betrag, 0, Math.max(0.5, Z.t_bauende), N, 'linear'));
       } else if (z.id === 'mehrwert') {
         addArr(det.erwerb, punkt(z.betrag, Z.t_bb, N));
@@ -887,7 +943,7 @@ window.APP = window.APP || {};
     var gewinn = 0, ERW, BET, TR, FIN, bauzinsenAkt = 0, fkLimit = 0;
 
     for (var it = 0; it < 24; it++) {
-      ERW = E.erwerbskosten(p, F, anlagekosten, gewinn);
+      ERW = E.erwerbskosten(p, F, anlagekosten, gewinn, BAU.ohne_honorare);
       BET = E.betrieb(p, ERT, BAU.total);
       var akNeu = ERW.total + BAU.total + (p.finanzierung.bauzinsen_aktivieren ? bauzinsenAkt : 0);
       TR = E.zeitreihen(p, Z, ERW, BAU, ERT, VER, BET);

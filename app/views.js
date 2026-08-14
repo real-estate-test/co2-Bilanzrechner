@@ -398,6 +398,7 @@ window.APP = window.APP || {};
     out.appendChild(U.panel('Honorare', null, [
       U.body([
         U.sel(p, 'erwerb.entwicklung_basis', [
+          { id: 'erwerb_bau', label: 'auf Erwerbs- und Baukosten' },
           { id: 'anlagekosten', label: 'auf Anlagekosten' },
           { id: 'landwert', label: 'auf Landwert' },
           { id: 'gewinn', label: 'auf Projektgewinn' }
@@ -407,17 +408,21 @@ window.APP = window.APP || {};
             var z = r.erwerb.zeilen.find(function (x) { return x.id === 'entwicklung'; });
             return z ? fmt(z.betrag) + ' CHF' : '';
           } }),
-        U.sel(p, 'erwerb.dritthonorare_basis', [
-          { id: 'pct_ak', label: '% der Anlagekosten' }, { id: 'pauschal', label: 'Pauschal' }
-        ], 'Dritthonorare — Basis', { stufe: 'standard' }),
-        p.erwerb.dritthonorare_basis === 'pauschal'
-          ? U.num(p, 'erwerb.dritthonorare_fix', 'Dritthonorare', { unit: 'CHF', gross: true, stufe: 'standard' })
-          : U.num(p, 'erwerb.dritthonorare_pct', 'Dritthonorare', { unit: '%', dez: 2, stufe: 'standard',
-              derive: function (r) {
-                var z = r.erwerb.zeilen.find(function (x) { return x.id === 'dritthonorare'; });
-                return z ? fmt(z.betrag) + ' CHF' : '';
-              } })
-      ], 'c4')
+        el('div', { class: 'f' }, [
+          el('label', {}, [el('span', { text: 'Bezugsgrösse des Honorars' })]),
+          el('div', { class: 'kachel' }, [
+            U.d(function (r) { return fmt(r.erwerb.entwicklung_basis_betrag) + ' CHF'; }),
+            el('div', { class: 's', text: p.erwerb.entwicklung_basis === 'erwerb_bau'
+              ? 'Erwerbskosten ohne dieses Honorar zuzüglich Baukosten ohne Projektmanagement- und Dritthonorar'
+              : 'gemäss gewählter Basis' })
+          ])
+        ])
+      ], 'c4'),
+      el('div', { class: 'panelbody' }, [
+        U.hinweis('info', 'Die <b>Dritthonorare</b> stehen neu unter <b>Baukosten</b> als Zeile ' +
+          '<b>BKP 558.1</b>. Sie werden dort je Kostenblock erfasst und fliessen damit in die ' +
+          'Baukosten statt in die Erwerbskosten.')
+      ])
     ]));
 
     var tab = el('div', { class: 'panelbody' });
@@ -599,7 +604,8 @@ window.APP = window.APP || {};
         summe.appendChild(el('div', { class: 'cols c4' }, [
           U.kachel('BKP 1 Vorbereitung', fmt(bl.bkp1)),
           U.kachel('BKP 20–29 inkl. Reserve', fmt(bl.bkp2)),
-          U.kachel('BKP 3 + 4 + 5 + 9', fmt(bl.bkp3 + bl.bkp4 + bl.bkp5 + bl.bkp9)),
+          U.kachel('Baukosten je m³', fmt(bl.pro_gv) + ' CHF/m³',
+            fmt(bl.gv_rel) + ' m³ — oberirdisch, UG und Einstellhalle'),
           U.kachel('Total', fmt(bl.total), fmt(bl.pro_gf) + ' CHF/m² GF')
         ]));
       });
@@ -619,17 +625,61 @@ window.APP = window.APP || {};
       ], 'c4')
     ]));
 
+    /* Kennwerte je Kostenblock und darunter die Zusammenfassung. Die
+       Kubatur umfasst oberirdisch, Untergeschoss und Einstellhalle —
+       dieselbe Bezugsgrösse wie in den Blockkacheln. */
+    var kennTab = el('div', { class: 'panelbody' });
+    U.derived.push(function () {
+      var r = A.state.r, F = r.flaechen;
+      var zeilen = [];
+      ['neubau', 'erweiterung', 'sanierung'].forEach(function (bid) {
+        var bl = r.bau.bloecke[bid];
+        if (!bl) return;
+        zeilen.push(el('tr', {}, [
+          el('td', { text: A.BLOCK_LABELS[bid] }),
+          el('td', { class: 'n', text: fmt(bl.total) }),
+          el('td', { class: 'n', text: fmt(bl.pro_gf) }),
+          el('td', { class: 'n', text: fmt(bl.pro_nwf) }),
+          el('td', { class: 'n', text: fmt(bl.pro_gv) })
+        ]));
+      });
+      var gvGesamt = F.total.gv_oi + F.total.gv_ug + F.total.gv_aeh;
+      if (r.bau.teuerung > 0) {
+        zeilen.push(el('tr', {}, [
+          el('td', { class: 'muted', text: 'Teuerung über die Bauzeit' }),
+          el('td', { class: 'n muted', text: fmt(r.bau.teuerung) }),
+          el('td', {}), el('td', {}), el('td', {})
+        ]));
+      }
+      zeilen.push(el('tr', { class: 'total' }, [
+        el('td', { text: 'Zusammenfassung' }),
+        el('td', { class: 'n', text: fmt(r.bau.total) }),
+        el('td', { class: 'n', text: fmt(r.kpi.bau_pro_gf) }),
+        el('td', { class: 'n', text: fmt(F.total.nwf > 0 ? r.bau.total / F.total.nwf : 0) }),
+        el('td', { class: 'n', text: fmt(gvGesamt > 0 ? r.bau.total / gvGesamt : 0) })
+      ]));
+      U.leeren(kennTab).appendChild(U.tabelle([
+        { label: 'Kostenblock' }, { label: 'CHF', n: true, w: '18%' },
+        { label: 'CHF/m² GF', n: true, w: '15%' },
+        { label: 'CHF/m² NWF', n: true, w: '15%' },
+        { label: 'CHF/m³', n: true, w: '15%' }
+      ], zeilen));
+    });
+
     var gesamt = el('div', { class: 'panelbody' });
     U.derived.push(function () {
-      var r = A.state.r;
+      var r = A.state.r, F = r.flaechen;
+      var gvGesamt = F.total.gv_oi + F.total.gv_ug + F.total.gv_aeh;
       U.leeren(gesamt).appendChild(el('div', { class: 'cols c4' }, [
         U.kachel('Baukosten total', fmt(r.bau.total) + ' CHF'),
         U.kachel('je m² Geschossfläche', fmt(r.kpi.bau_pro_gf) + ' CHF/m²'),
-        U.kachel('je m² Nutzfläche', fmt(r.flaechen.total.nwf > 0 ? r.bau.total / r.flaechen.total.nwf : 0) + ' CHF/m²'),
-        U.kachel('je m³ Gebäudevolumen', fmt(r.flaechen.total.gv > 0 ? r.bau.total / r.flaechen.total.gv : 0) + ' CHF/m³')
+        U.kachel('je m² Nutzfläche', fmt(F.total.nwf > 0 ? r.bau.total / F.total.nwf : 0) + ' CHF/m²'),
+        U.kachel('je m³ Kubatur', fmt(gvGesamt > 0 ? r.bau.total / gvGesamt : 0) + ' CHF/m³',
+          fmt(gvGesamt) + ' m³ — oberirdisch, UG und Einstellhalle')
       ]));
     });
-    out.appendChild(U.panel('Baukosten gesamt', null, [gesamt]));
+    out.appendChild(U.panel('Baukosten gesamt',
+      'Kennwerte je Kostenblock, darunter die Zusammenfassung über alle Blöcke', [kennTab, gesamt]));
 
     return out;
   };

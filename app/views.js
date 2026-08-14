@@ -40,6 +40,13 @@ window.APP = window.APP || {};
       U.body([
         U.txt(p, 'name', 'Projektbezeichnung'),
         U.txt(p, 'ort', 'Ort / Adresse', { stufe: 'standard' }),
+        U.txt(p, 'parzelle', 'Parzellennummer', { stufe: 'standard',
+          platzhalter: 'z. B. 1247 / GB Aarau' }),
+        U.sel(p, 'firma', [{ id: '', label: '— keine Zuordnung —' }].concat(
+          A.firmenListe().map(function (f) { return { id: f, label: f }; })),
+          'Firma / Immobiliengefäss', { ohneBadge: true, stufe: 'standard',
+            hilfe: 'Die Auswahlliste wird unter Verwaltung gepflegt. Im Portfolio lässt sich ' +
+                   'danach filtern, die Gesamtsicht bleibt erhalten.' }),
         U.sel(p, 'kanton', Object.keys(A.KANTONE).map(function (k) {
           return { id: k, label: A.KANTONE[k].label };
         }), 'Kanton', {
@@ -120,15 +127,69 @@ window.APP = window.APP || {};
       U.num(p, 'zeit.verkaufsstart_rel_bb', 'Verkaufsstart ab Bewilligung', { unit: 'Monate', dez: 0, stufe: 'standard',
         hilfe: 'Negativ = Vermarktung startet bereits vor der Baubewilligung.' }),
       U.num(p, 'zeit.dauer_verkauf', 'Dauer Vermarktung', { unit: 'Monate', dez: 0, stufe: 'standard' }),
-      U.num(p, 'zeit.exit_verzoegerung', 'Exit nach Fertigstellung', { unit: 'Monate', dez: 0, stufe: 'detail' }),
-      U.seg(p, 'zeit.kostenkurve', [
-        { id: 's', label: 'S-Kurve' }, { id: 'linear', label: 'linear' }
-      ], 'Verlauf der Baukosten', { stufe: 'detail' })
+      U.num(p, 'zeit.exit_verzoegerung', 'Exit nach Fertigstellung', { unit: 'Monate', dez: 0, stufe: 'detail' })
     ], 'c4');
 
     var achse = el('div', { class: 'panelbody' });
     U.derived.push(function () { U.leeren(achse).appendChild(phasenBalken(A.state.r)); });
     out.appendChild(U.panel('Zeitachse', 'Jahresraster · Zinsen auf dem mittleren Kapitalsaldo', [zeitBody, achse]));
+
+    /* Verteilung des Kapitalbedarfs. Der Mittelabfluss folgt selten einer
+       Kurve — deshalb wahlweise feste Prozentwerte je Phase. */
+    var vertKoerper = [U.body([
+      U.seg(p, 'zeit.verteilung_modus', [
+        { id: 'auto', label: 'automatisch', hint: 'je Kostenart über die passende Phase' },
+        { id: 'phasen', label: 'prozentual je Phase', hint: 'Vorgabe des Anwenders' }
+      ], 'Verteilung der Baukosten'),
+      /* Die Kurve wirkt nur in der automatischen Verteilung. */
+      p.zeit.verteilung_modus === 'auto'
+        ? U.seg(p, 'zeit.kostenkurve', [
+            { id: 's', label: 'S-Kurve' }, { id: 'linear', label: 'linear' }
+          ], 'Verlauf über die Bauzeit')
+        : null
+    ], 'c2')];
+
+    if (p.zeit.verteilung_modus === 'phasen') {
+      var vz = A.engine.PHASEN.map(function (ph) {
+        return el('tr', {}, [
+          el('td', { text: ph.label }),
+          el('td', { style: 'width:110px' }, [U.zelleNum(p.zeit.verteilung, ph.id, { dez: 1 })]),
+          U.dTd(function (r) {
+            var e = (r.reihen.phasen || []).find(function (x) { return x.id === ph.id; });
+            if (!e) return '—';
+            if (e.dauer <= 0.001) return 'Phase dauert null Monate';
+            return fmt(e.dauer * 12, 0) + ' Monate';
+          }, 'muted'),
+          U.dTd(function (r) {
+            var e = (r.reihen.phasen || []).find(function (x) { return x.id === ph.id; });
+            return e ? fmt(r.bau.total * e.anteil) : '—';
+          })
+        ]);
+      });
+      vz.push(el('tr', { class: 'total' }, [
+        el('td', { text: 'Summe' }),
+        U.dTd(function (r, pp) {
+          var s = A.engine.PHASEN.reduce(function (a, ph) {
+            return a + (parseFloat(pp.zeit.verteilung[ph.id]) || 0);
+          }, 0);
+          return fmt(s, 1) + ' %';
+        }),
+        el('td', {}),
+        U.dTd(function (r) { return fmt(r.bau.total); })
+      ]));
+      vertKoerper.push(el('div', { class: 'panelbody' }, [U.tabelle([
+        { label: 'Phase' }, { label: 'Anteil %', n: true, w: '14%' },
+        { label: 'Dauer', n: true, w: '18%' }, { label: 'CHF', n: true, w: '22%' }
+      ], vz)]));
+      vertKoerper.push(el('div', { class: 'panelbody' }, [
+        U.hinweis('info', 'Die Prozentwerte werden auf 100 % normiert — eine Summe von 90 oder ' +
+          '110 verschluckt also keine Kosten und erfindet keine. Phasen mit der Dauer null ' +
+          'entfallen, ihr Anteil verteilt sich auf die übrigen. Innerhalb einer Phase läuft ' +
+          'der Abfluss gleichmässig.')
+      ]));
+    }
+
+    out.appendChild(U.panel('Kapitalbedarf', 'wann die Baukosten zahlungswirksam werden', vertKoerper));
 
     return out;
   };
@@ -181,7 +242,15 @@ window.APP = window.APP || {};
           { id: 'agf', label: 'aGF direkt' }
         ], 'Herkunft der Geschossfläche'),
         istAgf
-          ? U.num(p, 'grundstueck.agf_direkt', 'Anrechenbare Geschossfläche', { unit: 'm²', gross: true })
+          ? U.num(p, 'grundstueck.agf_direkt', 'Anrechenbare Geschossfläche', { unit: 'm²', gross: true,
+              /* Rückrechnung: aus der direkt erfassten aGF ergibt sich die
+                 Ausnützungsziffer als aGF ÷ Grundstücksfläche. */
+              derive: function (r, pp) {
+                var f = pp.grundstueck.flaeche;
+                return f > 0
+                  ? 'entspricht AZ ' + A.fmt(r.flaechen.agf_zulaessig / f, 3)
+                  : 'Grundstücksfläche fehlt für die Rückrechnung der AZ';
+              } })
           : U.num(p, 'grundstueck.az', 'Ausnützungsziffer AZ', { dez: 2,
               derive: function (r) { return 'ergibt ' + fmt(r.flaechen.agf_zulaessig) + ' m² aGF'; } }),
         istAgf ? null : U.num(p, 'grundstueck.az_bonus', 'Bonus auf die Ziffer', { unit: '%', dez: 1,
@@ -423,6 +492,43 @@ window.APP = window.APP || {};
           '<b>BKP 558.1</b>. Sie werden dort je Kostenblock erfasst und fliessen damit in die ' +
           'Baukosten statt in die Erwerbskosten.')
       ])
+    ]));
+
+    /* Preisvorstellung der Gegenseite. Reine Notiz — sie fliesst nicht in
+       die Rechnung ein, macht aber den Abstand zum kalkulierten Kaufpreis
+       je m² Grundstücksfläche sichtbar. */
+    out.appendChild(U.panel('Preisvorstellung & Bemerkung', 'nicht Teil der Rechnung', [
+      U.body([
+        U.num(p, 'erwerb.wunschpreis', 'Wunschpreis Käufer', { unit: 'CHF', gross: true,
+          derive: function (r, pp) {
+            var f = pp.grundstueck.flaeche;
+            if (!(pp.erwerb.wunschpreis > 0)) return 'noch nicht erfasst';
+            if (!(f > 0)) return 'Grundstücksfläche fehlt für die Rückrechnung';
+            return fmt(pp.erwerb.wunschpreis / f) + ' CHF/m² Grundstücksfläche';
+          } }),
+        el('div', { class: 'f' }, [
+          el('label', {}, [el('span', { text: 'Abstand zum Kaufpreis' })]),
+          el('div', { class: 'kachel' }, [
+            U.d(function (r, pp) {
+              if (!(pp.erwerb.wunschpreis > 0)) return '—';
+              return fmt(pp.erwerb.wunschpreis - r.erwerb.kaufpreis) + ' CHF';
+            }),
+            el('div', { class: 's', text: 'Wunschpreis abzüglich kalkuliertem Kaufpreis' })
+          ])
+        ]),
+        el('div', { class: 'f' }, [
+          el('label', {}, [el('span', { text: 'Kaufpreis je m² Grundstück' })]),
+          el('div', { class: 'kachel' }, [
+            U.d(function (r, pp) {
+              var f = pp.grundstueck.flaeche;
+              return f > 0 ? fmt(r.erwerb.kaufpreis / f) + ' CHF/m²' : '—';
+            }),
+            el('div', { class: 's', text: 'zum Vergleich mit der Preisvorstellung' })
+          ])
+        ]),
+        U.txt(p, 'erwerb.bemerkung', 'Bemerkung',
+          { platzhalter: 'z. B. Wunschpreis Eigentümer, Verhandlungsstand, Vorkaufsrecht' })
+      ], 'c4')
     ]));
 
     var tab = el('div', { class: 'panelbody' });
@@ -699,6 +805,15 @@ window.APP = window.APP || {};
       U.body([
         U.num(p, 'bewertung.rendite_halten', 'Bewertungsrendite gehaltener Flächen', { unit: '% brutto', dez: 2,
           hilfe: 'Marktwert = Sollmiete geteilt durch diese Rendite.' }),
+        U.num(p, 'bewertung.exit_rendite', 'Kapitalisierungssatz Exit an Investor', { unit: '%', dez: 2,
+          hilfe: 'Gilt für alle Nutzungszeilen mit der Verwertung «Exit an Investor». ' +
+                 'Trägt eine Zeile einen eigenen Satz ein, geht dieser vor.',
+          derive: function (r) {
+            var eigen = r.ertraege.positionen.filter(function (x) {
+              return x.kategorie === 'exit' && x.eigener_satz;
+            }).length;
+            return eigen > 0 ? eigen + ' Zeile(n) mit eigenem Satz' : 'gilt für alle Exit-Zeilen';
+          } }),
         U.chk(p, 'bewertung.exit_netto', 'Exit an Investor über Nettorendite rechnen', { stufe: 'standard' })
       ], 'c3')
     ]));
@@ -747,7 +862,8 @@ window.APP = window.APP || {};
         /* Exit-Rendite — dient allein der Preisfindung beim Verkauf an einen Investor */
         tr.appendChild(el('td', { style: 'width:80px' }, [
           n.verwertung === 'exit'
-            ? U.zelleNum(n, 'exit_rendite', { dez: 2 })
+            ? U.zelleNum(n, 'exit_rendite', { dez: 2, leerBei0: true,
+                platzhalter: A.fmt(p.bewertung.exit_rendite, 2) })
             : el('span', { class: 'muted', text: '—' })]));
 
         /* Kostengruppe */
@@ -823,11 +939,20 @@ window.APP = window.APP || {};
           inp.addEventListener('input', function () { e.nr = inp.value; A.markDirty(); });
           return inp;
         })()]));
+        /* Anzahl gleichwertiger Wohnungen. Fläche und Preis gelten je
+           Einheit — so wird ein Wohnungstyp nur einmal erfasst. */
+        tr.appendChild(el('td', { style: 'width:62px' }, [
+          U.zelleNum(e, 'anzahl', { dez: 0, platzhalter: '1' })]));
         tr.appendChild(el('td', { style: 'width:66px' }, [U.zelleNum(e, 'geschoss', { dez: 0 })]));
         tr.appendChild(el('td', { style: 'width:66px' }, [U.zelleNum(e, 'zimmer', { dez: 1 })]));
         tr.appendChild(el('td', { style: 'width:86px' }, [U.zelleNum(e, 'flaeche', { dez: 0 })]));
         tr.appendChild(el('td', { style: 'width:106px' }, [U.zelleNum(e, 'preis', { gross: true })]));
         tr.appendChild(U.dTd(function () { return e.flaeche > 0 ? fmt(e.preis / e.flaeche) : '—'; }, 'muted'));
+        /* Summe der Zeile, damit die Wirkung der Anzahl sichtbar bleibt */
+        tr.appendChild(U.dTd(function () {
+          var a = Math.max(1, Math.round(e.anzahl || 1));
+          return a > 1 ? fmt(e.flaeche * a) + ' m² · ' + fmt(e.preis * a) : '—';
+        }, 'muted'));
         tr.appendChild(el('td', { style: 'width:180px' }, [
           zeilenAuswahl.length
             ? U.zelleSel(e, 'zeile', zeilenAuswahl, { rerender: true })
@@ -843,14 +968,14 @@ window.APP = window.APP || {};
       /* Zwischentotale je Nutzungszeile */
       zeilenAuswahl.forEach(function (za) {
         zs.push(U.el('tr', { class: 'sum' }, [
-          el('td', { colspan: 3, text: 'Total ' + za.label }),
+          el('td', { colspan: 4, text: 'Total ' + za.label }),
           U.dTd(function (r) { var g = (r.flaechen.teile[p.spiegel.teil].spiegel || {})[za.id];
             return g ? fmt(g.flaeche) : '—'; }),
           U.dTd(function (r) { var g = (r.flaechen.teile[p.spiegel.teil].spiegel || {})[za.id];
             return g ? fmt(g.erloes) : '—'; }),
           U.dTd(function (r) { var g = (r.flaechen.teile[p.spiegel.teil].spiegel || {})[za.id];
             return g ? fmt(g.preis_m2) : '—'; }),
-          el('td', { colspan: 3, class: 'muted' }, [U.d(function (r) {
+          el('td', { colspan: 4, class: 'muted' }, [U.d(function (r) {
             var g = (r.flaechen.teile[p.spiegel.teil].spiegel || {})[za.id];
             return g ? g.anzahl + ' Einheiten' : '';
           }, 'muted')])
@@ -858,14 +983,16 @@ window.APP = window.APP || {};
       });
 
       spiegelKoerper.push(el('div', { class: 'panelbody' }, [U.tabelle([
-        { label: 'Nr.' }, { label: 'Geschoss', n: true }, { label: 'Zimmer', n: true },
-        { label: 'Fläche m²', n: true }, { label: 'Preis CHF', n: true }, { label: 'CHF/m²', n: true },
+        { label: 'Nr.' }, { label: 'Anzahl', n: true }, { label: 'Geschoss', n: true },
+        { label: 'Zimmer', n: true },
+        { label: 'Fläche m² je Einheit', n: true }, { label: 'Preis CHF je Einheit', n: true },
+        { label: 'CHF/m²', n: true }, { label: 'Total Zeile', n: true },
         { label: 'Nutzungszeile' }, { label: 'Art · Verwertung' }, { label: '' }
       ], zs)]));
 
       spiegelKoerper.push(el('div', { class: 'panelbody' }, [
         el('button', { class: 'schreibend', text: '+ Einheit', onclick: function () {
-          p.spiegel.einheiten.push({ nr: String(p.spiegel.einheiten.length + 1), geschoss: 0,
+          p.spiegel.einheiten.push({ nr: String(p.spiegel.einheiten.length + 1), anzahl: 1, geschoss: 0,
             zimmer: 3.5, flaeche: 95, preis: 900000,
             zeile: zeilenAuswahl.length ? zeilenAuswahl[0].id : null });
           A.recompute(); A.render();

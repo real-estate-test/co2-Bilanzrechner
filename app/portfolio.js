@@ -101,6 +101,7 @@ window.APP = window.APP || {};
      er bleibt deshalb lokal gespeichert und gilt für alle Auswertungen
      dieser Seite, nicht nur für die Liste. */
   var FILTER_KEY = 'projektrechner.statusfilter';
+  var FIRMA_KEY  = 'projektrechner.firmenfilter';
 
   function filterLesen() {
     try {
@@ -118,7 +119,26 @@ window.APP = window.APP || {};
     } catch (e) { /* privater Modus: gilt dann nur für diese Sitzung */ }
   }
 
+  /* Firmenfilter: null = alle Gefässe (Gesamtsicht), sonst die gewählten.
+     Der Leerstring steht für Projekte ohne Zuordnung. */
+  function firmaLesen() {
+    try {
+      var roh = localStorage.getItem(FIRMA_KEY);
+      if (!roh) return null;
+      var l = JSON.parse(roh);
+      return Array.isArray(l) ? l : null;
+    } catch (e) { return null; }
+  }
+
+  function firmaSchreiben(liste) {
+    try {
+      if (!liste) localStorage.removeItem(FIRMA_KEY);
+      else localStorage.setItem(FIRMA_KEY, JSON.stringify(liste));
+    } catch (e) {}
+  }
+
   A.statusFilter = filterLesen;
+  A.firmenFilter = firmaLesen;
 
   V.portfolio = function () {
     var out = el('div', {}, [U.kopf('Portfolio',
@@ -132,14 +152,29 @@ window.APP = window.APP || {};
       return out;
     }
 
+    /* --- Firmenfilter ------------------------------------------------ */
+    var firmen = A.firmenListe(alleProjekte);
+    var ohneZuordnung = alleProjekte.some(function (x) { return !x.firma; });
+    var firmaGewaehlt = firmaLesen();
+    /* Eine Firma, die es nicht mehr gibt, darf die Ansicht nicht leeren. */
+    if (firmaGewaehlt) {
+      firmaGewaehlt = firmaGewaehlt.filter(function (f) {
+        return f === '' ? ohneZuordnung : firmen.indexOf(f) >= 0;
+      });
+      if (!firmaGewaehlt.length) firmaGewaehlt = null;
+    }
+    var nachFirma = firmaGewaehlt
+      ? alleProjekte.filter(function (x) { return firmaGewaehlt.indexOf(x.firma || '') >= 0; })
+      : alleProjekte;
+
     /* --- Statusfilter ------------------------------------------------ */
     var gewaehlt = filterLesen();
     var projekte = gewaehlt
-      ? alleProjekte.filter(function (x) { return gewaehlt.indexOf(x.status) >= 0; })
-      : alleProjekte;
+      ? nachFirma.filter(function (x) { return gewaehlt.indexOf(x.status) >= 0; })
+      : nachFirma;
 
     var proStatus = {};
-    alleProjekte.forEach(function (x) {
+    nachFirma.forEach(function (x) {
       proStatus[x.status] = (proStatus[x.status] || 0) + 1;
     });
 
@@ -203,6 +238,52 @@ window.APP = window.APP || {};
               : 'keine Phase gewählt') })
     ]);
 
+    /* --- Firmenauswahl ----------------------------------------------- */
+    var firmenAuswahl = null;
+    if (firmen.length || ohneZuordnung) {
+      var proFirma = {};
+      alleProjekte.forEach(function (x) {
+        var k = x.firma || '';
+        proFirma[k] = (proFirma[k] || 0) + 1;
+      });
+
+      var fchips = el('div', { class: 'chips' });
+      var eintraege = firmen.slice();
+      if (ohneZuordnung) eintraege.push('');
+      eintraege.forEach(function (f) {
+        var an = !firmaGewaehlt || firmaGewaehlt.indexOf(f) >= 0;
+        var c = el('button', { type: 'button', class: 'chip' + (an ? ' on' : '') }, [
+          el('span', { text: f || 'ohne Zuordnung' }),
+          el('span', { class: 'zahl', text: String(proFirma[f] || 0) })
+        ]);
+        c.addEventListener('click', function () {
+          var basis = firmaGewaehlt ? firmaGewaehlt.slice() : eintraege.slice();
+          var i = basis.indexOf(f);
+          if (i >= 0) basis.splice(i, 1); else basis.push(f);
+          /* Alles gewählt oder nichts gewählt = Gesamtsicht */
+          firmaSchreiben(basis.length === eintraege.length || !basis.length ? null : basis);
+          A.render();
+        });
+        fchips.appendChild(c);
+      });
+
+      var fwerkzeuge = el('div', { style: 'display:flex;gap:8px;margin-top:10px;align-items:center;flex-wrap:wrap' }, [
+        el('button', { class: 'sm', text: 'alle Gefässe',
+          onclick: function () { firmaSchreiben(null); A.render(); } }),
+        el('span', { class: 'muted', style: 'font-size:11.5px;margin-left:6px',
+          text: firmaGewaehlt
+            ? nachFirma.length + ' von ' + alleProjekte.length + ' Projekten — Gefäss gewählt'
+            : 'Gesamtsicht über alle Gefässe' })
+      ]);
+
+      firmenAuswahl = U.panel('Immobiliengefäss',
+        'Portfolio je Firma oder Gesamtsicht über alle', [
+        el('div', { class: 'panelbody' }, [fchips, fwerkzeuge])
+      ]);
+    }
+
+    if (firmenAuswahl) out.appendChild(firmenAuswahl);
+
     out.appendChild(U.panel('Auswahl',
       'gilt für sämtliche Auswertungen dieser Seite', [
       el('div', { class: 'panelbody' }, [chips, werkzeuge])
@@ -246,6 +327,62 @@ window.APP = window.APP || {};
           return x.r.kpi.marge_ak < x.p.ziele.marge; }).length))
       ])])
     ]));
+
+    /* Gefässe nebeneinander. Bewusst über alle Firmen, auch wenn oben eine
+       einzelne gewählt ist — sonst liesse sich nicht vergleichen. Der
+       Statusfilter gilt dagegen mit, damit die Zahlen zur übrigen Seite
+       passen. */
+    if (firmen.length || ohneZuordnung) {
+      var proGefaess = {};
+      (gewaehlt ? alleProjekte.filter(function (x) { return gewaehlt.indexOf(x.status) >= 0; })
+                : alleProjekte).forEach(function (q) {
+        var k = q.firma || '';
+        if (!proGefaess[k]) proGefaess[k] = { n: 0, ak: 0, erloes: 0, gewinn: 0, ek: 0 };
+        var g = proGefaess[k];
+        var rr; try { rr = A.engine.compute(q); } catch (e) { return; }
+        g.n += 1; g.ak += rr.kpi.anlagekosten; g.erloes += rr.kpi.erloese;
+        g.gewinn += rr.kpi.gewinn; g.ek += rr.kpi.ek_max;
+      });
+
+      var gz = Object.keys(proGefaess).sort(function (a, b) {
+        return (a || 'zzz').localeCompare(b || 'zzz', 'de');
+      }).map(function (k) {
+        var g = proGefaess[k];
+        return el('tr', {}, [
+          el('td', { text: k || 'ohne Zuordnung', class: k ? '' : 'muted' }),
+          el('td', { class: 'n', text: String(g.n) }),
+          el('td', { class: 'n', text: fmt(g.ak) }),
+          el('td', { class: 'n', text: fmt(g.erloes) }),
+          el('td', { class: 'n' + (g.gewinn >= 0 ? '' : ' neg'), text: fmt(g.gewinn) }),
+          el('td', { class: 'n', text: A.fmtPct(g.ak > 0 ? g.gewinn / g.ak * 100 : 0) }),
+          el('td', { class: 'n', text: fmt(g.ek) })
+        ]);
+      });
+      var ges = Object.keys(proGefaess).reduce(function (a, k) {
+        var g = proGefaess[k];
+        a.n += g.n; a.ak += g.ak; a.erloes += g.erloes; a.gewinn += g.gewinn; a.ek += g.ek;
+        return a;
+      }, { n: 0, ak: 0, erloes: 0, gewinn: 0, ek: 0 });
+      gz.push(el('tr', { class: 'total' }, [
+        el('td', { text: 'Alle Gefässe' }),
+        el('td', { class: 'n', text: String(ges.n) }),
+        el('td', { class: 'n', text: fmt(ges.ak) }),
+        el('td', { class: 'n', text: fmt(ges.erloes) }),
+        el('td', { class: 'n', text: fmt(ges.gewinn) }),
+        el('td', { class: 'n', text: A.fmtPct(ges.ak > 0 ? ges.gewinn / ges.ak * 100 : 0) }),
+        el('td', { class: 'n', text: fmt(ges.ek) })
+      ]));
+
+      out.appendChild(U.panel('Gefässe im Überblick',
+        'unabhängig von der Gefässauswahl oben, damit ein Vergleich möglich bleibt', [
+        el('div', { class: 'panelbody' }, [U.tabelle([
+          { label: 'Firma' }, { label: 'Projekte', n: true, w: '9%' },
+          { label: 'Anlagekosten', n: true, w: '15%' }, { label: 'Erlöse', n: true, w: '15%' },
+          { label: 'Gewinn', n: true, w: '13%' }, { label: 'Marge', n: true, w: '9%' },
+          { label: 'Eigenkapital', n: true, w: '13%' }
+        ], gz)])
+      ]));
+    }
 
     /* Projektliste */
     var zeilen = berechnet.map(function (x) {

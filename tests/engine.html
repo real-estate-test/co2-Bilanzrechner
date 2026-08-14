@@ -152,8 +152,13 @@
     rb.flaechen.teile.neubau.gv_oi *
       (rb.flaechen.teile.neubau.gruppen.oi_stwe / rb.flaechen.teile.neubau.gf_oi),
     rb.flaechen.teile.neubau.gruppen_gv.oi_stwe, 0.1);
-  pruefe('BKP 202 Reserve = 3 % der Summe BKP 20–29',
-    zeile(rb, 'neubau', 'b2_reserve').menge * 0.03, zeile(rb, 'neubau', 'b2_reserve').betrag, 1);
+  /* Prozentsatz aus dem Projekt lesen, nicht fest verdrahten — der
+     Standardkennwert der Bibliothek darf sich ändern. */
+  var pctReserve = b.bau.neubau.zeilen.b2_reserve.wert / 100;
+  var pctVorb = b.bau.neubau.zeilen.b1_vorbereitung.wert / 100;
+  pruefe('BKP 202 Reserve = Prozentsatz × Bezugsgrösse',
+    zeile(rb, 'neubau', 'b2_reserve').menge * pctReserve,
+    zeile(rb, 'neubau', 'b2_reserve').betrag, 1);
   /* Die Vorbereitungsarbeiten beziehen sich auf die fünf Gebäudezeilen. */
   var fuenf = ['b2_oi_stwe', 'b2_oi_miete', 'b2_oi_gewerbe', 'b2_ug', 'b2_aeh']
     .reduce(function (s2, id) { return s2 + zeile(rb, 'neubau', id).betrag; }, 0);
@@ -171,8 +176,9 @@
     bl.bkp2, zeile(rb, 'neubau', 'b5_bnk').menge, 1);
   pruefe('Baukosten ohne PM-Honorar = Total abzüglich BKP 599',
     rb.bau.total - zeile(rb, 'neubau', 'b5_pm').betrag, rb.bau.ohne_pm, 1);
-  pruefe('BKP 599 PM = 2 % von BKP 1–5 ohne sich selbst',
-    zeile(rb, 'neubau', 'b5_pm').menge * 0.02, zeile(rb, 'neubau', 'b5_pm').betrag, 1);
+  pruefe('BKP 599 PM = Prozentsatz × BKP 1–5 ohne sich selbst',
+    zeile(rb, 'neubau', 'b5_pm').menge * b.bau.neubau.zeilen.b5_pm.wert / 100,
+    zeile(rb, 'neubau', 'b5_pm').betrag, 1);
   pruefe('Blocksumme = Summe der Gruppen',
     bl.bkp1 + bl.bkp2 + bl.bkp3 + bl.bkp4 + bl.bkp5 + bl.bkp9, bl.summe, 1);
 
@@ -248,6 +254,58 @@
   pruefe('STWE-Erlös folgt dem Spiegel', 2160000, rs.ertraege.stwe_erloes, 1);
   pruefe('Mietzeile bleibt Sollmiete', 80 * 300, rs.ertraege.sollmiete, 1);
 
+  /* ---- Kapitalbedarf: Verteilung ---------------------------------- */
+  var pv = A.defaultProject();
+  var rv0 = E.compute(pv);
+  var summeBau = function (res) {
+    return res.reihen.det.bau.reduce(function (s2, x) { return s2 + x; }, 0);
+  };
+  pruefe('Automatische Verteilung trifft die Baukosten genau',
+    rv0.bau.total, summeBau(rv0), 1);
+
+  pv.zeit.verteilung_modus = 'phasen';
+  pv.zeit.verteilung = { entwicklung: 0, bewilligung: 10, vorbereitung: 20, bau: 70 };
+  var rv1 = E.compute(pv);
+  pruefe('Phasenverteilung trifft die Baukosten genau', rv1.bau.total, summeBau(rv1), 1);
+  var phBau = rv1.reihen.phasen.find(function (x) { return x.id === 'bau'; });
+  pruefe('Anteil der Bauphase = 70 %', 0.70, phBau.anteil, 0.0001);
+
+  /* Nicht auf 100 normierte Eingabe darf nichts verschlucken */
+  pv.zeit.verteilung = { entwicklung: 0, bewilligung: 20, vorbereitung: 40, bau: 140 };
+  var rv2 = E.compute(pv);
+  pruefe('Summe über 100 % wird normiert', rv2.bau.total, summeBau(rv2), 1);
+  pruefe('Anteil der Bauphase nach Normierung = 70 %', 0.70,
+    rv2.reihen.phasen.find(function (x) { return x.id === 'bau'; }).anteil, 0.0001);
+
+  /* ---- Kapitalisierungssatz Exit: Vorgabe und Ausnahme ------------- */
+  var pe = A.defaultProject();
+  pe.bewertung.exit_rendite = 3.50;
+  pe.teile.neubau.nutzungen = [
+    A.defNutzung({ bezeichnung: 'Miete Exit', art: 'wohnen', anteil: 100,
+      miete: 300, verwertung: 'exit' })
+  ];
+  var re1 = E.compute(pe);
+  var posE = re1.ertraege.positionen.find(function (x) { return x.kategorie === 'exit'; });
+  pruefe('Exit ohne eigenen Satz nutzt die Vorgabe 3.50 %',
+    posE.sollmiete / 0.035, posE.wert, 1);
+  pe.teile.neubau.nutzungen[0].exit_rendite = 4.25;
+  var re2 = E.compute(pe);
+  var posE2 = re2.ertraege.positionen.find(function (x) { return x.kategorie === 'exit'; });
+  pruefe('Eigener Satz der Zeile geht vor', posE2.sollmiete / 0.0425, posE2.wert, 1);
+
+  /* ---- Wohnungsspiegel: Anzahl gleichwertiger Wohnungen ------------ */
+  var ps = A.defaultProject();
+  var zid = ps.teile.neubau.nutzungen[0].id;
+  ps.spiegel.aktiv = true; ps.spiegel.teil = 'neubau';
+  ps.spiegel.einheiten = [
+    { nr: '1', anzahl: 4, geschoss: 1, zimmer: 3.5, flaeche: 90, preis: 800000, zeile: zid }
+  ];
+  var rsp = E.compute(ps).flaechen.teile.neubau.spiegel[zid];
+  pruefe('4 gleiche Wohnungen ergeben 360 m²', 360, rsp.flaeche, 0.01);
+  pruefe('4 gleiche Wohnungen ergeben 3.2 Mio. Erlös', 3200000, rsp.erloes, 1);
+  pruefe('Anzahl Einheiten wird mitgezählt', 4, rsp.anzahl);
+  pruefe('Preis je m² bleibt der Preis der Einheit', 800000 / 90, rsp.preis_m2, 0.01);
+
   /* ---- Ist-Werte ersetzen den Soll-Betrag -------------------------- */
   var pi = A.defaultProject();
   pi.grundstueck.geschosse = 4;
@@ -259,10 +317,12 @@
   var ri1 = E.compute(pi);
   pruefe('Ist-Wert ersetzt den Betrag der Zeile',
     sollRohbau + 500000, zeile(ri1, 'neubau', 'b2_oi_stwe').betrag, 1);
-  /* Der Ist-Wert erhöht zuerst die Vorbereitungsarbeiten (2 % auf BKP 20–29),
-     und beides zusammen trägt die Reserve. */
+  /* Der Ist-Wert erhöht zuerst die Vorbereitungsarbeiten, und beides
+     zusammen trägt die Reserve. */
+  var pvI = pi.bau.neubau.zeilen.b1_vorbereitung.wert / 100;
+  var prI = pi.bau.neubau.zeilen.b2_reserve.wert / 100;
   pruefe('Reserve zieht mit dem Ist-Wert nach',
-    sollReserve + (500000 + 500000 * 0.02) * 0.03,
+    sollReserve + (500000 + 500000 * pvI) * prI,
     zeile(ri1, 'neubau', 'b2_reserve').betrag, 1);
   pruefe('Anlagekosten steigen um mehr als den Ist-Zuschlag (Folgekosten)',
     1, ri1.kpi.anlagekosten - ri0.kpi.anlagekosten > 500000 ? 1 : 0);

@@ -71,6 +71,40 @@ window.APP = window.APP || {};
 
   function punkt(total, t, N) { return spread(total, t, t, N, 'linear'); }
 
+  /* Die vier Projektphasen mit ihrem Anteil am Kapitalbedarf. Die erfassten
+     Prozentwerte werden auf 100 % normiert, damit eine unvollständige
+     Eingabe keine Kosten verschluckt oder erfindet. Phasen der Dauer null
+     fallen weg und ihr Anteil verteilt sich auf die übrigen. */
+  E.PHASEN = [
+    { id: 'entwicklung',  label: 'Entwicklung',      von: 't0',           bis: 't_baueingabe' },
+    { id: 'bewilligung',  label: 'Bewilligung',      von: 't_baueingabe', bis: 't_bb' },
+    { id: 'vorbereitung', label: 'Vorbereitung',     von: 't_bb',         bis: 't_baustart' },
+    { id: 'bau',          label: 'Bau',              von: 't_baustart',   bis: 't_bauende' }
+  ];
+
+  E.phasenverteilung = function (p, Z, N) {
+    var v = p.zeit.verteilung || {};
+    var liste = E.PHASEN.map(function (ph) {
+      var von = ph.von === 't0' ? 0 : Z[ph.von];
+      return { id: ph.id, label: ph.label, von: von, bis: Z[ph.bis],
+               pct: Math.max(0, num(v[ph.id])), dauer: Z[ph.bis] - von };
+    });
+    var summe = liste.reduce(function (s, ph) {
+      return s + (ph.dauer > 1e-9 ? ph.pct : 0);
+    }, 0);
+    liste.forEach(function (ph) {
+      ph.anteil = (summe > 0 && ph.dauer > 1e-9) ? ph.pct / summe : 0;
+    });
+    /* Ohne jede Eingabe fällt alles in die Bauphase — sonst stünde das
+       Projekt ohne Kapitalbedarf da. */
+    if (summe <= 0) {
+      var bau = liste[liste.length - 1];
+      bau.anteil = 1;
+      if (bau.dauer <= 1e-9) bau.bis = bau.von;
+    }
+    return liste;
+  };
+
   function addArr(ziel, quelle) {
     for (var i = 0; i < ziel.length; i++) ziel[i] += (quelle[i] || 0);
     return ziel;
@@ -182,11 +216,14 @@ window.APP = window.APP || {};
         p.spiegel.einheiten.forEach(function (e) {
           var zid = e.zeile;
           if (!zid || o.nutzungen[zid] === undefined) return;
+          /* Eine Zeile kann mehrere gleichwertige Wohnungen abbilden.
+             Fläche und Preis gelten je Einheit. */
+          var anz = Math.max(1, Math.round(num(e.anzahl) || 1));
           if (!o.spiegel[zid]) o.spiegel[zid] = { flaeche: 0, erloes: 0, anzahl: 0 };
-          o.spiegel[zid].flaeche += num(e.flaeche);
-          o.spiegel[zid].erloes  += num(e.preis);
-          o.spiegel[zid].anzahl  += 1;
-          sf += num(e.flaeche); sp += num(e.preis);
+          o.spiegel[zid].flaeche += num(e.flaeche) * anz;
+          o.spiegel[zid].erloes  += num(e.preis) * anz;
+          o.spiegel[zid].anzahl  += anz;
+          sf += num(e.flaeche) * anz; sp += num(e.preis) * anz;
         });
         Object.keys(o.spiegel).forEach(function (zid) {
           var g = o.spiegel[zid];
@@ -545,13 +582,17 @@ window.APP = window.APP || {};
           r.stwe_erloes += pos.erloes;
           if (!istPP) r.nwf_stwe += menge;
         } else if (n.verwertung === 'exit') {
-          var rend = Math.max(0.5, num(n.exit_rendite));
+          /* Leer oder 0 = Vorgabe aus den Bewertungsannahmen */
+          var rend = Math.max(0.5, num(n.exit_rendite) > 0
+            ? num(n.exit_rendite) : num(p.bewertung.exit_rendite));
           var basisMiete = miete_a;
           if (p.bewertung.exit_netto) basisMiete = miete_a * (1 - pct(p.betrieb.leerstand)) * 0.82;
           pos.wert = basisMiete / pct(rend);
           pos.sollmiete = miete_a;
           pos.kategorie = 'exit';
-          pos.art_label = 'Exit an Investor ' + A.fmt(rend, 2) + ' %';
+          pos.eigener_satz = num(n.exit_rendite) > 0;
+          pos.art_label = 'Exit an Investor ' + A.fmt(rend, 2) + ' %' +
+            (pos.eigener_satz ? '' : ' (Vorgabe)');
           r.exit_wert += pos.wert;
           r.sollmiete += miete_a;
           r.sollmiete_halten += miete_a;
@@ -658,7 +699,7 @@ window.APP = window.APP || {};
 
   E.zeitreihen = function (p, Z, ERW, BAU, ERT, VER, BET) {
     var N = Z.N, kurve = p.zeit.kostenkurve;
-    var aus = new Array(N).fill(0), ein = new Array(N).fill(0);
+    var aus = new Array(N).fill(0), ein = new Array(N).fill(0), phasen = [];
     var det = { erwerb: new Array(N).fill(0), bau: new Array(N).fill(0),
                 vermarktung: new Array(N).fill(0), betrieb: new Array(N).fill(0),
                 verkauf: new Array(N).fill(0), miete: new Array(N).fill(0),
@@ -681,23 +722,36 @@ window.APP = window.APP || {};
       addArr(det.erwerb, spread(num(p.erwerb.baurecht_zins) * Z.t_ende, 0, Z.t_ende, N, 'linear'));
     }
 
-    /* Baukosten: Honorare ab Projektstart, Bauleistungen über die Bauzeit */
-    Object.keys(BAU.bloecke).forEach(function (bid) {
-      var b = BAU.bloecke[bid];
-      b.zeilen.forEach(function (z) {
-        if (z.id === 'b2_honorare') {
-          addArr(det.bau, spread(z.betrag, 0.25, Z.t_bauende, N, 'linear'));
-        } else if (z.id === 'b5_bnk') {
-          addArr(det.bau, spread(z.betrag, Z.t_baueingabe, Z.t_bauende, N, 'linear'));
-        } else if (z.bkp.charAt(0) === '1') {
-          addArr(det.bau, spread(z.betrag, Z.t_baustart, Z.t_baustart + (Z.t_bauende - Z.t_baustart) * 0.3, N, 'linear'));
-        } else {
-          addArr(det.bau, spread(z.betrag, Z.t_baustart, Z.t_bauende, N, kurve));
-        }
+    /* Baukosten. Im Modus «phasen» wird der Gesamtbetrag nach den erfassten
+       Prozentwerten auf die vier Projektphasen gelegt und innerhalb der
+       Phase linear verteilt — der Kapitalbedarf folgt dann der Vorgabe des
+       Anwenders statt einer Kurve. Sonst gilt die bisherige Verteilung je
+       Zeilenart. */
+    if (p.zeit.verteilung_modus === 'phasen') {
+      phasen = E.phasenverteilung(p, Z, N);
+      phasen.forEach(function (ph) {
+        addArr(det.bau, spread(BAU.total * ph.anteil, ph.von, ph.bis, N, 'linear'));
       });
-      addArr(det.bau, spread(b.reserve, Z.t_baustart, Z.t_bauende, N, kurve));
-    });
-    addArr(det.bau, spread(BAU.teuerung, Z.t_baustart, Z.t_bauende, N, kurve));
+    } else {
+      Object.keys(BAU.bloecke).forEach(function (bid) {
+        var b = BAU.bloecke[bid];
+        b.zeilen.forEach(function (z) {
+          if (z.id === 'b2_honorare') {
+            addArr(det.bau, spread(z.betrag, 0.25, Z.t_bauende, N, 'linear'));
+          } else if (z.id === 'b5_bnk') {
+            addArr(det.bau, spread(z.betrag, Z.t_baueingabe, Z.t_bauende, N, 'linear'));
+          } else if (z.bkp.charAt(0) === '1') {
+            addArr(det.bau, spread(z.betrag, Z.t_baustart, Z.t_baustart + (Z.t_bauende - Z.t_baustart) * 0.3, N, 'linear'));
+          } else {
+            addArr(det.bau, spread(z.betrag, Z.t_baustart, Z.t_bauende, N, kurve));
+          }
+        });
+        /* Nur die pauschale Altreserve — die Zeile BKP 202 steckt bereits
+           in b.zeilen und wäre sonst ein zweites Mal im Kapitalbedarf. */
+        addArr(det.bau, spread(b.reserve_pauschal || 0, Z.t_baustart, Z.t_bauende, N, kurve));
+      });
+      addArr(det.bau, spread(BAU.teuerung, Z.t_baustart, Z.t_bauende, N, kurve));
+    }
 
     /* Vermarktung: Marketing ab Verkaufsstart, Provisionen mit den Verkäufen */
     VER.zeilen.forEach(function (z) {
@@ -766,7 +820,7 @@ window.APP = window.APP || {};
       aus[i] = det.erwerb[i] + det.bau[i] + det.vermarktung[i] + det.betrieb[i];
       ein[i] = det.verkauf[i] + det.miete[i] + det.exit[i];
     }
-    return { N: N, aus: aus, ein: ein, det: det };
+    return { N: N, aus: aus, ein: ein, det: det, phasen: phasen };
   };
 
   /* ---------------------------------------------------------------

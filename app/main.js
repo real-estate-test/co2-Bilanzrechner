@@ -10,6 +10,7 @@ window.APP = window.APP || {};
 
   A.state = { p: null, r: null, seite: 'projekt', dirty: false, konflikt: null };
   A.ziele = null;          // firmenweite Zielwerte (nur im Serverbetrieb)
+  A.firmen = null;         // Liste der Immobiliengefässe (nur im Serverbetrieb)
 
   A.SEITEN = [
     { id: 'portfolio',    ix: '0',  label: 'Portfolio' },
@@ -374,10 +375,14 @@ window.APP = window.APP || {};
       return A.store.init()
         .then(function () {
           if (!serverModus) return null;
-          return A.store.einstellung('ziele').catch(function () { return null; });
+          return Promise.all([
+            A.store.einstellung('ziele').catch(function () { return null; }),
+            A.store.einstellung('firmen').catch(function () { return null; })
+          ]);
         })
-        .then(function (ziele) {
-          if (ziele) A.ziele = ziele;
+        .then(function (geladen) {
+          if (geladen && geladen[0]) A.ziele = geladen[0];
+          if (geladen && Array.isArray(geladen[1])) A.firmen = geladen[1];
           weiter(serverModus);
         });
     }).catch(function (f) {

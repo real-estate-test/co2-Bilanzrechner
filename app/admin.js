@@ -178,6 +178,52 @@ window.APP = window.APP || {};
 
     out.appendChild(U.panel('Firmenweite Zielwerte', 'Grundlage der Ampeln im Portfolio', [zielBody]));
 
+    /* --- Immobiliengefässe ----------------------------------------- */
+    var firmenBody = el('div', { class: 'panelbody' });
+
+    function firmenZeichnen(liste) {
+      U.leeren(firmenBody);
+      var feld = el('textarea', { rows: String(Math.max(4, liste.length + 1)),
+        style: 'width:100%;max-width:460px;padding:8px 10px;border:1px solid var(--line2);' +
+               'border-radius:5px;font-family:inherit;font-size:13px' });
+      feld.value = liste.join('\n');
+
+      firmenBody.appendChild(el('div', { class: 'k',
+        style: 'font-size:11px;color:var(--muted);margin-bottom:4px',
+        text: 'eine Firma je Zeile' }));
+      firmenBody.appendChild(feld);
+      firmenBody.appendChild(el('div', { style: 'margin-top:10px' }, [
+        el('button', { class: 'primary', text: 'Liste speichern', onclick: function () {
+          var neu = A.firmenSetzen(feld.value.split('\n'));
+          var fertig = function () {
+            A.meldung('ok', 'Die Liste steht ab sofort in jedem Projekt zur Auswahl.');
+            A.render();
+          };
+          if (A.store.modus === 'server') {
+            A.store.einstellungSetzen('firmen', neu).then(fertig)
+              .catch(function (f) { A.meldung('warn', f.message); });
+          } else { fertig(); }
+        } })
+      ]));
+      firmenBody.appendChild(el('div', { class: 'hilfe', style: 'margin-top:10px',
+        text: 'Ein Projekt wird unter «Projekt & Phasen» einer Firma zugeordnet. Im Portfolio ' +
+              'lässt sich danach filtern; die Gesamtsicht über alle Gefässe bleibt bestehen. ' +
+              'Eine Firma, die an einem Projekt hängt, bleibt dort wählbar, auch wenn sie hier ' +
+              'entfernt wird — die Zuordnung geht also nie verloren.' }));
+    }
+
+    if (A.store.modus === 'server') {
+      firmenBody.appendChild(el('div', { class: 'muted', text: 'wird geladen …' }));
+      A.store.einstellung('firmen').then(function (liste) {
+        if (Array.isArray(liste)) A.firmen = liste;
+        firmenZeichnen(A.firmenListe());
+      }).catch(function () { firmenZeichnen(A.firmenListe()); });
+    } else {
+      firmenZeichnen(A.firmenListe());
+    }
+
+    out.appendChild(U.panel('Immobiliengefässe', 'Firmen, denen Projekte zugeordnet werden', [firmenBody]));
+
     /* --- Kennwerte-Hinweis ----------------------------------------- */
     out.appendChild(U.panel('Kennwerte', 'Baukosten, Zinssätze und Sätze', [
       el('div', { class: 'panelbody' }, [

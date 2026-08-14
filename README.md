@@ -65,6 +65,15 @@ Kubaturen wahlweise über Höhen (Regelgeschoss 3.00 m, Attika 3.20 m,
 Untergeschoss und Einstellhalle je 3.40 m) oder als direkt erfasstes Volumen,
 aus dem sich die Höhen ergeben.
 
+**Kapitalbedarf** Die Baukosten werden wahlweise automatisch verteilt (je Kostenart über
+die passende Phase, S-Kurve oder linear) oder mit festen Prozentwerten je Projektphase —
+Entwicklung, Bewilligung, Vorbereitung, Bau. Die Prozentwerte werden auf 100 % normiert,
+Phasen der Dauer null entfallen und ihr Anteil verteilt sich auf die übrigen.
+
+**Immobiliengefässe** Jedes Projekt lässt sich einer Firma zuordnen; die Liste pflegt der
+Verwalter unter Verwaltung. Das Portfolio filtert danach und zeigt die Gefässe zusätzlich
+nebeneinander — je Firma und über alles.
+
 **Erwerbskosten** Kaufpreis wahlweise als Total, CHF/m² Land oder CHF/m² aGF, dazu
 Notariat, Grundbuch, Handänderungssteuer mit Käuferanteil, Einkaufskommission,
 Entwicklungshonorar, Due Diligence, Geometer, Rechtsberatung und

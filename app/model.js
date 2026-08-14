@@ -6,7 +6,7 @@ window.APP = window.APP || {};
 (function (A) {
   'use strict';
 
-  A.SCHEMA = 5;
+  A.SCHEMA = 6;
 
   /* ---------------------------------------------------------------
      Stammlisten
@@ -124,6 +124,34 @@ window.APP = window.APP || {};
     pct_bkp1_5:    '% von BKP 1–5'
   };
 
+  /* Immobiliengefässe. Die Liste pflegt der Verwalter; im Einzelplatzbetrieb
+     steht sie lokal. Firmen, die an einem Projekt bereits hängen, bleiben
+     immer wählbar — sonst verlöre ein Projekt seine Zuordnung, nur weil ein
+     Eintrag aus der Liste genommen wurde. */
+  A.FIRMEN_LOKAL = 'projektrechner.firmen';
+
+  A.firmenListe = function (projekte) {
+    var liste = Array.isArray(A.firmen) ? A.firmen.slice() : null;
+    if (!liste) {
+      try { liste = JSON.parse(localStorage.getItem(A.FIRMEN_LOKAL) || '[]'); }
+      catch (e) { liste = []; }
+      if (!Array.isArray(liste)) liste = [];
+    }
+    (projekte || (A.state && A.state.p ? [A.state.p] : [])).forEach(function (q) {
+      if (q && q.firma && liste.indexOf(q.firma) < 0) liste.push(q.firma);
+    });
+    return liste.filter(function (f, i, a) { return f && a.indexOf(f) === i; })
+                .sort(function (a, b) { return a.localeCompare(b, 'de'); });
+  };
+
+  A.firmenSetzen = function (liste) {
+    liste = (liste || []).map(function (f) { return String(f).trim(); })
+                         .filter(function (f, i, a) { return f && a.indexOf(f) === i; });
+    A.firmen = liste;
+    try { localStorage.setItem(A.FIRMEN_LOKAL, JSON.stringify(liste)); } catch (e) {}
+    return liste;
+  };
+
   A.BKP_KATALOG = [
     { id: 'b1_abbruch',   bkp: '1',     label: 'Abbruch / Rückbau Bestand',
       hilfe: 'Nur relevant, wenn der Bestand zurückgebaut wird. Menge = Gebäudevolumen Bestand.' },
@@ -178,7 +206,7 @@ window.APP = window.APP || {};
       b2_oi_gewerbe: { basis: 'gv_oi_gewerbe', wert: 800,  min: 530,  max: 1130 },
       b2_ug:         { basis: 'gv_ug',         wert: 550,  min: 380,  max: 780  },
       b2_aeh:        { basis: 'gv_aeh',        wert: 400,  min: 270,  max: 620  },
-      b2_reserve:    { basis: 'pct_bkp2',      wert: 3,    min: 0,    max: 10   },
+      b2_reserve:    { basis: 'pct_bkp2',      wert: 5,    min: 0,    max: 12   },
       b3_betrieb:    { basis: 'pauschal',   wert: 0,     min: 0,    max: 0     },
       b4_umgebung:   { basis: 'umgebung',   wert: 150,   min: 80,   max: 550   },
       b5_dritt:      { basis: 'pct_bkp1_4', wert: 0.5,   min: 0,    max: 4     },
@@ -198,7 +226,7 @@ window.APP = window.APP || {};
       b2_oi_gewerbe: { basis: 'gv_oi_gewerbe', wert: 900,  min: 570,  max: 1300 },
       b2_ug:         { basis: 'gv_ug',         wert: 0,    min: 0,    max: 0    },
       b2_aeh:        { basis: 'gv_aeh',        wert: 0,    min: 0,    max: 0    },
-      b2_reserve:    { basis: 'pct_bkp2',      wert: 3,    min: 0,    max: 10   },
+      b2_reserve:    { basis: 'pct_bkp2',      wert: 5,    min: 0,    max: 12   },
       b3_betrieb:    { basis: 'pauschal',   wert: 0,     min: 0,    max: 0     },
       b4_umgebung:   { basis: 'umgebung',   wert: 0,     min: 0,    max: 0     },
       b5_dritt:      { basis: 'pct_bkp1_4', wert: 0.5,   min: 0,    max: 4     },
@@ -303,7 +331,8 @@ window.APP = window.APP || {};
       preis: o.preis !== undefined ? o.preis : 9500,   // CHF/m² bzw. CHF/PP
       verwertung: o.verwertung || 'stwe',
       selbst: o.selbst || 0,
-      exit_rendite: o.exit_rendite !== undefined ? o.exit_rendite : 4.0,
+      /* 0 oder leer = Vorgabe aus den Bewertungsannahmen übernehmen */
+      exit_rendite: o.exit_rendite !== undefined ? o.exit_rendite : 0,
       kostengruppe: o.kostengruppe || A.kostengruppeFuer(art, o.verwertung || 'stwe')
     };
   };
@@ -327,7 +356,7 @@ window.APP = window.APP || {};
       hnf_quote: 78,           // NWF in % der GF oberirdisch
       ug_quote: 80,            // Untergeschoss in % der Gebäudegrundfläche
       pp: 0,                   // Anzahl Parkplätze
-      flaeche_pro_pp: 30,      // m² Einstellhalle je Parkplatz
+      flaeche_pro_pp: 32,      // m² Einstellhalle je Parkplatz
 
       /* Kubaturen: entweder über Höhen gerechnet oder direkt erfasst.
          Regelgeschosse = Anzahl Geschosse − 1, Dachgeschoss immer eines. */
@@ -363,6 +392,8 @@ window.APP = window.APP || {};
       id: A.uid(),
       name: 'Neues Projekt',
       ort: '',
+      parzelle: '',                      // Parzellennummer, frei erfasst
+      firma: '',                         // Immobiliengefäss — Liste in der Verwaltung
       kanton: 'ZH',
       bearbeiter: '',
       startdatum: A.heute(),                 // Erwerb — alle Termine bauen darauf auf
@@ -421,6 +452,10 @@ window.APP = window.APP || {};
            ohne Projektmanagement- und Dritthonorare. */
         entwicklung_basis: 'erwerb_bau', // erwerb_bau | anlagekosten | landwert | gewinn
         entwicklung_pct: 2.50,
+        /* Preisvorstellung der Gegenseite — reine Notiz, fliesst nicht in
+           die Rechnung ein. Dient dem Vergleich mit dem Kaufpreis. */
+        wunschpreis: 0,
+        bemerkung: '',
         dd: 25000,
         geometer: 15000,
         recht: 20000
@@ -440,7 +475,9 @@ window.APP = window.APP || {};
       spiegel: {
         aktiv: false,
         teil: 'neubau',
-        /* Je Einheit: {nr, geschoss, zimmer, flaeche, preis, zeile}
+        /* Je Einheit: {nr, anzahl, geschoss, zimmer, flaeche, preis, zeile}
+           «anzahl» fasst gleichwertige Wohnungen zusammen — Fläche und
+           Preis gelten je Einheit und werden mit der Anzahl multipliziert.
            «zeile» verweist auf eine Nutzungszeile — darüber erbt die
            Einheit Art und Verwertung. Ohne Spiegel gilt der
            Durchschnittspreis der Zeile. */
@@ -448,7 +485,7 @@ window.APP = window.APP || {};
       },
 
       vermarktung: {
-        verkauf_pct: 3.00,               // % Verkaufserlös STWE
+        verkauf_pct: 1.90,               // % Verkaufserlös STWE
         vermietung_monate: 1.50,         // Monatsmieten je Erstvermietung
         marketing_basis: 'pct',          // pct | pauschal
         marketing_pct: 0.50,             // % vom Erlös
@@ -483,7 +520,17 @@ window.APP = window.APP || {};
         verkaufsstart_rel_bb: 0,         // Monate relativ zur Baubewilligung
         dauer_verkauf: 24,
         exit_verzoegerung: 3,            // Monate nach Fertigstellung
-        kostenkurve: 's'                 // s | linear
+        kostenkurve: 's',                // s | linear — gilt im Modus «auto»
+        /* Verteilung der Baukosten und damit des Kapitalbedarfs.
+           auto   = wie bisher, je Zeilenart über die passende Phase
+           phasen = Prozentwerte je Projektphase, innerhalb linear */
+        verteilung_modus: 'auto',        // auto | phasen
+        verteilung: {
+          entwicklung: 0,                // Erwerb → Baueingabe
+          bewilligung: 5,                // Baueingabe → Baubewilligung
+          vorbereitung: 15,              // Baubewilligung → Baustart
+          bau: 80                        // Baustart → Fertigstellung
+        }
       },
 
       finanzierung: {
@@ -514,6 +561,8 @@ window.APP = window.APP || {};
 
       bewertung: {
         rendite_halten: 4.00,            // Bruttorendite zur Wertermittlung Halteanteil
+        exit_rendite: 4.00,              // Vorgabe Kapitalisierungssatz Exit an Investor;
+                                         // eine Nutzungszeile darf davon abweichen
         exit_netto: false                // true = Nettorendite statt Brutto beim Exit
       },
 
@@ -816,6 +865,29 @@ window.APP = window.APP || {};
         if (!b || !b.zeilen || !b.zeilen.b5_bnk) return;
         if (b.zeilen.b5_bnk.basis === 'pct_bkp1_4') b.zeilen.b5_bnk.basis = 'pct_bkp2';
       });
+    }
+
+    /* --- Schema 5 -> 6: Der Kapitalisierungssatz Exit ist neu eine Vorgabe
+       in den Bewertungsannahmen. Bestehende Nutzungszeilen behalten ihren
+       eigenen Satz, damit sich nichts verschiebt; die Vorgabe übernimmt den
+       Satz der ersten Exit-Zeile, sonst bleibt sie auf 4.00 %. --------- */
+    if (version < 6) {
+      var ersterExit = 0;
+      A.TEILE.forEach(function (T) {
+        ((p.teile[T.id] || {}).nutzungen || []).forEach(function (n) {
+          if (!ersterExit && n.verwertung === 'exit' && num0(n.exit_rendite) > 0) {
+            ersterExit = num0(n.exit_rendite);
+          }
+        });
+      });
+      if (p.bewertung && ersterExit > 0) p.bewertung.exit_rendite = ersterExit;
+
+      /* Wohnungsspiegel: jede bestehende Einheit steht für genau eine Wohnung. */
+      if (p.spiegel && Array.isArray(p.spiegel.einheiten)) {
+        p.spiegel.einheiten.forEach(function (e) {
+          if (!(num0(e.anzahl) > 0)) e.anzahl = 1;
+        });
+      }
     }
 
     /* Startdatum aus einem vorhandenen Startjahr ableiten */

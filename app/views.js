@@ -413,7 +413,7 @@ window.APP = window.APP || {};
           el('div', { class: 'kachel' }, [
             U.d(function (r) { return fmt(r.erwerb.entwicklung_basis_betrag) + ' CHF'; }),
             el('div', { class: 's', text: p.erwerb.entwicklung_basis === 'erwerb_bau'
-              ? 'Erwerbskosten ohne dieses Honorar zuzüglich Baukosten ohne Projektmanagement- und Dritthonorar'
+              ? 'Erwerbskosten ohne dieses Honorar zuzüglich Baukosten ohne Projektmanagement-Honorar'
               : 'gemäss gewählter Basis' })
           ])
         ])

@@ -69,9 +69,9 @@ aus dem sich die Höhen ergeben.
 Notariat, Grundbuch, Handänderungssteuer mit Käuferanteil, Einkaufskommission,
 Entwicklungshonorar, Due Diligence, Geometer, Rechtsberatung und
 Mehrwertabgabe. Die Bezugsgrösse des Entwicklungshonorars sind in der Vorgabe
-die Erwerbskosten ohne dieses Honorar zuzüglich der Baukosten ohne
-Projektmanagement- und Dritthonorar — ein Honorar bemisst sich nicht an
-Honoraren. Wahlweise auch auf Anlagekosten, Landwert oder Projektgewinn. Alternativ Baurecht mit Einmalentschädigung und Baurechtszins.
+die Erwerbskosten ohne dieses Honorar zuzüglich der Baukosten ohne das
+Projektmanagement-Honorar BKP 599; die Dritthonorare BKP 558.1 zählen mit.
+Wahlweise auch auf Anlagekosten, Landwert oder Projektgewinn. Alternativ Baurecht mit Einmalentschädigung und Baurechtszins.
 Kantonale Richtwerte für AG · SO · ZH · LU · BE · BS · BL sind hinterlegt.
 
 **Baukosten** nach BKP, auf die praxisrelevanten Gruppen verdichtet:
@@ -87,18 +87,21 @@ Kantonale Richtwerte für AG · SO · ZH · LU · BE · BS · BL sind hinterlegt
 | 20–29 | Gebäude oberirdisch · Gewerbe | m³ Kubatur aus dem Nutzungsmix |
 | 20–29 | Untergeschoss | m³ |
 | 20–29 | Einstellhalle | m³ |
-| 202 | Reserve | % von BKP 20–29 vor Reserve |
+| 202 | Reserve | % von BKP 20–29 vor Reserve + Vorbereitungsarbeiten |
 | 3 · 4 | Betriebseinrichtungen, Umgebung | pauschal, m² |
 | 558.1 | Dritthonorare | % von BKP 1–4 |
-| 5 | Baunebenkosten | % von BKP 1–4 |
+| 5 | Baunebenkosten | % von BKP 20–29 inkl. Reserve |
 | 599 | Projektmanagement-Honorar | % von BKP 1–5 |
 | 9 | Ausstattung | m² NWF |
 
 Die prozentualen Zeilen laufen in fester Reihenfolge, weil sie aufeinander
-aufbauen: Vorbereitungsarbeiten und Reserve beziehen sich beide auf die fünf
-Gebäudezeilen BKP 20–29 — die Vorbereitungsarbeiten erhöhen die Reserve also
-nicht. Danach folgen Dritthonorare und Baunebenkosten auf BKP 1–4 inklusive
-Reserve, zuletzt das Projektmanagement-Honorar auf BKP 1–5 ohne sich selbst.
+aufbauen: zuerst die Vorbereitungsarbeiten auf die fünf Gebäudezeilen
+BKP 20–29, dann die Reserve auf dieselbe Grösse **zuzüglich** der
+Vorbereitungsarbeiten — deren Prozentwert wirkt damit bewusst ein zweites Mal.
+Danach die Dritthonorare auf BKP 1–4 inklusive Reserve, die Baunebenkosten
+ausschliesslich auf BKP 20–29 inklusive Reserve, zuletzt das
+Projektmanagement-Honorar auf BKP 1–5 ohne sich selbst. Jede Zeile trägt ihre
+Formel als Hinweis unter der Bezeichnung.
 
 Die Kennwerte der BKP 20–29 sind Vollkosten inklusive Gebäudetechnik, Ausbau und
 Planerhonoraren; der Ausbaustandard unterscheidet sich zwischen verkauftem

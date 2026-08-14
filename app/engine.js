@@ -281,14 +281,14 @@ window.APP = window.APP || {};
 
   E.baukosten = function (p, F, warn) {
     var res = { bloecke: {}, total: 0, teuerung: 0, basis_ohne_teuerung: 0,
-                honorare_basis: 0, honorare: 0, ohne_honorare: 0 };
+                pm_basis: 0, pm_honorar: 0, ohne_pm: 0 };
 
     ['neubau', 'erweiterung', 'sanierung'].forEach(function (bid) {
       var b = p.bau[bid];
       if (!b.aktiv) return;
       var out = { id: bid, label: A.BLOCK_LABELS[bid], zeilen: [],
                   bkp1: 0, bkp2: 0, bkp3: 0, bkp4: 0, bkp5: 0, bkp9: 0,
-                  summe: 0, reserve: 0, honorare: 0, total: 0 };
+                  summe: 0, reserve: 0, pm_honorar: 0, total: 0 };
 
       var katalog = A.BKP_KATALOG.concat(b.eigene || []);
 
@@ -330,21 +330,20 @@ window.APP = window.APP || {};
 
       /* Zweite Runde in fester Reihenfolge, weil die Bezugsgrössen
          aufeinander aufbauen:
-           BKP 1 Vorbereitung -> auf BKP 20–29 VOR Reserve
-           202 Reserve        -> auf BKP 20–29 (dieselbe Bezugsgrösse)
+           BKP 1 Vorbereitung -> auf BKP 20–29 vor Reserve
+           202 Reserve        -> auf BKP 20–29 vor Reserve zuzüglich der
+                                 Vorbereitungsarbeiten. Deren Prozentwert
+                                 wirkt damit ein zweites Mal — das ist so
+                                 gewollt und mit dem Anwender abgestimmt.
            BKP 558.1 Dritth.  -> auf BKP 1–4 (inkl. Reserve)
-           BKP 5  BNK         -> auf BKP 1–4 (inkl. Reserve, ohne BKP 5)
-           BKP 599 PM         -> auf BKP 1–5 ohne sich selbst
-         Die Vorbereitungsarbeiten laufen zuerst, damit ihr eigener Betrag
-         nicht in die Reserve zurückschlägt — beide beziehen sich auf die
-         reinen Gebäudekosten Stockwerkeigentum, Miete, Gewerbe, UG und
-         Einstellhalle. */
-      var bkp2_roh = out.bkp2;
+           BKP 5  BNK         -> auf BKP 20–29 inkl. Reserve
+           BKP 599 PM         -> auf BKP 1–5 ohne sich selbst              */
+      var bkp2_roh = out.bkp2, vorbereitung = 0;
       var reihenfolge = [
         { id: 'b1_vorbereitung', basis: function () { return bkp2_roh; } },
-        { id: 'b2_reserve', basis: function () { return bkp2_roh; } },
+        { id: 'b2_reserve', basis: function () { return bkp2_roh + vorbereitung; } },
         { id: 'b5_dritt',   basis: function () { return out.bkp1 + out.bkp2 + out.bkp3 + out.bkp4; } },
-        { id: 'b5_bnk',     basis: function () { return out.bkp1 + out.bkp2 + out.bkp3 + out.bkp4; } },
+        { id: 'b5_bnk',     basis: function () { return out.bkp2; } },
         { id: 'b5_pm',      basis: function () { return out.bkp1 + out.bkp2 + out.bkp3 + out.bkp4 + out.bkp5; } }
       ];
       reihenfolge.forEach(function (r) {
@@ -362,8 +361,11 @@ window.APP = window.APP || {};
           var menge = num(z.menge_manuell) > 0 ? num(z.menge_manuell) : mengeFor(z.basis, bid, F, p);
           wirksam = erfassen(kat, z, z.basis === 'pauschal' ? num(z.wert) : menge * num(z.wert), menge);
         }
+        if (r.id === 'b1_vorbereitung') vorbereitung = wirksam;
         if (r.id === 'b2_reserve') out.reserve = wirksam;
-        if (r.id === 'b5_dritt' || r.id === 'b5_pm') out.honorare += wirksam;
+        /* Nur das Projektmanagement-Honorar bleibt aus der Bezugsgrösse des
+           Entwicklungshonorars draussen. Die Dritthonorare zählen mit. */
+        if (r.id === 'b5_pm') out.pm_honorar += wirksam;
       });
 
       /* Übrige prozentuale Zeilen — etwa frei ergänzte */
@@ -395,7 +397,7 @@ window.APP = window.APP || {};
       out.pro_gv = out.gv_rel > 0 ? out.total / out.gv_rel : 0;
       res.bloecke[bid] = out;
       res.basis_ohne_teuerung += out.total;
-      res.honorare_basis += out.honorare;
+      res.pm_basis += out.pm_honorar;
     });
 
     var tf = 1;
@@ -407,11 +409,10 @@ window.APP = window.APP || {};
     }
     res.total = res.basis_ohne_teuerung + res.teuerung;
 
-    /* Baukosten ohne Projektmanagement- und Dritthonorar — Bezugsgrösse
-       des Entwicklungshonorars. Ein Honorar bemisst sich nicht an anderen
-       Honoraren. */
-    res.honorare = res.honorare_basis * tf;
-    res.ohne_honorare = res.total - res.honorare;
+    /* Baukosten ohne das Projektmanagement-Honorar — Bezugsgrösse des
+       Entwicklungshonorars. Die Dritthonorare BKP 558.1 zählen mit. */
+    res.pm_honorar = res.pm_basis * tf;
+    res.ohne_pm = res.total - res.pm_honorar;
 
     if (res.total <= 0) warn.push({ art: 'info', text: 'Es sind noch keine Baukosten erfasst.' });
     return res;
@@ -433,7 +434,7 @@ window.APP = window.APP || {};
     }
   };
 
-  E.erwerbskosten = function (p, F, anlagekosten_schaetz, gewinn_schaetz, bau_ohne_honorare) {
+  E.erwerbskosten = function (p, F, anlagekosten_schaetz, gewinn_schaetz, bau_ohne_pm) {
     var e = p.erwerb, z = [], kp = E.kaufpreis(p, F);
 
     z.push({ id: 'kaufpreis', label: p.erwerbsart === 'baurecht'
@@ -474,15 +475,15 @@ window.APP = window.APP || {};
     /* Entwicklungshonorar zuletzt, weil sich die Vorgabe «erwerb_bau» auf
        die Summe aller übrigen Erwerbskosten stützt. Das Honorar selbst
        bleibt aussen vor — es bemisst sich nicht an sich selbst; ebenso
-       wenig an den Honoraren in den Baukosten (Projektmanagement,
-       Dritthonorare, BKP 558.1). */
+       wenig am Projektmanagement-Honorar BKP 599. Die Dritthonorare
+       BKP 558.1 zählen dagegen mit. */
     var erwerbOhneHonorar = z.reduce(function (s, x) { return s + x.betrag; }, 0);
     var basisText = { erwerb_bau: 'auf Erwerbs- und Baukosten', anlagekosten: 'auf Anlagekosten',
                       landwert: 'auf Landwert', gewinn: 'auf Gewinn' };
     var basisEnt = e.entwicklung_basis === 'landwert' ? kp
                  : e.entwicklung_basis === 'gewinn' ? Math.max(0, gewinn_schaetz || 0)
                  : e.entwicklung_basis === 'anlagekosten' ? (anlagekosten_schaetz || 0)
-                 : erwerbOhneHonorar + (bau_ohne_honorare || 0);
+                 : erwerbOhneHonorar + (bau_ohne_pm || 0);
     var ent = basisEnt * pct(e.entwicklung_pct);
     var entIst = ist(p, 'erwerb.entwicklung');
     z.push({ id: 'entwicklung',
@@ -943,7 +944,7 @@ window.APP = window.APP || {};
     var gewinn = 0, ERW, BET, TR, FIN, bauzinsenAkt = 0, fkLimit = 0;
 
     for (var it = 0; it < 24; it++) {
-      ERW = E.erwerbskosten(p, F, anlagekosten, gewinn, BAU.ohne_honorare);
+      ERW = E.erwerbskosten(p, F, anlagekosten, gewinn, BAU.ohne_pm);
       BET = E.betrieb(p, ERT, BAU.total);
       var akNeu = ERW.total + BAU.total + (p.finanzierung.bauzinsen_aktivieren ? bauzinsenAkt : 0);
       TR = E.zeitreihen(p, Z, ERW, BAU, ERT, VER, BET);

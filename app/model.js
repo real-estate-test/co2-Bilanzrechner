@@ -6,7 +6,7 @@ window.APP = window.APP || {};
 (function (A) {
   'use strict';
 
-  A.SCHEMA = 4;
+  A.SCHEMA = 5;
 
   /* ---------------------------------------------------------------
      Stammlisten
@@ -129,8 +129,8 @@ window.APP = window.APP || {};
       hilfe: 'Nur relevant, wenn der Bestand zurückgebaut wird. Menge = Gebäudevolumen Bestand.' },
     { id: 'b1_altlasten', bkp: '1',     label: 'Altlasten / Entsorgung' },
     { id: 'b1_vorbereitung', bkp: '1',  label: 'Vorbereitungsarbeiten',
-      hilfe: 'Prozentual auf BKP 20–29 vor Reserve — also auf Stockwerkeigentum, Miete, ' +
-             'Gewerbe, Untergeschoss und Einstellhalle.' },
+      hilfe: 'Prozentual auf BKP 20–29 vor Reserve — Stockwerkeigentum, Miete, Gewerbe, ' +
+             'Untergeschoss und Einstellhalle.' },
     { id: 'b1_anpassung', bkp: '1',     label: 'Anpassungen an bestehende Bauten',
       hilfe: 'Anschlüsse, Unterfangungen, Sicherungen an Nachbar- oder Bestandsbauten. ' +
              'Menge = Grundstücksfläche.' },
@@ -146,13 +146,17 @@ window.APP = window.APP || {};
       hilfe: 'Ohne Einstellhalle — diese wird separat erfasst.' },
     { id: 'b2_aeh',       bkp: '20–29', label: 'Einstellhalle',
       hilfe: 'Fläche = Fläche je Parkplatz × Anzahl Parkplätze.' },
-    { id: 'b2_reserve',   bkp: '202',   label: 'Reserve auf BKP 20–29' },
+    { id: 'b2_reserve',   bkp: '202',   label: 'Reserve auf BKP 20–29',
+      hilfe: 'Prozentual auf BKP 20–29 vor Reserve zuzüglich der Vorbereitungsarbeiten. ' +
+             'Deren Prozentwert wirkt damit ein zweites Mal — bewusst so gewählt.' },
 
     { id: 'b3_betrieb',   bkp: '3',     label: 'Betriebseinrichtungen' },
     { id: 'b4_umgebung',  bkp: '4',     label: 'Umgebung' },
     { id: 'b5_dritt',     bkp: '558.1', label: 'Dritthonorare',
-      hilfe: 'Externe Fachplanung und Beratung ausserhalb der Kennwerte der BKP 20–29.' },
-    { id: 'b5_bnk',       bkp: '5',     label: 'Baunebenkosten, Bewilligungen, Versicherungen' },
+      hilfe: 'Externe Fachplanung und Beratung ausserhalb der Kennwerte der BKP 20–29. ' +
+             'Prozentual auf BKP 1–4 inklusive Reserve.' },
+    { id: 'b5_bnk',       bkp: '5',     label: 'Baunebenkosten, Bewilligungen, Versicherungen',
+      hilfe: 'Prozentual auf BKP 20–29 inklusive Reserve — ohne BKP 1, 3, 4 und 9.' },
     { id: 'b5_pm',        bkp: '599',   label: 'Projektmanagement-Honorar',
       hilfe: 'Prozentual auf BKP 1–5 ohne diese Zeile selbst.' },
     { id: 'b9_ausstat',   bkp: '9',     label: 'Ausstattung' }
@@ -178,7 +182,7 @@ window.APP = window.APP || {};
       b3_betrieb:    { basis: 'pauschal',   wert: 0,     min: 0,    max: 0     },
       b4_umgebung:   { basis: 'umgebung',   wert: 150,   min: 80,   max: 550   },
       b5_dritt:      { basis: 'pct_bkp1_4', wert: 0.5,   min: 0,    max: 4     },
-      b5_bnk:        { basis: 'pct_bkp1_4', wert: 3,     min: 1.5,  max: 6     },
+      b5_bnk:        { basis: 'pct_bkp2',   wert: 3,     min: 1.5,  max: 8     },
       b5_pm:         { basis: 'pct_bkp1_5', wert: 2.0,   min: 0.5,  max: 5     },
       b9_ausstat:    { basis: 'nwf',        wert: 60,    min: 0,    max: 250   }
     },
@@ -198,7 +202,7 @@ window.APP = window.APP || {};
       b3_betrieb:    { basis: 'pauschal',   wert: 0,     min: 0,    max: 0     },
       b4_umgebung:   { basis: 'umgebung',   wert: 0,     min: 0,    max: 0     },
       b5_dritt:      { basis: 'pct_bkp1_4', wert: 0.5,   min: 0,    max: 4     },
-      b5_bnk:        { basis: 'pct_bkp1_4', wert: 3,     min: 1.5,  max: 6     },
+      b5_bnk:        { basis: 'pct_bkp2',   wert: 3,     min: 1.5,  max: 8     },
       b5_pm:         { basis: 'pct_bkp1_5', wert: 2.0,   min: 0.5,  max: 5     },
       b9_ausstat:    { basis: 'nwf',        wert: 60,    min: 0,    max: 250   }
     },
@@ -218,7 +222,7 @@ window.APP = window.APP || {};
       b3_betrieb:    { basis: 'pauschal',   wert: 0,     min: 0,    max: 0     },
       b4_umgebung:   { basis: 'umgebung',   wert: 0,     min: 0,    max: 0     },
       b5_dritt:      { basis: 'pct_bkp1_4', wert: 0.5,   min: 0,    max: 4     },
-      b5_bnk:        { basis: 'pct_bkp1_4', wert: 3,     min: 1.5,  max: 6     },
+      b5_bnk:        { basis: 'pct_bkp2',   wert: 3,     min: 1.5,  max: 8     },
       b5_pm:         { basis: 'pct_bkp1_5', wert: 2.5,   min: 0.5,  max: 5     },
       b9_ausstat:    { basis: 'nwf',        wert: 40,    min: 0,    max: 250   }
     }
@@ -800,6 +804,18 @@ window.APP = window.APP || {};
       if (p.ist) {
         delete p.ist['erwerb.dritthonorare'];
       }
+    }
+
+    /* --- Schema 4 -> 5: Die Baunebenkosten BKP 5 beziehen sich neu auf
+       BKP 20–29 statt auf BKP 1–4. Der Prozentsatz bleibt stehen, der
+       Betrag ändert sich dadurch bewusst — die bisherige Bezugsgrösse
+       war zu weit gefasst. ---------------------------------------------- */
+    if (version < 5) {
+      ['neubau', 'erweiterung', 'sanierung'].forEach(function (bid) {
+        var b = p.bau && p.bau[bid];
+        if (!b || !b.zeilen || !b.zeilen.b5_bnk) return;
+        if (b.zeilen.b5_bnk.basis === 'pct_bkp1_4') b.zeilen.b5_bnk.basis = 'pct_bkp2';
+      });
     }
 
     /* Startdatum aus einem vorhandenen Startjahr ableiten */

@@ -112,8 +112,8 @@
      zuzüglich der Baukosten ohne Projektmanagement- und Dritthonorar. */
   pruefe('Entwicklungshonorar = 2.50 % der Bezugsgrösse',
     rq.erwerb.entwicklung_basis_betrag * 0.025, pos(rq, 'entwicklung'), 1);
-  pruefe('Bezugsgrösse = Erwerbskosten ohne Honorar + Baukosten ohne Honorare',
-    rq.erwerb.total - pos(rq, 'entwicklung') + rq.bau.ohne_honorare,
+  pruefe('Bezugsgrösse = Erwerbskosten ohne Honorar + Baukosten ohne PM-Honorar',
+    rq.erwerb.total - pos(rq, 'entwicklung') + rq.bau.ohne_pm,
     rq.erwerb.entwicklung_basis_betrag, 1);
 
   /* ---- Kaufpreiseingabearten ------------------------------------ */
@@ -154,22 +154,24 @@
     rb.flaechen.teile.neubau.gruppen_gv.oi_stwe, 0.1);
   pruefe('BKP 202 Reserve = 3 % der Summe BKP 20–29',
     zeile(rb, 'neubau', 'b2_reserve').menge * 0.03, zeile(rb, 'neubau', 'b2_reserve').betrag, 1);
-  /* Bezugsgrösse der Reserve sind ausschliesslich die fünf Gebäudezeilen —
-     weder BKP 1, 4, 5 noch das Projektmanagement-Honorar. */
-  pruefe('Reservebasis = fünf Zeilen BKP 20–29',
-    ['b2_oi_stwe', 'b2_oi_miete', 'b2_oi_gewerbe', 'b2_ug', 'b2_aeh']
-      .reduce(function (s2, id) { return s2 + zeile(rb, 'neubau', id).betrag; }, 0),
+  /* Die Vorbereitungsarbeiten beziehen sich auf die fünf Gebäudezeilen. */
+  var fuenf = ['b2_oi_stwe', 'b2_oi_miete', 'b2_oi_gewerbe', 'b2_ug', 'b2_aeh']
+    .reduce(function (s2, id) { return s2 + zeile(rb, 'neubau', id).betrag; }, 0);
+  pruefe('BKP 1 Vorbereitung: Basis = fünf Zeilen BKP 20–29',
+    fuenf, zeile(rb, 'neubau', 'b1_vorbereitung').menge, 1);
+  /* Die Reserve rechnet die Vorbereitungsarbeiten mit — die gewollte
+     Dopplung des Prozentwertes. */
+  pruefe('Reservebasis = fünf Zeilen BKP 20–29 + Vorbereitungsarbeiten',
+    fuenf + zeile(rb, 'neubau', 'b1_vorbereitung').betrag,
     zeile(rb, 'neubau', 'b2_reserve').menge, 1);
-  /* Vorbereitungsarbeiten laufen vor der Reserve und beziehen sich auf
-     dieselbe Grösse — sie erhöhen die Reserve deshalb nicht. */
-  pruefe('BKP 1 Vorbereitung: gleiche Bezugsgrösse wie die Reserve',
-    zeile(rb, 'neubau', 'b2_reserve').menge, zeile(rb, 'neubau', 'b1_vorbereitung').menge, 1);
   pruefe('BKP 558.1 Dritthonorare = % von BKP 1–4 inkl. Reserve',
     bl.bkp1 + bl.bkp2 + bl.bkp3 + bl.bkp4, zeile(rb, 'neubau', 'b5_dritt').menge, 1);
-  pruefe('Baukosten ohne Honorare = Total abzüglich PM und Dritthonorar',
-    rb.bau.total - zeile(rb, 'neubau', 'b5_pm').betrag - zeile(rb, 'neubau', 'b5_dritt').betrag,
-    rb.bau.ohne_honorare, 1);
-  pruefe('BKP 599 PM = 2 % von BKP 1–5',
+  /* Baunebenkosten neu ausschliesslich auf BKP 20–29 inklusive Reserve. */
+  pruefe('BKP 5 Baunebenkosten = % von BKP 20–29 inkl. Reserve',
+    bl.bkp2, zeile(rb, 'neubau', 'b5_bnk').menge, 1);
+  pruefe('Baukosten ohne PM-Honorar = Total abzüglich BKP 599',
+    rb.bau.total - zeile(rb, 'neubau', 'b5_pm').betrag, rb.bau.ohne_pm, 1);
+  pruefe('BKP 599 PM = 2 % von BKP 1–5 ohne sich selbst',
     zeile(rb, 'neubau', 'b5_pm').menge * 0.02, zeile(rb, 'neubau', 'b5_pm').betrag, 1);
   pruefe('Blocksumme = Summe der Gruppen',
     bl.bkp1 + bl.bkp2 + bl.bkp3 + bl.bkp4 + bl.bkp5 + bl.bkp9, bl.summe, 1);
@@ -257,8 +259,11 @@
   var ri1 = E.compute(pi);
   pruefe('Ist-Wert ersetzt den Betrag der Zeile',
     sollRohbau + 500000, zeile(ri1, 'neubau', 'b2_oi_stwe').betrag, 1);
+  /* Der Ist-Wert erhöht zuerst die Vorbereitungsarbeiten (2 % auf BKP 20–29),
+     und beides zusammen trägt die Reserve. */
   pruefe('Reserve zieht mit dem Ist-Wert nach',
-    sollReserve + 500000 * 0.03, zeile(ri1, 'neubau', 'b2_reserve').betrag, 1);
+    sollReserve + (500000 + 500000 * 0.02) * 0.03,
+    zeile(ri1, 'neubau', 'b2_reserve').betrag, 1);
   pruefe('Anlagekosten steigen um mehr als den Ist-Zuschlag (Folgekosten)',
     1, ri1.kpi.anlagekosten - ri0.kpi.anlagekosten > 500000 ? 1 : 0);
   pruefe('Zahl der übernommenen Positionen', 1, ri1.ist_anzahl);

@@ -403,6 +403,43 @@ window.APP = window.APP || {};
     var out = el('div', {}, [U.kopf('Erwerbskosten',
       'Kaufpreis und sämtliche Nebenkosten. Sätze sind Richtwerte und frei überschreibbar.')]);
 
+    /* Preisvorstellung der Gegenseite. Reine Notiz — sie fliesst nicht in
+       die Rechnung ein, macht aber den Abstand zum kalkulierten Kaufpreis
+       je m² Grundstücksfläche sichtbar. */
+    out.appendChild(U.panel('Preisvorstellung & Bemerkung', 'nicht Teil der Rechnung', [
+      U.body([
+        U.num(p, 'erwerb.wunschpreis', 'Wunschpreis Käufer', { unit: 'CHF', gross: true,
+          derive: function (r, pp) {
+            var f = pp.grundstueck.flaeche;
+            if (!(pp.erwerb.wunschpreis > 0)) return 'noch nicht erfasst';
+            if (!(f > 0)) return 'Grundstücksfläche fehlt für die Rückrechnung';
+            return fmt(pp.erwerb.wunschpreis / f) + ' CHF/m² Grundstücksfläche';
+          } }),
+        el('div', { class: 'f' }, [
+          el('label', {}, [el('span', { text: 'Abstand zum Kaufpreis' })]),
+          el('div', { class: 'kachel' }, [
+            U.d(function (r, pp) {
+              if (!(pp.erwerb.wunschpreis > 0)) return '—';
+              return fmt(pp.erwerb.wunschpreis - r.erwerb.kaufpreis) + ' CHF';
+            }),
+            el('div', { class: 's', text: 'Wunschpreis abzüglich kalkuliertem Kaufpreis' })
+          ])
+        ]),
+        el('div', { class: 'f' }, [
+          el('label', {}, [el('span', { text: 'Kaufpreis je m² Grundstück' })]),
+          el('div', { class: 'kachel' }, [
+            U.d(function (r, pp) {
+              var f = pp.grundstueck.flaeche;
+              return f > 0 ? fmt(r.erwerb.kaufpreis / f) + ' CHF/m²' : '—';
+            }),
+            el('div', { class: 's', text: 'zum Vergleich mit der Preisvorstellung' })
+          ])
+        ]),
+        U.txt(p, 'erwerb.bemerkung', 'Bemerkung',
+          { platzhalter: 'z. B. Wunschpreis Eigentümer, Verhandlungsstand, Vorkaufsrecht' })
+      ], 'c4')
+    ]));
+
     if (p.erwerbsart === 'baurecht') {
       out.appendChild(U.panel('Baurecht', null, [U.body([
         U.num(p, 'erwerb.baurecht_einmal', 'Einmalentschädigung', { unit: 'CHF', gross: true }),
@@ -492,43 +529,6 @@ window.APP = window.APP || {};
           '<b>BKP 558.1</b>. Sie werden dort je Kostenblock erfasst und fliessen damit in die ' +
           'Baukosten statt in die Erwerbskosten.')
       ])
-    ]));
-
-    /* Preisvorstellung der Gegenseite. Reine Notiz — sie fliesst nicht in
-       die Rechnung ein, macht aber den Abstand zum kalkulierten Kaufpreis
-       je m² Grundstücksfläche sichtbar. */
-    out.appendChild(U.panel('Preisvorstellung & Bemerkung', 'nicht Teil der Rechnung', [
-      U.body([
-        U.num(p, 'erwerb.wunschpreis', 'Wunschpreis Käufer', { unit: 'CHF', gross: true,
-          derive: function (r, pp) {
-            var f = pp.grundstueck.flaeche;
-            if (!(pp.erwerb.wunschpreis > 0)) return 'noch nicht erfasst';
-            if (!(f > 0)) return 'Grundstücksfläche fehlt für die Rückrechnung';
-            return fmt(pp.erwerb.wunschpreis / f) + ' CHF/m² Grundstücksfläche';
-          } }),
-        el('div', { class: 'f' }, [
-          el('label', {}, [el('span', { text: 'Abstand zum Kaufpreis' })]),
-          el('div', { class: 'kachel' }, [
-            U.d(function (r, pp) {
-              if (!(pp.erwerb.wunschpreis > 0)) return '—';
-              return fmt(pp.erwerb.wunschpreis - r.erwerb.kaufpreis) + ' CHF';
-            }),
-            el('div', { class: 's', text: 'Wunschpreis abzüglich kalkuliertem Kaufpreis' })
-          ])
-        ]),
-        el('div', { class: 'f' }, [
-          el('label', {}, [el('span', { text: 'Kaufpreis je m² Grundstück' })]),
-          el('div', { class: 'kachel' }, [
-            U.d(function (r, pp) {
-              var f = pp.grundstueck.flaeche;
-              return f > 0 ? fmt(r.erwerb.kaufpreis / f) + ' CHF/m²' : '—';
-            }),
-            el('div', { class: 's', text: 'zum Vergleich mit der Preisvorstellung' })
-          ])
-        ]),
-        U.txt(p, 'erwerb.bemerkung', 'Bemerkung',
-          { platzhalter: 'z. B. Wunschpreis Eigentümer, Verhandlungsstand, Vorkaufsrecht' })
-      ], 'c4')
     ]));
 
     var tab = el('div', { class: 'panelbody' });

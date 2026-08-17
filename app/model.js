@@ -333,7 +333,9 @@ window.APP = window.APP || {};
       selbst: o.selbst || 0,
       /* 0 oder leer = Vorgabe aus den Bewertungsannahmen übernehmen */
       exit_rendite: o.exit_rendite !== undefined ? o.exit_rendite : 0,
-      kostengruppe: o.kostengruppe || A.kostengruppeFuer(art, o.verwertung || 'stwe')
+      kostengruppe: o.kostengruppe || A.kostengruppeFuer(art, o.verwertung || 'stwe'),
+      /* Formeln der Zeile — sonst gingen sie beim Normalisieren verloren */
+      _f: o._f && typeof o._f === 'object' ? o._f : {}
     };
   };
 
@@ -405,6 +407,9 @@ window.APP = window.APP || {};
       szenario: 'neubau',
       erwerbsart: 'kauf',                // kauf | baurecht
       meta: {},                          // Datenherkunft je Feldpfad
+      formeln: {},                       // Formeltext je Feldpfad; der Wert
+                                         // selbst steht im Feld — der
+                                         // Rechenkern sieht nur Zahlen
 
       grundstueck: {
         flaeche: 2500,

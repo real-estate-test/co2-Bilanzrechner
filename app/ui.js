@@ -60,6 +60,130 @@ window.APP = window.APP || {};
   }
   U.parseZahl = parseZahl;
 
+  /* ---------------------------------------------------------------
+     Formeleingabe  —  + − * / ( ) wie in der Tabellenkalkulation
+
+     Bewusst ein eigener Parser statt eval: Formeln werden gespeichert
+     und wandern über den Server zu allen Mitarbeitenden. Eine dort
+     abgelegte Zeichenkette auszuführen wäre ein Einfallstor in jeden
+     Browser der Firma.
+     --------------------------------------------------------------- */
+
+  /* Schreibweise vereinheitlichen: führendes «=» wie in Excel ist
+     erlaubt, Hochkommata sind Tausendertrennung, das Komma ein
+     Dezimaltrennzeichen. Leerzeichen fallen weg — «1 250 000» ist damit
+     dieselbe Zahl wie «1'250'000», so wie es die bisherige Zahleneingabe
+     schon immer gehandhabt hat. */
+  function formelNormal(text) {
+    return String(text === null || text === undefined ? '' : text)
+      .replace(/^\s*=/, '')
+      .replace(/[’'`\s]/g, '')
+      .replace(/,/g, '.')
+      .replace(/[−–—]/g, '-')     // Gedankenstrich aus kopiertem Text
+      .replace(/[×✕]/g, '*')
+      .replace(/[÷]/g, '/');
+  }
+
+  /* Rekursiver Abstieg:
+       ausdruck := term  (('+' | '-') term)*
+       term     := faktor (('*' | '/') faktor)*
+       faktor   := ('+' | '-') faktor | '(' ausdruck ')' | zahl        */
+  function rechnen(s) {
+    var i = 0;
+
+    function fehler(text) { throw new Error(text); }
+
+    function ausdruck() {
+      var w = term();
+      while (i < s.length && (s[i] === '+' || s[i] === '-')) {
+        var op = s[i++];
+        var r = term();
+        w = op === '+' ? w + r : w - r;
+      }
+      return w;
+    }
+
+    function term() {
+      var w = faktor();
+      while (i < s.length && (s[i] === '*' || s[i] === '/')) {
+        var op = s[i++];
+        var r = faktor();
+        if (op === '*') { w = w * r; }
+        else {
+          if (r === 0) fehler('Division durch null');
+          w = w / r;
+        }
+      }
+      return w;
+    }
+
+    function faktor() {
+      if (i >= s.length) fehler('Die Formel bricht ab');
+      if (s[i] === '+') { i++; return faktor(); }
+      if (s[i] === '-') { i++; return -faktor(); }
+      if (s[i] === '(') {
+        i++;
+        var w = ausdruck();
+        if (s[i] !== ')') fehler('Es fehlt eine schliessende Klammer');
+        i++;
+        return w;
+      }
+      var start = i;
+      while (i < s.length && (s[i] >= '0' && s[i] <= '9')) i++;
+      if (s[i] === '.') { i++; while (i < s.length && (s[i] >= '0' && s[i] <= '9')) i++; }
+      if (i === start) fehler('Unerwartetes Zeichen «' + s[i] + '»');
+      var z = parseFloat(s.slice(start, i));
+      if (!isFinite(z)) fehler('Zahl nicht lesbar');
+      return z;
+    }
+
+    var wert = ausdruck();
+    if (i < s.length) fehler('Unerwartetes Zeichen «' + s[i] + '»');
+    return wert;
+  }
+
+  /* Auswertung mit Ergebnisobjekt statt Ausnahme — der Aufrufer
+     entscheidet, ob er den letzten guten Wert behält. */
+  U.formelWert = function (text) {
+    var s = formelNormal(text);
+    if (s === '') return { ok: true, wert: 0, formel: '' };
+    if (!/^[0-9.+\-*/()]+$/.test(s)) {
+      return { ok: false, fehler: 'Erlaubt sind Zahlen und + − * / ( )' };
+    }
+    var wert;
+    try { wert = rechnen(s); }
+    catch (e) { return { ok: false, fehler: e.message }; }
+    if (!isFinite(wert)) return { ok: false, fehler: 'Ergebnis nicht berechenbar' };
+    /* Eine reine Zahl ist keine Formel und wird nicht als solche gemerkt. */
+    var istFormel = /[+\-*/()]/.test(s.replace(/^-/, ''));
+    return { ok: true, wert: wert, formel: istFormel ? String(text).trim() : '' };
+  };
+
+  /* Formeln liegen neben dem Wert — genau wie die Datenherkunft in
+     p.meta. Der Rechenkern sieht deshalb weiterhin nur Zahlen. */
+  function formelAblage(traeger) {
+    if (!traeger._f || typeof traeger._f !== 'object') traeger._f = {};
+    return traeger._f;
+  }
+  U.formelAblage = formelAblage;
+
+  U.formelLesen = function (traeger, schluessel) {
+    return (traeger && traeger._f && traeger._f[schluessel]) || '';
+  };
+
+  U.formelSchreiben = function (traeger, schluessel, formel) {
+    if (formel) formelAblage(traeger)[schluessel] = formel;
+    else if (traeger._f) delete traeger._f[schluessel];
+  };
+
+  /* Kennzeichnung am Feld, damit eine gerechnete Zahl als solche
+     erkennbar bleibt. */
+  function formelMarke(knoten, formel) {
+    knoten.classList.toggle('hatformel', !!formel);
+    if (formel) knoten.title = 'Formel: ' + formel;
+    else if ((knoten.title || '').indexOf('Formel: ') === 0) knoten.title = '';
+  }
+
   function anzeige(v, dez, gross) {
     if (v === '' || v === null || v === undefined || isNaN(v)) return '';
     return gross ? A.fmt(v, dez) : String(Math.round(v * 1e6) / 1e6);
@@ -160,24 +284,46 @@ window.APP = window.APP || {};
     if (opts.unit) box.appendChild(el('span', { class: 'unit', text: opts.unit }));
     wrap.appendChild(box);
 
+    /* Formeln liegen projektweit unter p.formeln, adressiert über den
+       Feldpfad — dieselbe Systematik wie die Datenherkunft in p.meta. */
+    if (!p.formeln || typeof p.formeln !== 'object') p.formeln = {};
+    var formelFehler = '';
+
     function pruefen() {
       var v = A.get(p, pfad), schlecht = false;
       if (opts.min !== undefined && opts.max !== undefined && opts.max > 0) {
         schlecht = v < opts.min || v > opts.max;
       }
-      box.classList.toggle('bad', !!schlecht);
-      box.title = schlecht
-        ? 'Ausserhalb der üblichen Bandbreite ' + A.fmt(opts.min, opts.dez || 0) +
-          ' – ' + A.fmt(opts.max, opts.dez || 0) + (opts.unit ? ' ' + opts.unit : '')
-        : '';
+      box.classList.toggle('bad', !!(schlecht || formelFehler));
+      box.title = formelFehler ? formelFehler
+        : schlecht
+          ? 'Ausserhalb der üblichen Bandbreite ' + A.fmt(opts.min, opts.dez || 0) +
+            ' – ' + A.fmt(opts.max, opts.dez || 0) + (opts.unit ? ' ' + opts.unit : '')
+          : '';
+      formelMarke(box, formelFehler ? '' : p.formeln[pfad]);
     }
 
     inp.addEventListener('input', function () {
-      A.set(p, pfad, parseZahl(inp.value));
+      var e = U.formelWert(inp.value);
+      /* Unfertige Eingabe wie «2500*» darf den Wert nicht auf null
+         setzen — sonst springen bei jedem Tastendruck alle Kennzahlen.
+         Der letzte gute Wert bleibt stehen, das Feld wird markiert. */
+      if (!e.ok) { formelFehler = e.fehler; pruefen(); return; }
+      formelFehler = '';
+      if (e.formel) p.formeln[pfad] = e.formel; else delete p.formeln[pfad];
+      A.set(p, pfad, e.wert);
       pruefen(); A.recompute();
     });
-    inp.addEventListener('focus', function () { inp.value = anzeige(A.get(p, pfad), opts.dez || 0, false); });
-    inp.addEventListener('blur', function () { inp.value = anzeige(A.get(p, pfad), opts.dez || 0, opts.gross); });
+    inp.addEventListener('focus', function () {
+      inp.value = p.formeln[pfad] || anzeige(A.get(p, pfad), opts.dez || 0, false);
+    });
+    inp.addEventListener('blur', function () {
+      /* Beim Verlassen zählt das Ergebnis. Eine fehlerhafte Eingabe wird
+         verworfen und die letzte gültige Formel wiederhergestellt. */
+      formelFehler = '';
+      inp.value = anzeige(A.get(p, pfad), opts.dez || 0, opts.gross);
+      pruefen();
+    });
     pruefen();
 
     if (opts.hilfe) wrap.appendChild(el('div', { class: 'hilfe', text: opts.hilfe }));
@@ -268,21 +414,40 @@ window.APP = window.APP || {};
     }
     var inp = el('input', { type: 'text', inputmode: 'decimal',
       placeholder: opts.platzhalter || '', value: zeig(obj[key]) });
+    /* In Tabellen hängt die Formel am Zeilenobjekt selbst — die Zeilen
+       haben keinen projektweiten Pfad. */
+    var formelFehler = '';
+
     function pruefen() {
       var v = obj[key];
       var schlecht = opts.min !== undefined && opts.max > 0 && (v < opts.min || v > opts.max);
-      inp.classList.toggle('bad', !!schlecht);
-      inp.title = schlecht ? 'Übliche Bandbreite: ' + A.fmt(opts.min, opts.dez || 0) + ' – ' +
-        A.fmt(opts.max, opts.dez || 0) : '';
+      inp.classList.toggle('bad', !!(schlecht || formelFehler));
+      inp.title = formelFehler ? formelFehler
+        : schlecht ? 'Übliche Bandbreite: ' + A.fmt(opts.min, opts.dez || 0) + ' – ' +
+            A.fmt(opts.max, opts.dez || 0) : '';
+      formelMarke(inp, formelFehler ? '' : U.formelLesen(obj, key));
     }
-    inp.addEventListener('input', function () { obj[key] = parseZahl(inp.value); pruefen(); A.recompute(); });
+    inp.addEventListener('input', function () {
+      var e = U.formelWert(inp.value);
+      if (!e.ok) { formelFehler = e.fehler; pruefen(); return; }
+      formelFehler = '';
+      U.formelSchreiben(obj, key, e.formel);
+      obj[key] = e.wert;
+      pruefen(); A.recompute();
+    });
     inp.addEventListener('focus', function () {
+      var f = U.formelLesen(obj, key);
+      if (f) { inp.value = f; return; }
       inp.value = (opts.leerBei0 && !obj[key]) ? '' : anzeige(obj[key], opts.dez || 0, false);
     });
-    inp.addEventListener('blur', function () { inp.value = zeig(obj[key]); });
+    inp.addEventListener('blur', function () {
+      formelFehler = '';
+      inp.value = zeig(obj[key]);
+      pruefen();
+    });
     pruefen();
     U.derived.push(function () {
-      if (document.activeElement !== inp) inp.value = zeig(obj[key]);
+      if (document.activeElement !== inp) { inp.value = zeig(obj[key]); pruefen(); }
     });
     return inp;
   };

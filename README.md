@@ -65,6 +65,15 @@ Kubaturen wahlweise über Höhen (Regelgeschoss 3.00 m, Attika 3.20 m,
 Untergeschoss und Einstellhalle je 3.40 m) oder als direkt erfasstes Volumen,
 aus dem sich die Höhen ergeben.
 
+**Formeln in Zahlenfeldern** Jedes Zahlenfeld nimmt statt einer Zahl auch eine Rechnung
+entgegen — `2500*0.9`, `(120+80)*3`, `1'250+250`. Ein führendes `=` ist erlaubt, aber nicht
+nötig. Beim Hineinklicken erscheint die Formel, beim Verlassen das Ergebnis; eine kleine
+Ecke am Feld markiert eine hinterlegte Formel, und der Bericht führt sie in der
+Annahmenliste. Ausgewertet wird über einen eigenen Parser, **nicht** über `eval` — Formeln
+werden gespeichert und wandern über den Server zu allen Mitarbeitenden. Eine unfertige
+Eingabe wie `2500*` lässt den bisherigen Wert stehen und markiert das Feld, statt auf null
+zu fallen. Verweise auf andere Felder gibt es bewusst nicht.
+
 **Kapitalbedarf** Die Baukosten werden wahlweise automatisch verteilt (je Kostenart über
 die passende Phase, S-Kurve oder linear) oder mit festen Prozentwerten je Projektphase —
 Entwicklung, Bewilligung, Vorbereitung, Bau. Die Prozentwerte werden auf 100 % normiert,

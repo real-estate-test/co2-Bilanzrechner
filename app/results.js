@@ -564,16 +564,24 @@ window.APP = window.APP || {};
       var h = U.herkunft(p, pf);
       if (h.q === 'annahme') autoAnnahmen.push(pf);
     });
+    /* Gerechnete Felder gehören in die Annahmenliste, auch wenn sie sonst
+       unauffällig wären — die Formel zeigt, wie die Zahl zustande kam. */
+    var formeln = p.formeln || {};
+    Object.keys(formeln).forEach(function (pf) {
+      if (meta.indexOf(pf) < 0 && autoAnnahmen.indexOf(pf) < 0) autoAnnahmen.push(pf);
+    });
 
     var aZeilen = meta.concat(autoAnnahmen).map(function (pf) {
       var h = U.herkunft(p, pf), v = A.get(p, pf);
+      var notiz = h.note || '';
+      if (formeln[pf]) notiz = (notiz ? notiz + ' · ' : '') + 'Formel ' + formeln[pf];
       return el('tr', {}, [
         el('td', { text: U.LABELS[pf] || pf }),
         el('td', { class: 'n', text: typeof v === 'number' ? fmt(v, Math.abs(v) < 100 ? 2 : 0) : String(v) }),
         el('td', { class: 'muted', text: U.UNITS[pf] || '' }),
         el('td', {}, [el('span', { class: 'tag ' + (h.q === 'belegt' ? 'pos' : 'warn'),
           text: U.HERKUNFT_LABEL[h.q] })]),
-        el('td', { class: 'muted', text: h.note || '' })
+        el('td', { class: 'muted', text: notiz })
       ]);
     });
 

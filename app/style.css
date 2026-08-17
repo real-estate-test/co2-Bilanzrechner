@@ -153,6 +153,22 @@ main { min-width: 0; display: flex; flex-direction: column; }
 .inp input:focus, .inp select:focus { outline: none; }
 .inp .unit { display: flex; align-items: center; padding: 0 8px; font-size: 11px; color: var(--muted); background: var(--panel2); border-left: 1px solid var(--line); white-space: nowrap; }
 .inp.bad { border-color: var(--warn); background: var(--warnbg); }
+/* Gerechnetes Feld: die Ecke markiert eine hinterlegte Formel. Beim
+   Hineinklicken erscheint die Formel, beim Verlassen das Ergebnis.
+   Das Dreieck liegt über dem Einheitenfeld — dieses darf deshalb nicht
+   positioniert sein, sonst überdeckt es die Marke. */
+.inp.hatformel { position: relative; }
+.inp.hatformel::after {
+  content: ''; position: absolute; top: 0; right: 0; z-index: 1;
+  border-width: 0 9px 9px 0; border-style: solid;
+  border-color: transparent var(--accent) transparent transparent;
+  pointer-events: none;
+}
+/* Tabellenzellen tragen die Marke direkt am Eingabefeld */
+input.hatformel {
+  background-image: linear-gradient(225deg, var(--accent) 0 8px, transparent 8px);
+  background-repeat: no-repeat; background-position: top right;
+}
 .f .hilfe { font-size: 11px; color: var(--muted); margin-top: 3px; }
 .f .derived { font-size: 11px; color: var(--accent); margin-top: 3px; font-family: var(--mono); }
 

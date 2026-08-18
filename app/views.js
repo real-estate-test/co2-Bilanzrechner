@@ -366,7 +366,9 @@ window.APP = window.APP || {};
             z('Untergeschoss ohne Einstellhalle', fo.gf_ug, 'm²'),
             z('Einstellhalle', fo.f_aeh, 'm²'),
             z('Nutzfläche NWF (vermiet-/verkaufbar)', fo.nwf, 'm²', true),
-            z('Volumen oberirdisch (Höhe ' + A.fmt(fo.h_oi_ist, 2) + ' m)', fo.gv_oi, 'm³'),
+            /* Ø Höhe = Volumen je m² Geschossfläche. Die Gesamthöhe des
+               Gebäudes steht oben beim Höhenfeld. */
+            z('Volumen oberirdisch (Ø Höhe ' + A.fmt(fo.h_oi_mittel, 2) + ' m)', fo.gv_oi, 'm³'),
             z('Volumen Untergeschoss', fo.gv_ug, 'm³'),
             z('Volumen Einstellhalle', fo.gv_aeh, 'm³'),
             z('Volumen total', fo.gv, 'm³', true)
@@ -1035,7 +1037,8 @@ window.APP = window.APP || {};
     var BASEN = [
       { id: 'pct_miete', label: '% der Sollmiete' },
       { id: 'pct_ak', label: '% der Baukosten' },
-      { id: 'chf_m2', label: 'CHF je m² NWF' }
+      { id: 'chf_m2', label: 'CHF je m² NWF' },
+      { id: 'pauschal', label: 'Pauschal CHF/Jahr' }
     ];
     var POS = [
       ['verwaltung', 'Verwaltung'], ['unterhalt', 'Unterhalt / Instandsetzung'],
@@ -1046,8 +1049,9 @@ window.APP = window.APP || {};
       var cfg = p.betrieb[x[0]];
       return el('tr', {}, [
         el('td', { text: x[1] }),
-        el('td', { style: 'width:170px' }, [U.zelleSel(cfg, 'basis', BASEN, { rerender: false })]),
-        el('td', { style: 'width:90px' }, [U.zelleNum(cfg, 'wert', { dez: 2 })]),
+        el('td', { style: 'width:170px' }, [U.zelleSel(cfg, 'basis', BASEN, { rerender: true })]),
+        el('td', { style: 'width:110px' }, [U.zelleNum(cfg, 'wert',
+          cfg.basis === 'pauschal' ? { dez: 0, gross: true } : { dez: 2 })]),
         U.dTd(function (r) {
           var z = r.betrieb.zeilen.find(function (y) { return y.id === x[0]; });
           return z ? fmt(z.betrag) : '—';
@@ -1208,15 +1212,25 @@ window.APP = window.APP || {};
       'Eigen- und Fremdkapital über die Projektdauer. Der Zinssatz unterscheidet die Phase vor und nach der ' +
       'Baubewilligung; der Vorverkauf senkt sowohl die Marge der Bank als auch den Kreditbedarf.')]);
 
-    out.appendChild(U.panel('Kapitalstruktur', null, [
+    out.appendChild(U.panel('Kapitalstruktur',
+      'die Eigenkapitalquote gilt je Phase — vor der Baubewilligung finanzieren Banken zurückhaltender', [
       U.body([
-        U.num(p, 'finanzierung.ek_quote', 'Eigenkapitalquote', { unit: '% der Gesamtinvestition', dez: 0 }),
+        U.num(p, 'finanzierung.ek_quote_vor_bb', 'Eigenkapitalquote vor Baubewilligung',
+          { unit: '% des Kapitalbedarfs', dez: 0,
+            derive: function (r) {
+              var j = (r.fin.jahre || []).filter(function (x) { return x.ek_quote === undefined ? false : true; });
+              var vor = j.filter(function (x) { return x.phase === 'vor Baubewilligung'; });
+              return vor.length ? vor.length + ' Jahr(e) im Kapitalbedarf' : 'keine volle Periode vor der Bewilligung';
+            } }),
+        U.num(p, 'finanzierung.ek_quote_nach_bb', 'Eigenkapitalquote nach Baubewilligung',
+          { unit: '% des Kapitalbedarfs', dez: 0,
+            hilfe: 'Bemisst auch das verpflichtete Eigenkapital, an dem die Rendite gemessen wird.' }),
         U.num(p, 'finanzierung.ltc_max', 'Maximale Belehnung', { unit: '% (LTC)', dez: 0, stufe: 'standard' }),
         U.seg(p, 'finanzierung.ek_einsatz', [
           { id: 'proportional', label: 'proportional', hint: 'Jede Periode wird nach Quote aufgeteilt' },
           { id: 'zuerst', label: 'Eigenmittel zuerst', hint: 'Bankpraxis: Eigenmittel werden vorab eingebracht' }
         ], 'Einsatz der Eigenmittel', { stufe: 'standard' })
-      ], 'c3')
+      ], 'c4')
     ]));
 
     out.appendChild(U.panel('Zinssätze', null, [
@@ -1226,9 +1240,18 @@ window.APP = window.APP || {};
         U.num(p, 'finanzierung.bereitstellung', 'Bereitstellungskommission', { unit: '% p.a.', dez: 2, stufe: 'standard',
           hilfe: 'Auf der nicht beanspruchten Kreditlimite.' }),
         U.chk(p, 'finanzierung.bauzinsen_aktivieren', 'Bauzinsen aktivieren (Teil der Anlagekosten)', { stufe: 'standard' }),
-        U.chk(p, 'finanzierung.ek_zins_aktiv', 'Eigenkapital kalkulatorisch verzinsen', { stufe: 'standard' }),
-        p.finanzierung.ek_zins_aktiv ? U.num(p, 'finanzierung.ek_zins', 'Kalkulatorischer EK-Zins', { unit: '% p.a.', dez: 2, stufe: 'standard' }) : null
-      ], 'c3')
+        U.chk(p, 'finanzierung.ek_zins_aktiv', 'Eigenkapital kalkulatorisch verzinsen'),
+        p.finanzierung.ek_zins_aktiv
+          ? U.num(p, 'finanzierung.ek_zins', 'Kalkulatorischer EK-Zins', { unit: '% p.a.', dez: 2,
+              derive: function (r) { return fmt(r.fin.ek_zins_kalk) + ' CHF über die Projektdauer'; } })
+          : null
+      ], 'c3'),
+      el('div', { class: 'panelbody' }, [
+        U.hinweis('info', 'Der <b>kalkulatorische Eigenkapitalzins</b> wird wie der Fremdkapitalzins ' +
+          'behandelt: Er stellt das Entgelt an den Mutterkonzern dar und ist für die Projektgesellschaft ' +
+          'ein echter Aufwand. Er läuft deshalb in den Kapitalbedarf und mindert Gewinn, Marge, ' +
+          'Rendite auf das Eigenkapital und den internen Zinsfuss.')
+      ])
     ]));
 
     /* Vorverkaufsstaffel */

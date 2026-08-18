@@ -170,16 +170,83 @@ window.APP = window.APP || {};
     });
     out.appendChild(U.panel('Kennzahlen', null, [kacheln]));
 
-    var wf = el('div', { class: 'panelbody' });
+    /* Rechenweg der Renditekennzahlen. Sie werden im Verwaltungsrat
+       hinterfragt — deshalb Formel und eingesetzte Zahlen offenlegen. */
+    var formeln = el('div', { class: 'panelbody' });
     U.derived.push(function () {
-      U.leeren(wf).appendChild(wasserfall(A.state.r));
+      var r = A.state.r, k = r.kpi, pp = A.state.p, zeilen = [];
+      function fz(name, formel, rechnung, ergebnis, hinweis) {
+        zeilen.push(el('tr', {}, [
+          el('td', {}, [el('span', { text: name }),
+            hinweis ? el('div', { class: 'muted', style: 'font-size:10.5px;line-height:1.4', text: hinweis }) : null]),
+          el('td', { class: 'muted', style: 'font-family:var(--mono);font-size:11px', text: formel }),
+          el('td', { class: 'muted', style: 'font-family:var(--mono);font-size:11px', text: rechnung }),
+          el('td', { class: 'n', text: ergebnis })
+        ]));
+      }
+
+      var ekZinsHinweis = pp.finanzierung.ek_zins_aktiv
+        ? ' Der kalkulatorische Eigenkapitalzins von ' + fmt(r.fin.ek_zins_kalk) +
+          ' CHF ist als Aufwand bereits abgezogen.' : '';
+
+      fz('Marge auf Anlagekosten',
+        'Gewinn ÷ Anlagekosten',
+        fmt(k.gewinn) + ' ÷ ' + fmt(k.anlagekosten),
+        A.fmtPct(k.marge_ak),
+        'Anlagekosten = Erwerb + Bau + Finanzierung, ohne Vermarktung.' + ekZinsHinweis);
+
+      fz('Marge auf Erlös',
+        'Gewinn ÷ Erlöse',
+        fmt(k.gewinn) + ' ÷ ' + fmt(k.erloese),
+        A.fmtPct(k.marge_erloes),
+        'Erlöse = Verkauf Stockwerkeigentum + Exit an Investor + Marktwert gehaltener Flächen. ' +
+        'Der Mietertrag der Projektdauer zählt hier nicht mit.');
+
+      fz('Rendite auf Eigenkapital',
+        'Gewinn ÷ verpflichtetes Eigenkapital',
+        fmt(k.gewinn) + ' ÷ ' + fmt(k.ek_max),
+        A.fmtPct(k.roe),
+        'Verpflichtetes Eigenkapital = Gesamtinvestition × Eigenkapitalquote nach Baubewilligung (' +
+        A.fmt(A.engine.ekQuote(pp, r.zeit, r.zeit.t_bb), 0) + ' %). Die tatsächlich gebundene Spitze ' +
+        'liegt bei ' + fmt(k.ek_eingesetzt) + ' CHF und damit meist tiefer — auf sie bezogen wäre die ' +
+        'Kennzahl geschönt. Es ist eine Gesamtrendite über die Projektdauer, keine Jahresrendite.');
+
+      fz('Interner Zinsfuss',
+        'Abzinsungssatz, bei dem der Barwert null wird',
+        r.fin.jahre.map(function (j) { return A.fmt(j.ek_flow / 1e6, 1); }).join(' | ') + ' Mio.',
+        k.irr === null ? '–' : A.fmtPct(k.irr),
+        'Grundlage sind die jährlichen Eigenkapital-Zahlungsströme (negativ = Einschuss, ' +
+        'positiv = Rückfluss), im letzten Jahr abzüglich Steuern. Gesucht per Intervallhalbierung. ' +
+        'Anders als die Rendite auf Eigenkapital berücksichtigt der interne Zinsfuss, ' +
+        'wann das Kapital fliesst — deshalb liegt er bei kurzer Bindung höher.' +
+        (k.irr === null ? ' Ohne Vorzeichenwechsel im Zahlungsstrom ist er nicht bestimmbar.' : ''));
+
+      fz('Bruttorendite Ertragsflächen',
+        'Sollmiete ÷ anteilige Anlagekosten',
+        fmt(r.ertraege.sollmiete) + ' ÷ ' + fmt(k.ak_ertrag),
+        A.fmtPct(k.bruttorendite, 2),
+        'Anteilige Anlagekosten = Anlagekosten × ' + A.fmtPct(k.anteil_ertrag * 100) +
+        ' Anteil gehaltener Nutzfläche. Verkaufte Flächen liefern keinen Mietertrag und ' +
+        'gehören deshalb nicht in den Nenner.');
+
+      fz('Nettorendite Ertragsflächen',
+        'Nettoertrag ÷ anteilige Anlagekosten',
+        fmt(r.betrieb.noi_a) + ' ÷ ' + fmt(k.ak_ertrag),
+        A.fmtPct(k.nettorendite, 2),
+        'Nettoertrag = Sollmiete abzüglich Leerstand und Bewirtschaftungskosten.');
+
+      U.leeren(formeln).appendChild(U.tabelle([
+        { label: 'Kennzahl', w: '26%' }, { label: 'Formel', w: '22%' },
+        { label: 'eingesetzt', w: '30%' }, { label: 'Ergebnis', n: true, w: '10%' }
+      ], zeilen));
     });
-    out.appendChild(U.panel('Vom Erlös zum Gewinn', null, [wf]));
+    out.appendChild(U.panel('Rechenweg der Kennzahlen',
+      'welche Zahlen in welcher Formel stecken', [formeln]));
 
     /* Kostenzusammenzug */
     var zus = el('div', { class: 'panelbody' });
     U.derived.push(function () {
-      var r = A.state.r, k = r.kpi, zeilen = [];
+      var r = A.state.r, pp = A.state.p, k = r.kpi, zeilen = [];
       function z(label, wert, klasse, sub) {
         var anteil = k.gesamtinvestition > 0 ? wert / k.gesamtinvestition * 100 : 0;
         return el('tr', { class: klasse || '' }, [
@@ -199,12 +266,28 @@ window.APP = window.APP || {};
       });
       if (r.bau.teuerung > 0) zeilen.push(z('Teuerung', r.bau.teuerung));
       zeilen.push(z('Finanzierungskosten', k.finanzierungskosten, '',
-        'Bauzinsen ' + fmt(r.fin.bauzinsen) + ' + Bereitstellung ' + fmt(r.fin.bereitstellung)));
+        'Bauzinsen ' + fmt(r.fin.bauzinsen) + ' + Bereitstellung ' + fmt(r.fin.bereitstellung) +
+        (r.fin.ek_zins_kalk > 0 ? ' + EK-Zins ' + fmt(r.fin.ek_zins_kalk) : '')));
       zeilen.push(z('Vermarktung', k.vermarktung));
       zeilen.push(el('tr', { class: 'total' }, [
         el('td', { text: 'Gesamtinvestition' }), el('td', { class: 'n', text: fmt(k.gesamtinvestition) }),
         el('td', { class: 'n', text: '100.0 %' }), el('td', {})
       ]));
+      /* Betriebsaufwände laufen über die Haltedauer und gehören nicht in
+         die Gesamtinvestition — sie stehen deshalb darunter. */
+      if (r.betrieb.total_a > 0 || r.betrieb.leerstand_a > 0) {
+        var jahre = Math.max(0, r.zeit.t_ende - r.zeit.t_bauende);
+        zeilen.push(z('Bewirtschaftung gehaltener Flächen', r.betrieb.total_a * jahre, '',
+          fmt(r.betrieb.total_a) + ' CHF/Jahr über ' + A.fmt(jahre, 2) + ' Jahre'));
+        zeilen.push(z('Leerstand', r.betrieb.leerstand_a * jahre, '',
+          A.fmtPct(pp.betrieb.leerstand) + ' der Sollmiete'));
+        zeilen.push(el('tr', { class: 'total' }, [
+          el('td', { text: 'Gesamtinvestition inkl. Betrieb' }),
+          el('td', { class: 'n', text: fmt(k.gesamtinvestition +
+            (r.betrieb.total_a + r.betrieb.leerstand_a) * jahre) }),
+          el('td', {}), el('td', {})
+        ]));
+      }
       U.leeren(zus).appendChild(U.tabelle([{ label: 'Kostenblock' }, { label: 'CHF', n: true, w: '16%' },
         { label: 'Anteil', n: true, w: '10%' }, { label: '', w: '14%' }], zeilen));
     });

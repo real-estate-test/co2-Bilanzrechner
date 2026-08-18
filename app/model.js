@@ -6,7 +6,7 @@ window.APP = window.APP || {};
 (function (A) {
   'use strict';
 
-  A.SCHEMA = 6;
+  A.SCHEMA = 7;
 
   /* ---------------------------------------------------------------
      Stammlisten
@@ -539,13 +539,21 @@ window.APP = window.APP || {};
       },
 
       finanzierung: {
-        ek_quote: 30,                    // % der Gesamtinvestition
+        ek_quote: 30,                    // % der Gesamtinvestition (Rückfallwert)
+        /* Vor der Baubewilligung finanzieren Banken zurückhaltender —
+           deshalb beide Phasen getrennt erfassbar. */
+        ek_quote_vor_bb: 60,
+        ek_quote_nach_bb: 30,
         ek_einsatz: 'proportional',      // proportional | zuerst
         ltc_max: 70,                     // % Deckel Fremdkapital
         zins_vor_bb: 3.50,
         zins_nach_bb: 2.75,
         bereitstellung: 0.25,            // % p.a. auf nicht beanspruchte Limite
-        ek_zins_aktiv: false,
+        /* Das Eigenkapital stellt in der Regel der Mutterkonzern verzinst
+           zur Verfügung — für die Projektgesellschaft sind das echte
+           Kosten. Der Zins läuft deshalb wie der Fremdkapitalzins in
+           Kapitalbedarf, Gewinn, Marge, Rendite und internen Zinsfuss. */
+        ek_zins_aktiv: true,
         ek_zins: 8.00,                   // kalkulatorisch
         bauzinsen_aktivieren: true,
         vorverkauf_quote: 40,            // % Erlös vor Baustart
@@ -893,6 +901,18 @@ window.APP = window.APP || {};
           if (!(num0(e.anzahl) > 0)) e.anzahl = 1;
         });
       }
+    }
+
+    /* --- Schema 6 -> 7: Eigenkapitalquote je Phase. Bestehende Projekte
+       übernehmen ihre bisherige Quote für beide Phasen, damit sich nichts
+       verschiebt. Der kalkulatorische Eigenkapitalzins bleibt dort
+       ausgeschaltet, wo er es war — neue Projekte starten mit ihm. ----- */
+    if (version < 7 && p.finanzierung) {
+      /* Läuft nach dem Zusammenführen mit den Vorgaben — die dort
+         ergänzten Werte werden hier bewusst durch die bisherige Quote
+         des Projektes ersetzt. */
+      p.finanzierung.ek_quote_vor_bb = num0(p.finanzierung.ek_quote);
+      p.finanzierung.ek_quote_nach_bb = num0(p.finanzierung.ek_quote);
     }
 
     /* Startdatum aus einem vorhandenen Startjahr ableiten */

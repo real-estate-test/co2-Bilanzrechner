@@ -213,10 +213,55 @@
   f.finanzierung.vorverkauf_quote = 10;
   pruefe('kein Rabatt bei 10 % Vorverkauf', 0, E.compute(f).fin.rabatt_bp);
 
+  /* Eigenkapitalquote je Phase: vor der Baubewilligung gilt die eine,
+     danach die andere. Das erste Jahr liegt vor der Bewilligung. */
   var g = A.defaultProject();
-  g.finanzierung.ek_einsatz = 'proportional'; g.finanzierung.ek_quote = 30;
+  g.finanzierung.ek_einsatz = 'proportional';
+  g.finanzierung.ek_quote_vor_bb = 60; g.finanzierung.ek_quote_nach_bb = 30;
   var rg = E.compute(g), j0 = rg.fin.jahre[0];
-  pruefe('Eigenkapitalanteil im ersten Jahr = 30 % des Saldos', j0.saldo * 0.30, j0.ek, 1);
+  pruefe('Eigenkapital im ersten Jahr = 60 % (vor Baubewilligung)', j0.saldo * 0.60, j0.ek, 1);
+  var jLetzt = rg.fin.jahre[rg.fin.jahre.length - 1];
+  pruefe('Eigenkapitalquote im letzten Jahr = 30 %', 30, jLetzt.ek_quote, 0.01);
+  /* Gleiche Quoten müssen sich wie früher verhalten */
+  g.finanzierung.ek_quote_vor_bb = 30;
+  var rg2 = E.compute(g);
+  pruefe('Gleiche Quoten ergeben durchgehend 30 %',
+    rg2.fin.jahre[0].saldo * 0.30, rg2.fin.jahre[0].ek, 1);
+
+  /* ---- Kalkulatorischer Eigenkapitalzins als Kosten --------------- */
+  var ez = A.defaultProject();
+  ez.finanzierung.ek_zins_aktiv = false;
+  var rezAus = E.compute(ez);
+  ez.finanzierung.ek_zins_aktiv = true;
+  var rezEin = E.compute(ez);
+  pruefe('EK-Zins erhöht die Finanzierungskosten',
+    rezAus.kpi.finanzierungskosten + rezEin.fin.ek_zins_kalk,
+    rezEin.kpi.finanzierungskosten, 20000);
+  pruefe('EK-Zins mindert den Gewinn',
+    1, rezEin.kpi.gewinn < rezAus.kpi.gewinn ? 1 : 0);
+  pruefe('EK-Zins mindert die Rendite auf Eigenkapital',
+    1, rezEin.kpi.roe < rezAus.kpi.roe ? 1 : 0);
+  pruefe('EK-Zins mindert den internen Zinsfuss',
+    1, rezEin.kpi.irr < rezAus.kpi.irr ? 1 : 0);
+
+  /* ---- Betriebskosten als Jahrespauschale ------------------------- */
+  var bp = A.defaultProject();
+  bp.teile.neubau.nutzungen = [
+    A.defNutzung({ bezeichnung: 'Wohnen Miete', art: 'wohnen', anteil: 100,
+      miete: 320, verwertung: 'halten_vermietet' })
+  ];
+  bp.betrieb.verwaltung = { basis: 'pauschal', wert: 45000 };
+  var rbp = E.compute(bp);
+  pruefe('Pauschale Bewirtschaftung zählt mit ihrem Betrag',
+    45000, rbp.betrieb.zeilen.find(function (x) { return x.id === 'verwaltung'; }).betrag, 1);
+
+  /* ---- Durchschnittliche Höhe oberirdisch ------------------------- */
+  var hh = A.defaultProject();
+  hh.grundstueck.geschosse = 5;
+  hh.grundstueck.attika_anrechenbar = false; hh.grundstueck.attika_pct = 60;
+  var ohh = E.compute(hh).flaechen.teile.neubau;
+  pruefe('Ø Höhe o.i. = Volumen ÷ Geschossfläche o.i.',
+    ohh.gv_oi / ohh.gf_oi, ohh.h_oi_mittel, 0.001);
 
   pruefe('IRR von −1000 → 1331 nach 3 Jahren ≈ 10 %', 10, E.irr([-1000, 0, 0, 1331]), 0.6);
 
@@ -305,6 +350,14 @@
   pruefe('4 gleiche Wohnungen ergeben 3.2 Mio. Erlös', 3200000, rsp.erloes, 1);
   pruefe('Anzahl Einheiten wird mitgezählt', 4, rsp.anzahl);
   pruefe('Preis je m² bleibt der Preis der Einheit', 800000 / 90, rsp.preis_m2, 0.01);
+
+  /* ---- Soll bleibt der gerechnete Wert, auch beim Kaufpreis ------- */
+  var kp = A.defaultProject();
+  kp.erwerb.preis_modus = 'total'; kp.erwerb.preis_total = 3500000;
+  kp.ist['erwerb.kaufpreis'] = 3800000;
+  var zkp = E.compute(kp).erwerb.zeilen.find(function (x) { return x.id === 'kaufpreis'; });
+  pruefe('Kaufpreis: Soll bleibt der gerechnete Betrag', 3500000, zkp.soll, 1);
+  pruefe('Kaufpreis: wirksam ist der Ist-Wert', 3800000, zkp.betrag, 1);
 
   /* ---- Ist-Werte ersetzen den Soll-Betrag -------------------------- */
   var pi = A.defaultProject();

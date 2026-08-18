@@ -15,8 +15,8 @@ window.APP = window.APP || {};
   A.SEITEN = [
     { id: 'portfolio',    ix: '0',  label: 'Portfolio' },
     { id: 'projekt',      ix: '1',  label: 'Projekt & Phasen' },
-    { id: 'flaechen',     ix: '2',  label: 'Grundstück & Flächen' },
-    { id: 'erwerb',       ix: '3',  label: 'Erwerbskosten' },
+    { id: 'erwerb',       ix: '2',  label: 'Grundstück & Erwerbskosten' },
+    { id: 'flaechen',     ix: '3',  label: 'Flächen & Volumen' },
     { id: 'bestand',      ix: '4',  label: 'Bestand' },
     { id: 'baukosten',    ix: '5',  label: 'Baukosten' },
     { id: 'ertraege',     ix: '6',  label: 'Erträge & Verwertung' },

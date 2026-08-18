@@ -180,6 +180,10 @@ window.APP = window.APP || {};
           o.h_oi_ist = hoehe_oi; o.h_ug_ist = num(t.h_ug); o.h_aeh_ist = num(t.h_aeh);
         }
         o.gv = o.gv_oi + o.gv_ug + o.gv_aeh;
+        /* Durchschnittliche Geschosshöhe oberirdisch = Volumen je m²
+           Geschossfläche. h_oi_ist ist demgegenüber die Gesamthöhe des
+           Gebäudes über alle Geschosse. */
+        o.h_oi_mittel = o.gf_oi > 0 ? o.gv_oi / o.gf_oi : 0;
         agf_genutzt += o.agf || 0;
       }
 
@@ -459,9 +463,10 @@ window.APP = window.APP || {};
      3 · Erwerbskosten
      --------------------------------------------------------------- */
 
-  E.kaufpreis = function (p, F) {
-    var iv = ist(p, 'erwerb.kaufpreis');
-    if (iv !== null) return iv;
+  /* Gerechneter Kaufpreis ohne Ist-Übersteuerung — Bezugsgrösse für den
+     Soll-Ist-Vergleich. Ohne ihn stünde im Tracking der Ist-Wert auch in
+     der Soll-Spalte und die Abweichung wäre immer null. */
+  E.kaufpreisSoll = function (p, F) {
     var e = p.erwerb;
     if (p.erwerbsart === 'baurecht') return num(e.baurecht_einmal);
     switch (e.preis_modus) {
@@ -471,12 +476,18 @@ window.APP = window.APP || {};
     }
   };
 
+  E.kaufpreis = function (p, F) {
+    var iv = ist(p, 'erwerb.kaufpreis');
+    return iv !== null ? iv : E.kaufpreisSoll(p, F);
+  };
+
   E.erwerbskosten = function (p, F, anlagekosten_schaetz, gewinn_schaetz, bau_ohne_pm) {
     var e = p.erwerb, z = [], kp = E.kaufpreis(p, F);
 
     z.push({ id: 'kaufpreis', label: p.erwerbsart === 'baurecht'
       ? 'Einmalentschädigung Baurecht' : 'Kaufpreis Liegenschaft',
-      basis: '—', betrag: kp, ist: ist(p, 'erwerb.kaufpreis') !== null });
+      basis: '—', betrag: kp, soll: E.kaufpreisSoll(p, F),
+      ist: ist(p, 'erwerb.kaufpreis') !== null });
 
     function proz(id, label, satz, basis, anteil) {
       var b = basis * pct(satz) * (anteil === undefined ? 1 : pct(anteil));
@@ -672,10 +683,12 @@ window.APP = window.APP || {};
       var betrag;
       if (cfg.basis === 'pct_miete') betrag = miete * pct(cfg.wert);
       else if (cfg.basis === 'pct_ak') betrag = baukosten * pct(cfg.wert);
+      else if (cfg.basis === 'pauschal') betrag = num(cfg.wert);   // CHF je Jahr
       else betrag = num(cfg.wert) * ERT.nwf_halten;      // chf_m2
       z.push({ id: id, label: label,
         basis: cfg.basis === 'pct_miete' ? A.fmt(cfg.wert, 2) + ' % Miete'
              : cfg.basis === 'pct_ak' ? A.fmt(cfg.wert, 2) + ' % Baukosten'
+             : cfg.basis === 'pauschal' ? 'pauschal je Jahr'
              : A.fmt(cfg.wert, 0) + ' CHF/m²',
         betrag: betrag });
       return betrag;
@@ -827,22 +840,36 @@ window.APP = window.APP || {};
      8 · Finanzierung — Jahresraster, Mid-Year-Konvention
      --------------------------------------------------------------- */
 
+  /* Eigenkapitalquote der Phase. Vor der Baubewilligung finanzieren Banken
+     zurückhaltender — deshalb sind beide Quoten getrennt erfassbar. */
+  E.ekQuote = function (p, Z, zeitpunkt) {
+    var f = p.finanzierung;
+    var vor = f.ek_quote_vor_bb !== undefined && f.ek_quote_vor_bb !== null
+      ? num(f.ek_quote_vor_bb) : num(f.ek_quote);
+    var nach = f.ek_quote_nach_bb !== undefined && f.ek_quote_nach_bb !== null
+      ? num(f.ek_quote_nach_bb) : num(f.ek_quote);
+    return zeitpunkt < Z.t_bb ? vor : nach;
+  };
+
   E.finanzierung = function (p, Z, TR, gesamtinvestition, fk_limit_vor, haltenWert) {
     var f = p.finanzierung, N = TR.N;
-    var ekMax = Math.max(0, gesamtinvestition * pct(f.ek_quote));
+    /* Das verpflichtete Eigenkapital bemisst sich an der Quote nach
+       Baubewilligung — das ist der Stand, mit dem das Projekt gebaut wird. */
+    var ekMax = Math.max(0, gesamtinvestition * pct(E.ekQuote(p, Z, Z.t_bb)));
     var fkDeckel = Math.max(0, gesamtinvestition * pct(f.ltc_max));
 
     /* Aufteilung eines Finanzierungssaldos auf Eigen- und Fremdkapital.
        'zuerst'       – Eigenmittel werden vorab eingebracht (Bankpraxis Baukredit)
        'proportional' – jede Periode wird gemäss Eigenkapitalquote aufgeteilt   */
-    function teile(saldo) {
+    function teile(saldo, zeitpunkt) {
       if (saldo <= 0) return { ek: 0, fk: 0 };
+      var quote = pct(E.ekQuote(p, Z, zeitpunkt === undefined ? Z.t_ende : zeitpunkt));
       var ek, fk;
       if (f.ek_einsatz === 'zuerst') {
         ek = Math.min(saldo, ekMax);
         fk = saldo - ek;
       } else {
-        ek = saldo * pct(f.ek_quote);
+        ek = saldo * quote;
         fk = saldo - ek;
       }
       if (fk > fkDeckel) { fk = fkDeckel; ek = saldo - fk; }
@@ -872,20 +899,25 @@ window.APP = window.APP || {};
       var kumStart = kum;
       var kumEnde = kum + bedarf;
 
-      var tStart = teile(kumStart), tEnde = teile(kumEnde);
+      var tStart = teile(kumStart, j), tEnde = teile(kumEnde, j + 1);
       var fkMittel = (tStart.fk + tEnde.fk) / 2;
       var ekMittel = (tStart.ek + tEnde.ek) / 2;
 
       var satz = satzFor(mitte);
       var zins = fkMittel * satz;
       var bk = Math.max(0, limit - fkMittel) * pct(f.bereitstellung);
-      if (f.ek_zins_aktiv) ekZinsKalk += ekMittel * pct(f.ek_zins);
+      /* Der kalkulatorische Eigenkapitalzins ist für die Tochterfirma ein
+         echter Aufwand — der Mutterkonzern stellt die Mittel verzinst zur
+         Verfügung. Er läuft deshalb wie der Fremdkapitalzins in den
+         Kapitalbedarf und damit in die Folgeperioden. */
+      var ekZins = f.ek_zins_aktiv ? ekMittel * pct(f.ek_zins) : 0;
+      ekZinsKalk += ekZins;
 
-      kum = kumEnde + zins + bk;
+      kum = kumEnde + zins + bk + ekZins;
       bauzinsen += zins;
       bereitstellung += bk;
 
-      var nach = teile(kum);
+      var nach = teile(kum, j + 1);
       if (nach.fk >= fkDeckel - 1 && kum > 0) deckelVerletzt = true;
       fkPeak = Math.max(fkPeak, nach.fk);
       ekPeak = Math.max(ekPeak, nach.ek);
@@ -894,7 +926,8 @@ window.APP = window.APP || {};
       jahre.push({
         jahr: j,
         ausgaben: TR.aus[j], einnahmen: TR.ein[j], netto: -bedarf,
-        zins: zins, bereitstellung: bk, satz: satz * 100,
+        zins: zins, bereitstellung: bk, ek_zins: ekZins, satz: satz * 100,
+        ek_quote: E.ekQuote(p, Z, mitte),
         saldo: kum, fk: nach.fk, ek: nach.ek,
         ek_flow: -(nach.ek - ekPrev),
         fk_flow: nach.fk - fkPrev,
@@ -1004,7 +1037,9 @@ window.APP = window.APP || {};
       TR = E.zeitreihen(p, Z, ERW, BAU, ERT, VER, BET);
       var gesamt = akNeu + VER.total;
       FIN = E.finanzierung(p, Z, TR, gesamt, fkLimit, ERT.halten_wert);
-      bauzinsenAkt = FIN.bauzinsen + FIN.bereitstellung;
+      /* Der kalkulatorische Eigenkapitalzins zählt zu den Finanzierungs-
+         kosten wie der Fremdkapitalzins — siehe Kommentar in E.finanzierung. */
+      bauzinsenAkt = FIN.bauzinsen + FIN.bereitstellung + FIN.ek_zins_kalk;
       fkLimit = FIN.fk_peak;
 
       var erloeseIt = ERT.stwe_erloes + ERT.exit_wert + ERT.halten_wert;
@@ -1018,7 +1053,8 @@ window.APP = window.APP || {};
 
     var mietertrag_projekt = TR.det.miete.reduce(function (s, x) { return s + x; }, 0);
     var finIst = ist(p, 'finanzierung.bauzinsen');
-    var finKosten = finIst !== null ? finIst : (FIN.bauzinsen + FIN.bereitstellung);
+    var finKosten = finIst !== null
+      ? finIst : (FIN.bauzinsen + FIN.bereitstellung + FIN.ek_zins_kalk);
     var aktiviert = p.finanzierung.bauzinsen_aktivieren;
 
     var erloese = ERT.stwe_erloes + ERT.exit_wert + ERT.halten_wert;
@@ -1027,7 +1063,9 @@ window.APP = window.APP || {};
     var gewinnVor = erloese + mietertrag_projekt - aufwand;
     var steuern = p.steuern.aktiv ? Math.max(0, gewinnVor) * pct(p.steuern.satz) : 0;
     var gewinnNach = gewinnVor - steuern;
-    var gewinnNachEK = gewinnNach - (p.finanzierung.ek_zins_aktiv ? FIN.ek_zins_kalk : 0);
+    /* Der Eigenkapitalzins steckt bereits in finKosten und damit im Gewinn.
+       Das frühere Feld bleibt erhalten, zeigt aber nun denselben Wert. */
+    var gewinnNachEK = gewinnNach;
 
     var ekFlow = FIN.jahre.map(function (j) { return j.ek_flow; });
     if (ekFlow.length) ekFlow[ekFlow.length - 1] -= steuern;

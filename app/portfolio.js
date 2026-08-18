@@ -34,8 +34,11 @@ window.APP = window.APP || {};
     r.vermarktung.zeilen.forEach(function (z) {
       nimm('vermarktung.' + z.id, 'Vermarktung', z.label, z);
     });
-    out.push({ key: 'finanzierung.bauzinsen', gruppe: 'Finanzierung', label: 'Bauzinsen',
-      soll: r.fin.bauzinsen + r.fin.bereitstellung });
+    /* Der kalkulatorische Eigenkapitalzins zählt zu den Finanzierungs-
+       kosten und gehört deshalb in dieselbe Zeile. */
+    out.push({ key: 'finanzierung.bauzinsen', gruppe: 'Finanzierung',
+      label: 'Bauzinsen, Bereitstellung und EK-Zins',
+      soll: r.fin.bauzinsen + r.fin.bereitstellung + r.fin.ek_zins_kalk });
     return out;
   };
 
@@ -647,33 +650,67 @@ window.APP = window.APP || {};
       ], 'c4')
     ]));
 
-    /* Soll/Ist */
-    var zeilen = [], gruppe = null, sollT = 0, istT = 0;
+    /* Soll/Ist. Die Gruppenzeile trägt die Summe ihrer Phase, die letzte
+       Zeile die Gesamtsumme. Beide werden über U.derived nachgeführt,
+       damit sie beim Tippen eines Ist-Wertes nicht veralten. */
+    var zeilen = [], gruppe = null;
+    var gruppenListe = [], aktuelleGruppe = null;
+    var zeilenListe = [];
+
+    function summenZelle() {
+      return { soll: el('td', { class: 'n' }), ist: el('td', { class: 'n' }),
+               abw: el('td', { class: 'n' }), pct: el('td', { class: 'n' }) };
+    }
+
+    function summeSetzen(zellen, soll, ist) {
+      var d = ist - soll;
+      zellen.soll.textContent = fmt(soll);
+      zellen.ist.textContent = fmt(ist);
+      zellen.abw.textContent = (d > 0 ? '+' : '') + fmt(d);
+      zellen.abw.style.color = d > 0 ? 'var(--neg)' : (d < 0 ? 'var(--pos)' : '');
+      zellen.pct.textContent = soll > 0 ? A.fmtPct((ist / soll - 1) * 100) : '';
+    }
+
     A.kostenzeilen(A.state.r).forEach(function (z) {
       if (z.gruppe !== gruppe) {
         gruppe = z.gruppe;
-        zeilen.push(el('tr', { class: 'grp' }, [el('td', { colspan: 5, text: gruppe })]));
+        aktuelleGruppe = { label: gruppe, zellen: summenZelle(), zeilen: [] };
+        gruppenListe.push(aktuelleGruppe);
+        zeilen.push(el('tr', { class: 'grp' }, [
+          el('td', { text: gruppe }),
+          aktuelleGruppe.zellen.soll, aktuelleGruppe.zellen.ist,
+          aktuelleGruppe.zellen.abw, aktuelleGruppe.zellen.pct
+        ]));
       }
+      aktuelleGruppe.zeilen.push(z);
+      zeilenListe.push(z);
+
       var ist = p.ist[z.key];
-      sollT += z.soll;
-      istT += (ist === undefined || ist === null || ist === '') ? z.soll : ist;
       var inp = el('input', { type: 'text', inputmode: 'decimal',
         value: (ist === undefined || ist === null) ? '' : A.fmt(ist),
         placeholder: 'offen' });
       var abwZelle = el('td', { class: 'n' });
+      var pctZelle = el('td', { class: 'n muted' });
       function malen() {
         var v = p.ist[z.key];
-        if (v === undefined || v === null || v === '') { abwZelle.textContent = '—'; abwZelle.className = 'n muted'; return; }
+        if (v === undefined || v === null || v === '') {
+          abwZelle.textContent = '—'; abwZelle.className = 'n muted'; abwZelle.style.color = '';
+          pctZelle.textContent = '';
+          return;
+        }
         var d = v - z.soll;
         abwZelle.textContent = (d > 0 ? '+' : '') + fmt(d);
-        abwZelle.className = 'n' + (d > 0 ? ' ' : '');
+        abwZelle.className = 'n';
         abwZelle.style.color = d > 0 ? 'var(--neg)' : (d < 0 ? 'var(--pos)' : '');
+        pctZelle.textContent = z.soll > 0 ? A.fmtPct((v / z.soll - 1) * 100) : '';
       }
       inp.addEventListener('input', function () {
         if (inp.value.trim() === '') delete p.ist[z.key];
         else p.ist[z.key] = U.parseZahl(inp.value);
         malen();
+        summenNachfuehren();
         A.recompute();          // Ist-Wert wirkt sofort auf die Kalkulation
+        A.markDirty();
       });
       malen();
       zeilen.push(el('tr', {}, [
@@ -682,17 +719,34 @@ window.APP = window.APP || {};
         el('td', { class: 'n muted', text: fmt(z.soll) }),
         el('td', { style: 'width:120px' }, [inp]),
         abwZelle,
-        el('td', { class: 'n muted', text: z.soll > 0 && p.ist[z.key] !== undefined
-          ? A.fmtPct((p.ist[z.key] / z.soll - 1) * 100) : '' })
+        pctZelle
       ]));
     });
+
+    var gesamtZellen = summenZelle();
     zeilen.push(el('tr', { class: 'total' }, [
       el('td', { text: 'Total (offene Positionen zum Soll)' }),
-      el('td', { class: 'n', text: fmt(sollT) }),
-      el('td', { class: 'n', text: fmt(istT) }),
-      el('td', { class: 'n', text: (istT - sollT > 0 ? '+' : '') + fmt(istT - sollT) }),
-      el('td', { class: 'n', text: sollT > 0 ? A.fmtPct((istT / sollT - 1) * 100) : '' })
+      gesamtZellen.soll, gesamtZellen.ist, gesamtZellen.abw, gesamtZellen.pct
     ]));
+
+    /* Ein noch nicht erfasster Ist-Wert zählt mit seinem Soll — sonst
+       stünde eine Phase im Vergleich künstlich tief da. */
+    function wirksam(z) {
+      var v = p.ist[z.key];
+      return (v === undefined || v === null || v === '') ? z.soll : v;
+    }
+
+    function summenNachfuehren() {
+      var sollT = 0, istT = 0;
+      gruppenListe.forEach(function (g) {
+        var s = 0, i = 0;
+        g.zeilen.forEach(function (z) { s += z.soll; i += wirksam(z); });
+        summeSetzen(g.zellen, s, i);
+        sollT += s; istT += i;
+      });
+      summeSetzen(gesamtZellen, sollT, istT);
+    }
+    summenNachfuehren();
 
     var schalter = el('div', { class: 'seg' });
     [['übernehmen', true], ['nur vergleichen', false]].forEach(function (o) {

@@ -74,6 +74,13 @@ werden gespeichert und wandern über den Server zu allen Mitarbeitenden. Eine un
 Eingabe wie `2500*` lässt den bisherigen Wert stehen und markiert das Feld, statt auf null
 zu fallen. Verweise auf andere Felder gibt es bewusst nicht.
 
+**Finanzierung** Die Eigenkapitalquote gilt je Phase — vor und nach der Baubewilligung
+getrennt, weil Banken vor der Bewilligung zurückhaltender finanzieren. Der kalkulatorische
+Eigenkapitalzins wird wie der Fremdkapitalzins behandelt: Das Eigenkapital stellt in der
+Regel der Mutterkonzern verzinst zur Verfügung, für die Projektgesellschaft sind das echte
+Kosten. Er läuft deshalb in den Kapitalbedarf und mindert Gewinn, Marge, Rendite auf das
+Eigenkapital und den internen Zinsfuss.
+
 **Kapitalbedarf** Die Baukosten werden wahlweise automatisch verteilt (je Kostenart über
 die passende Phase, S-Kurve oder linear) oder mit festen Prozentwerten je Projektphase —
 Entwicklung, Bewilligung, Vorbereitung, Bau. Die Prozentwerte werden auf 100 % normiert,

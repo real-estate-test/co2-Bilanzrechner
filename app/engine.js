@@ -430,6 +430,17 @@ window.APP = window.APP || {};
         erfassen(kat, z, basis * pct(z.wert), basis);
       });
 
+      /* Die Zeilen entstehen in Rechenreihenfolge — erst die Mengenzeilen,
+         dann die prozentualen. Für die Ausgabe zählt aber die Reihenfolge
+         des Katalogs, sonst stünde etwa BKP 1 Vorbereitungsarbeiten hinter
+         BKP 9 statt bei den übrigen BKP-1-Zeilen. */
+      var reihung = {};
+      katalog.forEach(function (kat, i) { reihung[kat.id] = i; });
+      out.zeilen.sort(function (a, b2) {
+        var ia = reihung[a.id], ib = reihung[b2.id];
+        return (ia === undefined ? 999 : ia) - (ib === undefined ? 999 : ib);
+      });
+
       out.summe = out.bkp1 + out.bkp2 + out.bkp3 + out.bkp4 + out.bkp5 + out.bkp9;
 
       /* Altprojekte: pauschale Reserve auf BKP 1 + 2, falls noch gesetzt */

@@ -359,6 +359,48 @@
   pruefe('Kaufpreis: Soll bleibt der gerechnete Betrag', 3500000, zkp.soll, 1);
   pruefe('Kaufpreis: wirksam ist der Ist-Wert', 3800000, zkp.betrag, 1);
 
+  /* ---- Zahlungsstand: bereits bezahlt ----------------------------- */
+  var zp = A.defaultProject();
+  zp.startdatum = '2024-01-01'; zp.stichtag = '2026-01-01';
+  var rzp0 = E.compute(zp);
+  pruefe('Stichtag liegt 2 Jahre nach Erwerb', 2, rzp0.zeit.t_stichtag, 0.02);
+  var summeBau2 = function (res) {
+    return res.reihen.det.bau.reduce(function (s2, x) { return s2 + x; }, 0);
+  };
+  zp.bezahlt['bau.neubau.b2_oi_stwe'] = 4000000;
+  var rzp1 = E.compute(zp);
+  pruefe('Bezahltes verschiebt nur den Zeitpunkt, nicht die Summe',
+    rzp1.bau.total, summeBau2(rzp1), 1);
+  pruefe('Früher gebundenes Kapital kostet mehr Bauzinsen',
+    1, rzp1.fin.bauzinsen > rzp0.fin.bauzinsen ? 1 : 0);
+  pruefe('Bezahltes liegt vor dem Stichtag',
+    1, rzp1.reihen.det.bau[0] + rzp1.reihen.det.bau[1] >= 4000000 - 1 ? 1 : 0);
+  pruefe('Zahlungsstand weist den bezahlten Betrag aus',
+    4000000, rzp1.zahlungsstand.bezahlt, 1);
+
+  /* Mehr bezahlt als die Position kostet, wird auf sie begrenzt */
+  zp.bezahlt['bau.neubau.b2_oi_stwe'] = 99000000;
+  var rzp2 = E.compute(zp);
+  pruefe('Überzahlung wird auf den Betrag der Zeile begrenzt',
+    rzp2.bau.total, summeBau2(rzp2), 1);
+
+  /* Vertragskennzeichen ist reine Dokumentation */
+  var vp = A.defaultProject();
+  var rvp0 = E.compute(vp);
+  vp.vertrag['bau.neubau.b2_oi_stwe'] = true;
+  var rvp1 = E.compute(vp);
+  pruefe('Vertragskennzeichen ändert den Gewinn nicht',
+    rvp0.kpi.gewinn, rvp1.kpi.gewinn, 1);
+  pruefe('Vertragskennzeichen wird summiert',
+    rvp1.bau.bloecke.neubau.zeilen.find(function (x) { return x.id === 'b2_oi_stwe'; }).betrag,
+    rvp1.zahlungsstand.vertraglich, 1);
+
+  /* Ohne Zahlungsstand bleibt alles wie zuvor */
+  var op = A.defaultProject();
+  op.startdatum = '2024-01-01'; op.stichtag = '2026-01-01';
+  pruefe('Ohne erfasste Zahlung bleibt die Verteilung unverändert',
+    E.compute(op).fin.bauzinsen, rzp0.fin.bauzinsen, 1);
+
   /* ---- Ist-Werte ersetzen den Soll-Betrag -------------------------- */
   var pi = A.defaultProject();
   pi.grundstueck.geschosse = 4;

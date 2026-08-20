@@ -40,9 +40,19 @@ window.APP = window.APP || {};
     var t_vk_start  = Math.max(0, t_bb + M('verkaufsstart_rel_bb'));
     var t_vk_ende   = t_vk_start + Math.max(1 / 12, M('dauer_verkauf'));
     var t_ende      = Math.max(t_bauende + M('exit_verzoegerung'), t_vk_ende);
+    /* Stichtag der Zahlungen als Zeitpunkt auf derselben Achse. Er trennt
+       geflossene von noch offenen Beträgen. Ohne gültige Daten bleibt er
+       bei null — dann verhält sich alles wie ohne Zahlungsstand. */
+    var t_stichtag = 0;
+    if (p.startdatum && p.stichtag) {
+      var d0 = Date.parse(p.startdatum), d1 = Date.parse(p.stichtag);
+      if (isFinite(d0) && isFinite(d1)) {
+        t_stichtag = Math.max(0, Math.min(t_ende, (d1 - d0) / 31557600000));
+      }
+    }
     return {
       t_baueingabe: t_baueingabe, t_bb: t_bb, t_baustart: t_baustart,
-      t_rohbau: t_rohbau, t_bauende: t_bauende,
+      t_rohbau: t_rohbau, t_bauende: t_bauende, t_stichtag: t_stichtag,
       t_vk_start: t_vk_start, t_vk_ende: t_vk_ende, t_ende: t_ende,
       N: Math.max(2, Math.ceil(t_ende + 0.001))
     };
@@ -713,6 +723,35 @@ window.APP = window.APP || {};
   E.zeitreihen = function (p, Z, ERW, BAU, ERT, VER, BET) {
     var N = Z.N, kurve = p.zeit.kostenkurve;
     var aus = new Array(N).fill(0), ein = new Array(N).fill(0), phasen = [];
+    var tS = Z.t_stichtag || 0;
+    var bezahltMap = p.bezahlt || {};
+
+    function bezahltFuer(key, betrag) {
+      var v = num(bezahltMap[key]);
+      if (!(v > 0)) return 0;
+      /* Mehr als der Betrag der Zeile kann nicht geflossen sein — sonst
+         erzeugte ein Tippfehler negative Restkosten. */
+      return Math.min(v, Math.max(0, betrag));
+    }
+
+    /* Verteilung einer Kostenzeile über die Zeitachse. Ist ein Teil bereits
+       bezahlt, liegt dieser Teil als tatsächlicher Abfluss zwischen
+       Projektstart und Stichtag; der offene Rest folgt der geplanten
+       Verteilung, beginnt aber frühestens am Stichtag. Zeilen ohne
+       erfasste Zahlung bleiben unangetastet. */
+    function verteile(ziel, key, betrag, von, bis, kurveZ) {
+      var bez = bezahltFuer(key, betrag);
+      if (bez <= 0) {
+        addArr(ziel, spread(betrag, von, bis, N, kurveZ));
+        return;
+      }
+      if (tS > 0) addArr(ziel, spread(bez, 0, tS, N, 'linear'));
+      else addArr(ziel, punkt(bez, 0, N));
+      var rest = betrag - bez;
+      if (rest > 0.005) {
+        addArr(ziel, spread(rest, Math.max(von, tS), Math.max(bis, tS), N, kurveZ));
+      }
+    }
     var det = { erwerb: new Array(N).fill(0), bau: new Array(N).fill(0),
                 vermarktung: new Array(N).fill(0), betrieb: new Array(N).fill(0),
                 verkauf: new Array(N).fill(0), miete: new Array(N).fill(0),
@@ -721,12 +760,13 @@ window.APP = window.APP || {};
     /* Erwerb: Kaufpreis und Kaufnebenkosten bei t = 0,
        das Entwicklungshonorar über die Entwicklungsphase. */
     ERW.zeilen.forEach(function (z) {
+      var key = 'erwerb.' + z.id;
       if (z.id === 'entwicklung') {
-        addArr(det.erwerb, spread(z.betrag, 0, Math.max(0.5, Z.t_bauende), N, 'linear'));
+        verteile(det.erwerb, key, z.betrag, 0, Math.max(0.5, Z.t_bauende), 'linear');
       } else if (z.id === 'mehrwert') {
-        addArr(det.erwerb, punkt(z.betrag, Z.t_bb, N));
+        verteile(det.erwerb, key, z.betrag, Z.t_bb, Z.t_bb, 'linear');
       } else {
-        addArr(det.erwerb, punkt(z.betrag, 0, N));
+        verteile(det.erwerb, key, z.betrag, 0, 0, 'linear');
       }
     });
 
@@ -742,21 +782,38 @@ window.APP = window.APP || {};
        Zeilenart. */
     if (p.zeit.verteilung_modus === 'phasen') {
       phasen = E.phasenverteilung(p, Z, N);
+      /* Bereits Bezahltes wird vorweg genommen, der Rest auf die Phasen
+         verteilt — sonst stünde es doppelt im Kapitalbedarf. */
+      var bezahltBau = 0;
+      Object.keys(BAU.bloecke).forEach(function (bid) {
+        BAU.bloecke[bid].zeilen.forEach(function (z) {
+          bezahltBau += bezahltFuer('bau.' + bid + '.' + z.id, z.betrag);
+        });
+      });
+      bezahltBau = Math.min(bezahltBau, BAU.total);
+      if (bezahltBau > 0) {
+        if (tS > 0) addArr(det.bau, spread(bezahltBau, 0, tS, N, 'linear'));
+        else addArr(det.bau, punkt(bezahltBau, 0, N));
+      }
+      var offenBau = BAU.total - bezahltBau;
       phasen.forEach(function (ph) {
-        addArr(det.bau, spread(BAU.total * ph.anteil, ph.von, ph.bis, N, 'linear'));
+        addArr(det.bau, spread(offenBau * ph.anteil,
+          Math.max(ph.von, tS), Math.max(ph.bis, tS), N, 'linear'));
       });
     } else {
       Object.keys(BAU.bloecke).forEach(function (bid) {
         var b = BAU.bloecke[bid];
         b.zeilen.forEach(function (z) {
+          var key = 'bau.' + bid + '.' + z.id;
           if (z.id === 'b2_honorare') {
-            addArr(det.bau, spread(z.betrag, 0.25, Z.t_bauende, N, 'linear'));
+            verteile(det.bau, key, z.betrag, 0.25, Z.t_bauende, 'linear');
           } else if (z.id === 'b5_bnk') {
-            addArr(det.bau, spread(z.betrag, Z.t_baueingabe, Z.t_bauende, N, 'linear'));
+            verteile(det.bau, key, z.betrag, Z.t_baueingabe, Z.t_bauende, 'linear');
           } else if (z.bkp.charAt(0) === '1') {
-            addArr(det.bau, spread(z.betrag, Z.t_baustart, Z.t_baustart + (Z.t_bauende - Z.t_baustart) * 0.3, N, 'linear'));
+            verteile(det.bau, key, z.betrag, Z.t_baustart,
+              Z.t_baustart + (Z.t_bauende - Z.t_baustart) * 0.3, 'linear');
           } else {
-            addArr(det.bau, spread(z.betrag, Z.t_baustart, Z.t_bauende, N, kurve));
+            verteile(det.bau, key, z.betrag, Z.t_baustart, Z.t_bauende, kurve);
           }
         });
         /* Nur die pauschale Altreserve — die Zeile BKP 202 steckt bereits
@@ -768,12 +825,13 @@ window.APP = window.APP || {};
 
     /* Vermarktung: Marketing ab Verkaufsstart, Provisionen mit den Verkäufen */
     VER.zeilen.forEach(function (z) {
+      var key = 'vermarktung.' + z.id;
       if (z.id === 'vermietung') {
-        addArr(det.vermarktung, spread(z.betrag, Z.t_bauende - 0.5, Z.t_bauende + 0.5, N, 'linear'));
+        verteile(det.vermarktung, key, z.betrag, Z.t_bauende - 0.5, Z.t_bauende + 0.5, 'linear');
       } else if (z.id === 'muster' || z.id === 'marketing') {
-        addArr(det.vermarktung, spread(z.betrag, Math.max(0, Z.t_vk_start - 0.5), Z.t_vk_ende, N, 'linear'));
+        verteile(det.vermarktung, key, z.betrag, Math.max(0, Z.t_vk_start - 0.5), Z.t_vk_ende, 'linear');
       } else {
-        addArr(det.vermarktung, spread(z.betrag, Z.t_vk_start, Z.t_vk_ende, N, 'linear'));
+        verteile(det.vermarktung, key, z.betrag, Z.t_vk_start, Z.t_vk_ende, 'linear');
       }
     });
 
@@ -1100,6 +1158,24 @@ window.APP = window.APP || {};
         A.fmt(bruttorendite, 2) + ' % (Ziel ' + A.fmt(p.ziele.bruttorendite, 2) + ' %).' });
     }
 
+    /* Zahlungsstand: nur über Zeilen, die es auch gibt — verwaiste
+       Schlüssel aus gelöschten Zeilen dürfen die Summe nicht aufblähen. */
+    var bezahltTotal = 0, vertragTotal = 0, wirksamTotal = 0;
+    (function () {
+      var bez = p.bezahlt || {}, vtr = p.vertrag || {};
+      function nimm(key, betrag) {
+        wirksamTotal += betrag;
+        bezahltTotal += Math.min(num(bez[key]), Math.max(0, betrag));
+        if (vtr[key]) vertragTotal += betrag;
+      }
+      ERW.zeilen.forEach(function (z) { nimm('erwerb.' + z.id, z.betrag); });
+      Object.keys(BAU.bloecke).forEach(function (bid) {
+        BAU.bloecke[bid].zeilen.forEach(function (z) { nimm('bau.' + bid + '.' + z.id, z.betrag); });
+      });
+      VER.zeilen.forEach(function (z) { nimm('vermarktung.' + z.id, z.betrag); });
+      nimm('finanzierung.bauzinsen', finKosten);
+    })();
+
     /* Wie viele Positionen rechnen mit einem Ist-Wert statt mit der Schätzung? */
     var istAnzahl = 0, istZeilen = [];
     ERW.zeilen.forEach(function (z) { if (z.ist) { istAnzahl++; istZeilen.push(z.label); } });
@@ -1125,6 +1201,10 @@ window.APP = window.APP || {};
       warnungen: warn,
       ist_anzahl: istAnzahl,
       ist_zeilen: istZeilen,
+      zahlungsstand: {
+        bezahlt: bezahltTotal, offen: Math.max(0, wirksamTotal - bezahltTotal),
+        vertraglich: vertragTotal, kosten: wirksamTotal
+      },
       kpi: {
         anlagekosten: anlagekosten,
         gesamtinvestition: gesamtinvestition,

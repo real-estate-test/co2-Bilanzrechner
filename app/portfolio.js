@@ -7,6 +7,7 @@ window.APP = window.APP || {};
 
   var U = A.ui, V = A.views, el = U.el, s = U.s;
   function fmt(n, d) { return A.fmt(n, d); }
+  function num(v) { return U.parseZahl(v); }
 
   /* ---------------------------------------------------------------
      Kostenzeilen eines Projektes als flache Liste (Basis für Soll/Ist)
@@ -643,32 +644,76 @@ window.APP = window.APP || {};
     var out = el('div', {}, [U.kopf('Tracking',
       'Soll-Ist-Vergleich der Kostenpositionen und eingefrorene Projektstände zum Vergleich über die Zeit.')]);
 
+    /* Stichtag der Zahlungen — Grenze zwischen geflossen und offen. */
+    var stichtagFeld = el('input', { type: 'date', value: p.stichtag || A.heute() });
+    stichtagFeld.addEventListener('change', function () {
+      p.stichtag = stichtagFeld.value || A.heute();
+      A.recompute(); A.markDirty(); A.render();
+    });
+
     out.appendChild(U.panel('Zeitliche Verankerung', null, [
       U.body([
         U.num(p, 'startjahr', 'Kalenderjahr des Erwerbs', { dez: 0,
-          hilfe: 'Verankert die Projektjahre im Kalender — Grundlage der Portfolio-Aggregation.' })
+          hilfe: 'Verankert die Projektjahre im Kalender — Grundlage der Portfolio-Aggregation.' }),
+        el('div', { class: 'f' }, [
+          el('label', {}, [el('span', { text: 'Stichtag der Zahlungen' })]),
+          el('div', { class: 'inp' }, [stichtagFeld]),
+          el('div', { class: 'hilfe',
+            text: 'Trennt geflossene von noch offenen Beträgen. Bereits bezahlte Positionen ' +
+                  'werden bis hierhin verteilt, der Rest erst danach.' })
+        ]),
+        el('div', { class: 'f' }, [
+          el('label', {}, [el('span', { text: 'liegt im Projekt bei' })]),
+          el('div', { class: 'kachel' }, [
+            U.d(function (r) { return A.fmt(r.zeit.t_stichtag, 2) + ' Jahren'; }),
+            el('div', { class: 's', text: 'ab Erwerb gerechnet' })
+          ])
+        ])
       ], 'c4')
     ]));
+
+    /* Zahlungsstand als Kacheln — sie beantworten die Frage, wie viel
+       Geld tatsächlich schon draussen ist. */
+    var stand = el('div', { class: 'panelbody' });
+    U.derived.push(function () {
+      var zs = A.state.r.zahlungsstand;
+      U.leeren(stand).appendChild(el('div', { class: 'cols c4' }, [
+        U.kachel('bereits bezahlt', fmt(zs.bezahlt),
+          zs.kosten > 0 ? A.fmtPct(zs.bezahlt / zs.kosten * 100) + ' der Kosten' : ''),
+        U.kachel('noch offen', fmt(zs.offen)),
+        U.kachel('vertraglich gesichert', fmt(zs.vertraglich),
+          zs.kosten > 0 ? A.fmtPct(zs.vertraglich / zs.kosten * 100) + ' der Kosten' : ''),
+        U.kachel('Kosten total', fmt(zs.kosten), 'Ist, wo erfasst, sonst Soll')
+      ]));
+    });
+    out.appendChild(U.panel('Zahlungsstand', 'Stand per Stichtag', [stand]));
 
     /* Soll/Ist. Die Gruppenzeile trägt die Summe ihrer Phase, die letzte
        Zeile die Gesamtsumme. Beide werden über U.derived nachgeführt,
        damit sie beim Tippen eines Ist-Wertes nicht veralten. */
+    if (!p.bezahlt) p.bezahlt = {};
+    if (!p.vertrag) p.vertrag = {};
+
     var zeilen = [], gruppe = null;
     var gruppenListe = [], aktuelleGruppe = null;
-    var zeilenListe = [];
 
     function summenZelle() {
       return { soll: el('td', { class: 'n' }), ist: el('td', { class: 'n' }),
+               bez: el('td', { class: 'n' }), vtr: el('td', { class: 'n muted' }),
+               off: el('td', { class: 'n' }),
                abw: el('td', { class: 'n' }), pct: el('td', { class: 'n' }) };
     }
 
-    function summeSetzen(zellen, soll, ist) {
-      var d = ist - soll;
-      zellen.soll.textContent = fmt(soll);
-      zellen.ist.textContent = fmt(ist);
+    function summeSetzen(zellen, s) {
+      var d = s.ist - s.soll;
+      zellen.soll.textContent = fmt(s.soll);
+      zellen.ist.textContent = fmt(s.ist);
+      zellen.bez.textContent = fmt(s.bezahlt);
+      zellen.vtr.textContent = s.vertragAnzahl ? s.vertragAnzahl + '×' : '';
+      zellen.off.textContent = fmt(s.ist - s.bezahlt);
       zellen.abw.textContent = (d > 0 ? '+' : '') + fmt(d);
       zellen.abw.style.color = d > 0 ? 'var(--neg)' : (d < 0 ? 'var(--pos)' : '');
-      zellen.pct.textContent = soll > 0 ? A.fmtPct((ist / soll - 1) * 100) : '';
+      zellen.pct.textContent = s.soll > 0 ? A.fmtPct((s.ist / s.soll - 1) * 100) : '';
     }
 
     A.kostenzeilen(A.state.r).forEach(function (z) {
@@ -676,48 +721,84 @@ window.APP = window.APP || {};
         gruppe = z.gruppe;
         aktuelleGruppe = { label: gruppe, zellen: summenZelle(), zeilen: [] };
         gruppenListe.push(aktuelleGruppe);
+        var g = aktuelleGruppe.zellen;
         zeilen.push(el('tr', { class: 'grp' }, [
           el('td', { text: gruppe }),
-          aktuelleGruppe.zellen.soll, aktuelleGruppe.zellen.ist,
-          aktuelleGruppe.zellen.abw, aktuelleGruppe.zellen.pct
+          g.soll, g.ist, g.bez, g.vtr, g.off, g.abw, g.pct
         ]));
       }
       aktuelleGruppe.zeilen.push(z);
-      zeilenListe.push(z);
 
-      var ist = p.ist[z.key];
+      var ist = p.ist[z.key], bez = p.bezahlt[z.key];
+
       var inp = el('input', { type: 'text', inputmode: 'decimal',
         value: (ist === undefined || ist === null) ? '' : A.fmt(ist),
         placeholder: 'offen' });
+
+      /* Bereits geflossener Betrag. Er wirkt allein über den Zeitpunkt:
+         Bezahltes ist gebundenes Kapital und verteuert die Finanzierung. */
+      var bezInp = el('input', { type: 'text', inputmode: 'decimal',
+        value: (bez === undefined || bez === null) ? '' : A.fmt(bez),
+        placeholder: '—' });
+
+      /* Vertraglich gesichert — reine Dokumentation ohne Rechenwirkung. */
+      var vtrBox = el('input', { type: 'checkbox', checked: p.vertrag[z.key] ? '' : null });
+
+      var offZelle = el('td', { class: 'n' });
       var abwZelle = el('td', { class: 'n' });
       var pctZelle = el('td', { class: 'n muted' });
+
       function malen() {
         var v = p.ist[z.key];
+        var b = num(p.bezahlt[z.key]);
+        var wirksam = (v === undefined || v === null || v === '') ? z.soll : v;
+
         if (v === undefined || v === null || v === '') {
           abwZelle.textContent = '—'; abwZelle.className = 'n muted'; abwZelle.style.color = '';
           pctZelle.textContent = '';
-          return;
+        } else {
+          var d = v - z.soll;
+          abwZelle.textContent = (d > 0 ? '+' : '') + fmt(d);
+          abwZelle.className = 'n';
+          abwZelle.style.color = d > 0 ? 'var(--neg)' : (d < 0 ? 'var(--pos)' : '');
+          pctZelle.textContent = z.soll > 0 ? A.fmtPct((v / z.soll - 1) * 100) : '';
         }
-        var d = v - z.soll;
-        abwZelle.textContent = (d > 0 ? '+' : '') + fmt(d);
-        abwZelle.className = 'n';
-        abwZelle.style.color = d > 0 ? 'var(--neg)' : (d < 0 ? 'var(--pos)' : '');
-        pctZelle.textContent = z.soll > 0 ? A.fmtPct((v / z.soll - 1) * 100) : '';
+
+        var offen = wirksam - b;
+        offZelle.textContent = b > 0 ? fmt(offen) : '—';
+        offZelle.className = 'n' + (b > 0 ? '' : ' muted');
+        /* Mehr bezahlt als die Position kostet — meist ein Tippfehler. */
+        offZelle.style.color = offen < -0.5 ? 'var(--neg)' : '';
+        bezInp.classList.toggle('bad', b > wirksam + 0.5);
+        bezInp.title = b > wirksam + 0.5
+          ? 'Es ist mehr bezahlt als die Position kostet — in der Rechnung wird auf den Betrag der Zeile begrenzt.'
+          : '';
       }
+
       inp.addEventListener('input', function () {
         if (inp.value.trim() === '') delete p.ist[z.key];
         else p.ist[z.key] = U.parseZahl(inp.value);
-        malen();
-        summenNachfuehren();
-        A.recompute();          // Ist-Wert wirkt sofort auf die Kalkulation
-        A.markDirty();
+        malen(); summenNachfuehren(); A.recompute(); A.markDirty();
       });
+      bezInp.addEventListener('input', function () {
+        if (bezInp.value.trim() === '') delete p.bezahlt[z.key];
+        else p.bezahlt[z.key] = U.parseZahl(bezInp.value);
+        malen(); summenNachfuehren(); A.recompute(); A.markDirty();
+      });
+      vtrBox.addEventListener('change', function () {
+        if (vtrBox.checked) p.vertrag[z.key] = true; else delete p.vertrag[z.key];
+        summenNachfuehren(); A.markDirty();
+      });
+
       malen();
       zeilen.push(el('tr', {}, [
         el('td', {}, [el('span', { text: z.label }),
           z.uebernommen ? el('span', { class: 'tag pos', style: 'margin-left:7px', text: 'gerechnet' }) : null]),
         el('td', { class: 'n muted', text: fmt(z.soll) }),
-        el('td', { style: 'width:120px' }, [inp]),
+        el('td', { style: 'width:112px' }, [inp]),
+        el('td', { style: 'width:112px' }, [bezInp]),
+        el('td', { class: 'w1', style: 'text-align:center' }, [vtrBox]),
+        offZelle,
         abwZelle,
         pctZelle
       ]));
@@ -726,25 +807,32 @@ window.APP = window.APP || {};
     var gesamtZellen = summenZelle();
     zeilen.push(el('tr', { class: 'total' }, [
       el('td', { text: 'Total (offene Positionen zum Soll)' }),
-      gesamtZellen.soll, gesamtZellen.ist, gesamtZellen.abw, gesamtZellen.pct
+      gesamtZellen.soll, gesamtZellen.ist, gesamtZellen.bez, gesamtZellen.vtr,
+      gesamtZellen.off, gesamtZellen.abw, gesamtZellen.pct
     ]));
 
     /* Ein noch nicht erfasster Ist-Wert zählt mit seinem Soll — sonst
        stünde eine Phase im Vergleich künstlich tief da. */
-    function wirksam(z) {
+    function wirksamFuer(z) {
       var v = p.ist[z.key];
       return (v === undefined || v === null || v === '') ? z.soll : v;
     }
 
     function summenNachfuehren() {
-      var sollT = 0, istT = 0;
-      gruppenListe.forEach(function (g) {
-        var s = 0, i = 0;
-        g.zeilen.forEach(function (z) { s += z.soll; i += wirksam(z); });
-        summeSetzen(g.zellen, s, i);
-        sollT += s; istT += i;
+      var g = { soll: 0, ist: 0, bezahlt: 0, vertragAnzahl: 0 };
+      gruppenListe.forEach(function (gr) {
+        var s = { soll: 0, ist: 0, bezahlt: 0, vertragAnzahl: 0 };
+        gr.zeilen.forEach(function (z) {
+          var w = wirksamFuer(z);
+          s.soll += z.soll; s.ist += w;
+          s.bezahlt += Math.min(num(p.bezahlt[z.key]), Math.max(0, w));
+          if (p.vertrag[z.key]) s.vertragAnzahl += 1;
+        });
+        summeSetzen(gr.zellen, s);
+        g.soll += s.soll; g.ist += s.ist; g.bezahlt += s.bezahlt;
+        g.vertragAnzahl += s.vertragAnzahl;
       });
-      summeSetzen(gesamtZellen, sollT, istT);
+      summeSetzen(gesamtZellen, g);
     }
     summenNachfuehren();
 
@@ -763,8 +851,14 @@ window.APP = window.APP || {};
         ? 'erfasste Ist-Werte ersetzen den Soll-Betrag in der Kalkulation'
         : 'Ist-Werte werden nur gegenübergestellt, nicht gerechnet', [
       el('div', { class: 'panelbody' }, [U.tabelle([
-        { label: 'Position' }, { label: 'Soll CHF', n: true, w: '15%' }, { label: 'Ist CHF', n: true, w: '15%' },
-        { label: 'Abweichung', n: true, w: '13%' }, { label: '%', n: true, w: '9%' }
+        { label: 'Position' },
+        { label: 'Soll CHF', n: true, w: '11%' },
+        { label: 'Ist CHF', n: true, w: '11%' },
+        { label: 'bereits bezahlt', n: true, w: '11%' },
+        { label: 'Vertrag', w: '5%' },
+        { label: 'offen', n: true, w: '10%' },
+        { label: 'Abweichung', n: true, w: '11%' },
+        { label: '%', n: true, w: '7%' }
       ], zeilen)]),
       el('div', { class: 'panelbody' }, [
         el('button', { text: 'Ist-Werte aus CSV einlesen', onclick: function () { istImport(p); } }),
@@ -775,7 +869,12 @@ window.APP = window.APP || {};
           ? U.hinweis('info', 'Ein erfasster Ist-Wert <b>ersetzt</b> den gerechneten Betrag. ' +
               'Nachgelagerte Grössen — Reserve auf BKP 20–29, Baunebenkosten, ' +
               'Projektmanagement-Honorar sowie Marge und Rendite — ziehen automatisch nach.')
-          : null
+          : null,
+        U.hinweis('info', '<b>Bereits bezahlt</b> ändert die Höhe der Kosten nicht, wohl aber ' +
+          'ihren Zeitpunkt: Der Betrag gilt als bis zum Stichtag geflossen, der Rest der Position ' +
+          'erst danach. Weil das Kapital damit früher gebunden ist, steigen die Finanzierungskosten. ' +
+          '<b>Vertrag</b> hält fest, welche Eintragung vertraglich gesichert ist — ohne Wirkung auf ' +
+          'die Rechnung. <b>Offen</b> ist die Differenz aus Ist und bereits bezahlt.')
       ])
     ], [schalter]));
 

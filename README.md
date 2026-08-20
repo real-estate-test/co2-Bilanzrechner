@@ -74,6 +74,12 @@ werden gespeichert und wandern über den Server zu allen Mitarbeitenden. Eine un
 Eingabe wie `2500*` lässt den bisherigen Wert stehen und markiert das Feld, statt auf null
 zu fallen. Verweise auf andere Felder gibt es bewusst nicht.
 
+**Zahlungsstand** Je Kostenzeile lässt sich erfassen, wie viel bereits bezahlt ist und ob
+die Eintragung vertraglich gesichert ist. Der bezahlte Betrag ändert die Höhe der Kosten
+nicht, wohl aber ihren Zeitpunkt: Er gilt als bis zum Stichtag geflossen, der Rest der
+Position erst danach. Weil das Kapital damit früher gebunden ist, steigen die
+Finanzierungskosten. Das Vertragskennzeichen ist reine Dokumentation.
+
 **Finanzierung** Die Eigenkapitalquote gilt je Phase — vor und nach der Baubewilligung
 getrennt, weil Banken vor der Bewilligung zurückhaltender finanzieren. Der kalkulatorische
 Eigenkapitalzins wird wie der Fremdkapitalzins behandelt: Das Eigenkapital stellt in der

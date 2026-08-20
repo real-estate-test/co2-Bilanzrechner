@@ -6,7 +6,7 @@ window.APP = window.APP || {};
 (function (A) {
   'use strict';
 
-  A.SCHEMA = 7;
+  A.SCHEMA = 8;
 
   /* ---------------------------------------------------------------
      Stammlisten
@@ -584,6 +584,13 @@ window.APP = window.APP || {};
       ziele: { marge: 15, bruttorendite: 4.0 },
 
       ist: {},                           // Ist-Werte je Kostenzeile
+      bezahlt: {},                       // bereits geflossene Beträge je Kostenzeile —
+                                         // wirken auf den Kapitalbedarf und damit
+                                         // auf die Finanzierungskosten
+      vertrag: {},                       // Kennzeichen «vertraglich gesichert» je Zeile;
+                                         // reine Dokumentation, ohne Rechenwirkung
+      stichtag: A.heute(),               // Stand der Zahlungen — Grenze zwischen
+                                         // geflossen und noch offen
       ist_uebernehmen: true,             // Ist-Werte ersetzen den Soll-Betrag
       snapshots: [],
       archiviert_am: null,               // gesetzt = aus Listen und Portfolio ausgeblendet
@@ -913,6 +920,14 @@ window.APP = window.APP || {};
          des Projektes ersetzt. */
       p.finanzierung.ek_quote_vor_bb = num0(p.finanzierung.ek_quote);
       p.finanzierung.ek_quote_nach_bb = num0(p.finanzierung.ek_quote);
+    }
+
+    /* --- Schema 7 -> 8: Zahlungsstand je Kostenzeile. Ohne erfasste
+       Beträge ändert sich an der Rechnung nichts. ---------------------- */
+    if (version < 8) {
+      if (!p.bezahlt || typeof p.bezahlt !== 'object') p.bezahlt = {};
+      if (!p.vertrag || typeof p.vertrag !== 'object') p.vertrag = {};
+      if (!p.stichtag) p.stichtag = A.heute();
     }
 
     /* Startdatum aus einem vorhandenen Startjahr ableiten */

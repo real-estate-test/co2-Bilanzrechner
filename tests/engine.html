@@ -351,6 +351,48 @@
   pruefe('Anzahl Einheiten wird mitgezählt', 4, rsp.anzahl);
   pruefe('Preis je m² bleibt der Preis der Einheit', 800000 / 90, rsp.preis_m2, 0.01);
 
+  /* ---- Verkaufsstand aus der Verkaufsübersicht -------------------- */
+  var vk = A.defaultProject();
+  vk.startdatum = '2026-01-01'; vk.stichtag = '2027-01-01';
+  vk.finanzierung.vorverkauf_quote = 40;
+  var rvk0 = E.compute(vk);
+  var stweV = rvk0.ertraege.stwe_erloes;
+  vk.verkauf.projekt_id = 'testprojekt';
+  vk.verkauf.stand = { datum: '2026-08-19', geholt: '2026-08-20', name: 'Test', einheiten: [
+    { id: 'A1', gruppe: 'Haus A', zimmer: 4.5, flaeche: 120, geschoss: '1', art: 'unit', status: 'sold', preis: 0 },
+    { id: 'A2', gruppe: 'Haus A', zimmer: 3.5, flaeche: 95, geschoss: '2', art: 'unit', status: 'sold', preis: 0 },
+    { id: 'A3', gruppe: 'Haus A', zimmer: 3.5, flaeche: 95, geschoss: '2', art: 'unit', status: 'reserved', preis: 900000 },
+    { id: 'A4', gruppe: 'Haus A', zimmer: 2.5, flaeche: 70, geschoss: '3', art: 'unit', status: 'available', preis: 700000 }
+  ] };
+  vk.verkauf.preise = { A1: stweV * 0.35, A2: stweV * 0.25 };
+  var rvk1 = E.compute(vk);
+  pruefe('Echte Vorverkaufsquote = erfasster Erlös ÷ STWE-Erlös',
+    60, rvk1.fin.vorverkauf_wirksam, 0.1);
+  pruefe('Echte Quote schaltet die Zinsstaffel (50 bp ab 50 %)',
+    50, rvk1.fin.rabatt_bp);
+  pruefe('Verkaufsstand verschiebt Erlöse, ändert die Summe nicht',
+    rvk0.reihen.det.verkauf.reduce(function (s2, x) { return s2 + x; }, 0),
+    rvk1.reihen.det.verkauf.reduce(function (s2, x) { return s2 + x; }, 0), 1);
+  pruefe('Frühere Erlöse senken die Bauzinsen',
+    1, rvk1.fin.bauzinsen < rvk0.fin.bauzinsen ? 1 : 0);
+  pruefe('Reservierte zählen nicht als Erlös',
+    Math.round(stweV * 0.6), Math.round(rvk1.verkauf.verkauft_chf), 1);
+  pruefe('Zählung: 2 verkauft, 1 reserviert, 1 frei',
+    211, rvk1.verkauf.verkauft_n * 100 + rvk1.verkauf.reserviert_n * 10 + rvk1.verkauf.frei_n);
+
+  /* Verkaufte Einheit ohne erfassten Erlös: zählt 0 und warnt */
+  delete vk.verkauf.preise.A2;
+  var rvk2 = E.compute(vk);
+  pruefe('Ohne Erlös zählt die Einheit mit 0 CHF',
+    Math.round(stweV * 0.35), Math.round(rvk2.verkauf.verkauft_chf), 1);
+  pruefe('Verkaufte ohne Erlös erzeugen eine Warnung',
+    1, rvk2.warnungen.some(function (w) { return /ohne erfassten Erlös/.test(w.text); }) ? 1 : 0);
+
+  /* Ohne Zuordnung bleibt alles bei der Planannahme */
+  vk.verkauf.projekt_id = '';
+  pruefe('Ohne Zuordnung gilt die Planquote',
+    40, E.compute(vk).fin.vorverkauf_wirksam, 0.1);
+
   /* ---- Soll bleibt der gerechnete Wert, auch beim Kaufpreis ------- */
   var kp = A.defaultProject();
   kp.erwerb.preis_modus = 'total'; kp.erwerb.preis_total = 3500000;

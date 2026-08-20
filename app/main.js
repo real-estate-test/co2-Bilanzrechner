@@ -32,6 +32,21 @@ window.APP = window.APP || {};
   ];
 
   /* ---------------------------------------------------------------
+     Verkaufsstand — ein Handgriff für Portfolio und Kopfleiste
+     --------------------------------------------------------------- */
+
+  A.verkaufAktualisieren = function () {
+    A.meldung('ok', 'Verkaufsübersicht wird geladen …');
+    return A.verkauf.aktualisierenAlle().then(function (erg) {
+      A.meldung('ok', 'Verkaufsstand vom ' + erg.stand.datum + ' übernommen — ' +
+        erg.projekte + ' Projekt(e) nachgeführt.');
+      A.render();
+    }).catch(function (f) {
+      A.meldung('warn', 'Verkaufsübersicht nicht erreichbar: ' + f.message);
+    });
+  };
+
+  /* ---------------------------------------------------------------
      Rechte
      --------------------------------------------------------------- */
 
@@ -198,8 +213,12 @@ window.APP = window.APP || {};
     bar.appendChild(kpi('Bruttorendite', A.fmtPct(k.bruttorendite, 2),
       k.bruttorendite >= p.ziele.bruttorendite ? 'pos' : ''));
 
+    var vkStand = A.verkauf.gespeichert();
     var akt = el('div', { class: 'kpi kpi-actions',
       style: 'margin-left:auto;border:0;display:flex;align-items:center;gap:8px' }, [
+      el('button', { class: 'ghost sm', text: vkStand ? 'Verkauf ' + vkStand.datum : 'Verkauf laden',
+        title: 'Verkaufsstand aus der Verkaufsübersicht aktualisieren — manuell, kein automatisches Nachladen',
+        onclick: function () { A.verkaufAktualisieren(); } }),
       el('span', { id: 'speicherstatus', class: 'syncstatus' }),
       el('button', { class: 'sm', text: 'Bericht',
         onclick: function () { A.zeigeSeite('bericht'); } })
@@ -383,7 +402,9 @@ window.APP = window.APP || {};
         .then(function (geladen) {
           if (geladen && geladen[0]) A.ziele = geladen[0];
           if (geladen && Array.isArray(geladen[1])) A.firmen = geladen[1];
-          weiter(serverModus);
+          /* Zentralen Verkaufsstand übernehmen, falls er neuer ist als der
+             lokale — geladen wird er nur von Hand. */
+          return A.verkauf.zentralLaden().then(function () { weiter(serverModus); });
         });
     }).catch(function (f) {
       console.error('Start fehlgeschlagen:', f);

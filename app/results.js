@@ -376,6 +376,9 @@ window.APP = window.APP || {};
     });
     out.appendChild(U.panel('Erlöse und Verwertung', null, [erl]));
 
+    var vkPanel = verkaufteEinheiten(p);
+    if (vkPanel) out.appendChild(vkPanel);
+
     /* Cashflow */
     var cf = el('div', { class: 'panelbody' });
     U.derived.push(function () {
@@ -549,6 +552,46 @@ window.APP = window.APP || {};
      Seite: Bericht
      =================================================================== */
 
+
+  /* Übersicht der verkauften Einheiten aus dem eingefrorenen
+     Verkaufsstand — auf Ergebnisseite und im Bericht. */
+  function verkaufteEinheiten(p) {
+    var r = A.state.r;
+    if (!r.verkauf) return null;
+    var vk = r.verkauf;
+    var verkauft = (vk.einheiten || []).filter(function (u) { return u.status === 'sold'; });
+    var zeilen = verkauft.map(function (u) {
+      var erloes = (p.verkauf.preise || {})[u.id];
+      return el('tr', {}, [
+        el('td', { text: u.id }),
+        el('td', { class: 'muted', text: u.gruppe }),
+        el('td', { class: 'n', text: u.zimmer ? A.fmt(u.zimmer, 1) : '—' }),
+        el('td', { class: 'n', text: u.flaeche ? fmt(u.flaeche) + ' m²' : '—' }),
+        el('td', { class: 'n' + (erloes > 0 ? '' : ' muted'),
+          text: erloes > 0 ? fmt(erloes) : 'ohne Erlös' })
+      ]);
+    });
+    if (!zeilen.length) {
+      zeilen.push(el('tr', {}, [el('td', { colspan: 5, class: 'muted',
+        text: 'Noch keine Einheit verkauft.' })]));
+    } else {
+      zeilen.push(el('tr', { class: 'total' }, [
+        el('td', { text: 'Total verkauft' }), el('td', {}),
+        el('td', {}), el('td', {}),
+        el('td', { class: 'n', text: fmt(vk.verkauft_chf) })
+      ]));
+    }
+    return U.panel('Verkaufte Einheiten',
+      'Stand der Verkaufsübersicht vom ' + (vk.datum || '—') +
+      ' · reserviert ' + vk.reserviert_n + ' · frei ' + vk.frei_n +
+      (vk.quote !== null ? ' · Vorverkaufsquote ' + A.fmtPct(vk.quote, 1) : ''),
+      [el('div', { class: 'panelbody' }, [U.tabelle([
+        { label: 'Nr.' }, { label: 'Haus / Gruppe', w: '22%' },
+        { label: 'Zi.', n: true, w: '8%' }, { label: 'Fläche', n: true, w: '13%' },
+        { label: 'Erlös CHF', n: true, w: '16%' }
+      ], zeilen)])]);
+  }
+
   V.bericht = function (p) {
     var out = el('div', {});
     var r = A.state.r;
@@ -667,6 +710,9 @@ window.APP = window.APP || {};
         el('td', { class: 'muted', text: notiz })
       ]);
     });
+
+    var vkPanelB = verkaufteEinheiten(p);
+    if (vkPanelB) out.appendChild(vkPanelB);
 
     out.appendChild(U.panel('Annahmen und Datenherkunft',
       aZeilen.length ? aZeilen.length + ' Positionen weichen vom Standardwert ab' : null, [

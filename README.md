@@ -74,6 +74,18 @@ werden gespeichert und wandern über den Server zu allen Mitarbeitenden. Eine un
 Eingabe wie `2500*` lässt den bisherigen Wert stehen und markiert das Feld, statt auf null
 zu fallen. Verweise auf andere Felder gibt es bewusst nicht.
 
+**Verkaufsstand** Jedes Projekt lässt sich einem Projekt der zentralen
+Verkaufsübersicht (real-estate-test.github.io/verkaufs-bersicht) zuordnen. Geladen wird
+ausschliesslich von Hand — Schalter im Portfolio und in der Kopfleiste; der Stand wird am
+Projekt eingefroren, damit Rechenkern und Snapshots reproduzierbar bleiben, und im
+Firmenbetrieb zentral abgelegt, sodass alle denselben Stand sehen. Die Übersicht liefert
+nur den Status je Einheit; den Erlös verkaufter Einheiten erfasst der Anwender selbst
+(die Vermarktungsseiten nehmen den Preis meist von der Seite, sobald verkauft), mit
+Vorschlagskette Preis der Übersicht → Wohnungsspiegel gleicher Nummer → Ø CHF/m² der
+freien Einheiten → Ø Preis. Verkaufte gelten als per Stichtag beurkundet, die Raten folgen
+dem Zahlungsplan; die echte Vorverkaufsquote ersetzt die Planannahme in Erlösverteilung
+und Zinsstaffel. Reservierte werden ausgewiesen, aber nicht gerechnet.
+
 **Zahlungsstand** Je Kostenzeile lässt sich erfassen, wie viel bereits bezahlt ist und ob
 die Eintragung vertraglich gesichert ist. Der bezahlte Betrag bestimmt den Zeitpunkt des
 Mittelabflusses: Er gilt als bis zum Stichtag geflossen, der Rest der Position erst danach.

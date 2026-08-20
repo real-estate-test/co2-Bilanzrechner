@@ -210,7 +210,11 @@ window.APP = window.APP || {};
     },
 
     einstellungSetzen: function (schluessel, wert) {
-      return API.aktualisieren('einstellungen', 'schluessel=eq.' + schluessel, { wert: wert });
+      /* Upsert statt PATCH: Schlüssel, die das Schema nicht vorbesetzt
+         (firmen, verkaufsstand), würden sonst still verloren gehen —
+         ein PATCH auf eine fehlende Zeile ändert null Zeilen und meldet
+         trotzdem Erfolg. */
+      return API.ersetzen('einstellungen', { schluessel: schluessel, wert: wert });
     }
   };
 

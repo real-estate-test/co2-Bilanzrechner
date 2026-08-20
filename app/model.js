@@ -583,6 +583,17 @@ window.APP = window.APP || {};
 
       ziele: { marge: 15, bruttorendite: 4.0 },
 
+      /* Verkaufsstand aus der zentralen Verkaufsübersicht. «stand» ist der
+         beim Aktualisieren eingefrorene Auszug des zugeordneten Projekts —
+         der Rechenkern bleibt damit netzwerkfrei und Snapshots frieren den
+         Verkaufsstand mit ein. Die Erlöse je verkaufte Einheit trägt der
+         Anwender selbst ein (die Übersicht liefert nur den Status). */
+      verkauf: {
+        projekt_id: '',                  // id in der Verkaufsübersicht, '' = keine
+        stand: null,                     // { datum, geholt, einheiten: [...] }
+        preise: {}                       // Erlös je Einheiten-Nr, manuell erfasst
+      },
+
       ist: {},                           // Ist-Werte je Kostenzeile
       bezahlt: {},                       // bereits geflossene Beträge je Kostenzeile —
                                          // wirken auf den Kapitalbedarf und damit

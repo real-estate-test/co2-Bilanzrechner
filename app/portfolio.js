@@ -427,6 +427,14 @@ window.APP = window.APP || {};
       return tr;
     });
 
+    /* Verkaufsstand von Hand nachladen — aktualisiert die zentrale
+       Ablage und alle Projekte mit Zuordnung. */
+    var vkStand = A.verkauf.gespeichert();
+    var vkSchalter = el('button', { class: 'sm schreibend',
+      text: 'Verkaufsstand aktualisieren',
+      title: vkStand ? 'zuletzt geladen: Stand vom ' + vkStand.datum : 'noch nie geladen',
+      onclick: function () { A.verkaufAktualisieren(); } });
+
     var archivSchalter = el('div', { class: 'seg' });
     [['Aktive', false], ['inkl. Archiv', true]].forEach(function (o) {
       var b = el('button', { type: 'button', text: o[0],
@@ -441,7 +449,7 @@ window.APP = window.APP || {};
         { label: 'Anlagekosten', n: true }, { label: 'Erlöse', n: true }, { label: 'Gewinn', n: true },
         { label: 'Marge', n: true }, { label: 'IRR', n: true }, { label: '' }
       ], zeilen)])
-    ], [archivSchalter]));
+    ], [vkSchalter, archivSchalter]));
 
     /* ---------------------------------------------------------------
        Terminplan: eine Zeile je Projekt auf gemeinsamer Kalenderachse

@@ -1020,6 +1020,9 @@ window.APP = window.APP || {};
           'ohne verkaufte STWE-Flächen')
       ]));
     });
+    /* --- Verkaufsstand aus der Verkaufsübersicht -------------------- */
+    out.appendChild(verkaufsstandPanel(p));
+
     out.appendChild(U.panel('Zusammenzug Verwertung', null, [zus]));
 
     return out;
@@ -1028,6 +1031,131 @@ window.APP = window.APP || {};
   /* ===================================================================
      7 · Betrieb & Bestandsrechnung
      =================================================================== */
+
+  /* Verkaufsstand: Zuordnung zur zentralen Verkaufsübersicht, Erlöse je
+     verkaufte Einheit und die Wirkung auf Quote und Finanzierung. */
+  function verkaufsstandPanel(p) {
+    if (!p.verkauf) p.verkauf = { projekt_id: '', stand: null, preise: {} };
+    var stand = A.verkauf.gespeichert();
+    var koerper = [];
+
+    var auswahl = [{ id: '', label: '— keine Zuordnung —' }]
+      .concat(((stand && stand.projekte) || []).map(function (x) {
+        return { id: x.id, label: x.name };
+      }));
+    /* Eine bestehende Zuordnung bleibt wählbar, auch wenn die Übersicht
+       das Projekt nicht mehr führt. */
+    if (p.verkauf.projekt_id && !auswahl.some(function (o) { return o.id === p.verkauf.projekt_id; })) {
+      auswahl.push({ id: p.verkauf.projekt_id, label: p.verkauf.projekt_id + ' (nicht in der Übersicht)' });
+    }
+
+    koerper.push(U.body([
+      U.sel(p, 'verkauf.projekt_id', auswahl, 'Projekt in der Verkaufsübersicht', {
+        ohneBadge: true,
+        onchange: function () {
+          A.verkauf.uebernehmen(p, stand);
+          A.recompute(); A.render();
+        },
+        hilfe: 'Taucht das Projekt in der Übersicht nicht auf, ist nichts verkauft. ' +
+               'Aktualisiert wird von Hand — Schalter im Portfolio und in der Kopfleiste.'
+      }),
+      el('div', { class: 'f' }, [
+        el('label', {}, [el('span', { text: 'Stand der Übersicht' })]),
+        el('div', { class: 'kachel' }, [
+          el('div', { class: 'v', style: 'font-size:15px',
+            text: p.verkauf.stand && p.verkauf.stand.datum ? p.verkauf.stand.datum
+                : (stand ? stand.datum + ' (noch nicht übernommen)' : 'noch nie geladen') }),
+          el('div', { class: 's', text: p.verkauf.stand && p.verkauf.stand.geholt
+            ? 'übernommen am ' + p.verkauf.stand.geholt : '' })
+        ])
+      ])
+    ], 'c3'));
+
+    var info = p.verkauf.projekt_id ? A.engine.verkaufInfo(p) : null;
+
+    if (info) {
+      var kacheln = el('div', { class: 'panelbody' });
+      U.derived.push(function () {
+        var vk = A.state.r.verkauf;
+        if (!vk) { U.leeren(kacheln); return; }
+        U.leeren(kacheln).appendChild(el('div', { class: 'cols c4' }, [
+          U.kachel('verkauft', vk.verkauft_n + ' Einheiten', fmt(vk.verkauft_chf) + ' CHF erfasst' +
+            (vk.ohne_erloes ? ' · ' + vk.ohne_erloes + ' ohne Erlös' : '')),
+          U.kachel('reserviert', vk.reserviert_n + ' Einheiten', 'ausgewiesen, nicht gerechnet'),
+          U.kachel('frei', vk.frei_n + ' Einheiten'),
+          U.kachel('Vorverkaufsquote', vk.quote === null ? '—' : A.fmtPct(vk.quote, 1),
+            'ersetzt die Planannahme in Erlösverteilung und Zinsstaffel')
+        ]));
+      });
+      koerper.push(kacheln);
+
+      var zeilen = info.einheiten.map(function (u) {
+        var tr = el('tr', {});
+        tr.appendChild(el('td', { text: u.id }));
+        tr.appendChild(el('td', { class: 'muted', text: u.gruppe }));
+        tr.appendChild(el('td', { class: 'n', text: u.zimmer ? A.fmt(u.zimmer, 1) : '—' }));
+        tr.appendChild(el('td', { class: 'n', text: u.flaeche ? fmt(u.flaeche) + ' m²' : '—' }));
+        tr.appendChild(el('td', {}, [el('span', {
+          class: 'tag ' + (u.status === 'sold' ? 'pos' : u.status === 'reserved' ? 'warn' : ''),
+          text: u.status === 'sold' ? 'verkauft' : u.status === 'reserved' ? 'reserviert'
+              : u.status === 'available' ? 'frei' : 'unbekannt' })]));
+        tr.appendChild(el('td', { class: 'n muted', text: u.preis > 0 ? fmt(u.preis) : '—' }));
+
+        if (u.status === 'sold') {
+          var inp = el('input', { type: 'text', inputmode: 'decimal',
+            value: p.verkauf.preise[u.id] ? A.fmt(p.verkauf.preise[u.id]) : '',
+            placeholder: 'Erlös erfassen' });
+          inp.addEventListener('input', function () {
+            if (inp.value.trim() === '') delete p.verkauf.preise[u.id];
+            else p.verkauf.preise[u.id] = U.parseZahl(inp.value);
+            A.recompute(); A.markDirty();
+          });
+          tr.appendChild(el('td', { style: 'width:130px' }, [inp]));
+          var vs = A.verkauf.vorschlag(p, u);
+          tr.appendChild(el('td', { class: 'muted', style: 'font-size:10.5px',
+            text: vs.wert > 0 ? 'Vorschlag ' + fmt(vs.wert) + ' (' + vs.quelle + ')' : vs.quelle }));
+        } else {
+          tr.appendChild(el('td', {}));
+          tr.appendChild(el('td', {}));
+        }
+        return tr;
+      });
+
+      koerper.push(el('div', { class: 'panelbody' }, [U.tabelle([
+        { label: 'Nr.' }, { label: 'Haus / Gruppe', w: '14%' }, { label: 'Zi.', n: true, w: '5%' },
+        { label: 'Fläche', n: true, w: '9%' }, { label: 'Status', w: '9%' },
+        { label: 'Preis Übersicht', n: true, w: '11%' },
+        { label: 'Erlös CHF', n: true, w: '12%' }, { label: 'Herkunft Vorschlag', w: '20%' }
+      ], zeilen)]));
+
+      koerper.push(el('div', { class: 'panelbody' }, [
+        el('button', { class: 'schreibend', text: 'Vorschläge übernehmen',
+          title: 'Füllt nur leere Erlösfelder — von Hand Erfasstes bleibt stehen.',
+          onclick: function () {
+            var n = 0;
+            info.einheiten.forEach(function (u) {
+              if (u.status !== 'sold' || p.verkauf.preise[u.id] > 0) return;
+              var vs = A.verkauf.vorschlag(p, u);
+              if (vs.wert > 0) { p.verkauf.preise[u.id] = vs.wert; n++; }
+            });
+            A.recompute(); A.render();
+            A.meldung('ok', n + ' Erlös(e) aus den Vorschlägen übernommen — bitte prüfen.');
+          } }),
+        U.hinweis('info', 'Die Übersicht liefert nur den <b>Status</b> — die Vermarktungsseiten ' +
+          'nehmen den Preis meist von der Seite, sobald eine Einheit verkauft ist. Der ' +
+          '<b>Erlös</b> je verkaufte Einheit wird deshalb hier erfasst; verkaufte Einheiten ohne ' +
+          'Erlös zählen mit 0 CHF. Verkaufte gelten als per Stichtag beurkundet, die Raten ' +
+          'folgen dem Zahlungsplan der Vermarktung.')
+      ]));
+    } else if (p.verkauf.projekt_id) {
+      koerper.push(el('div', { class: 'panelbody' }, [
+        U.hinweis('info', 'Für die Zuordnung liegt noch kein übernommener Stand vor — im ' +
+          '<b>Portfolio</b> oder in der Kopfleiste «Verkaufsstand aktualisieren» ausführen.')
+      ]));
+    }
+
+    return U.panel('Verkaufsstand', 'Status aus der zentralen Verkaufsübersicht, Erlöse von Hand', koerper);
+  }
 
   V.betrieb = function (p) {
     init();

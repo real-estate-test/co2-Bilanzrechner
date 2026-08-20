@@ -731,6 +731,34 @@ window.APP = window.APP || {};
      7 · Zeitreihen — Ausgaben und Einnahmen je Jahr
      --------------------------------------------------------------- */
 
+  /* -----------------------------------------------------------------
+     Verkaufsstand aus der Verkaufsübersicht — eingefroren am Projekt.
+     Die Übersicht liefert nur den Status; als Erlös zählt ausschliesslich,
+     was der Anwender je Einheit erfasst hat (p.verkauf.preise).
+     ----------------------------------------------------------------- */
+  E.verkaufInfo = function (p) {
+    var v = p.verkauf;
+    if (!v || !v.projekt_id || !v.stand || !Array.isArray(v.stand.einheiten)) return null;
+    var preise = v.preise || {};
+    var o = { datum: v.stand.datum, name: v.stand.name,
+              verkauft_n: 0, verkauft_chf: 0, ohne_erloes: 0,
+              reserviert_n: 0, frei_n: 0, einheiten: v.stand.einheiten };
+    v.stand.einheiten.forEach(function (u) {
+      if (u.status === 'sold') {
+        o.verkauft_n += 1;
+        var pr = num(preise[u.id]);
+        if (pr > 0) o.verkauft_chf += pr; else o.ohne_erloes += 1;
+      } else if (u.status === 'reserved') {
+        /* Reservationen werden ausgewiesen, aber nicht gerechnet —
+           eine Reservation ist keine Beurkundung. */
+        o.reserviert_n += 1;
+      } else if (u.status === 'available') {
+        o.frei_n += 1;
+      }
+    });
+    return o;
+  };
+
   E.zeitreihen = function (p, Z, ERW, BAU, ERT, VER, BET) {
     var N = Z.N, kurve = p.zeit.kostenkurve;
     var aus = new Array(N).fill(0), ein = new Array(N).fill(0), phasen = [];
@@ -864,11 +892,29 @@ window.APP = window.APP || {};
       }
     }
 
-    /* Zwei Verkaufstranchen: vor Baustart (Vorverkauf) und danach */
-    var tranchen = [
-      { anteil: vq,     t0: Z.t_vk_start, t1: Math.max(Z.t_vk_start + 0.1, Z.t_baustart) },
-      { anteil: 1 - vq, t0: Math.max(Z.t_vk_start, Z.t_baustart), t1: Z.t_vk_ende }
-    ];
+    /* Zwei Verkaufstranchen. Ohne Verkaufsstand wie bisher: Vorverkaufs-
+       annahme bis Baustart, Rest danach. Mit Verkaufsstand ersetzen die
+       Fakten die Annahme: die verkauften Einheiten gelten als bis zum
+       Stichtag beurkundet (Raten folgen dem Zahlungsplan), der Rest folgt
+       der geplanten Vermarktung, frühestens ab Stichtag. Verteilt wird
+       stets der KALKULIERTE Erlös — der erfasste Verkaufsstand bestimmt
+       nur die Quote und den Zeitpunkt, nicht die Höhe. */
+    var tranchen;
+    var vkInfo = E.verkaufInfo(p);
+    if (vkInfo && ERT.stwe_erloes > 0) {
+      var q = Math.min(1, Math.max(0, vkInfo.verkauft_chf / ERT.stwe_erloes));
+      tranchen = [
+        { anteil: q,     t0: Math.min(Z.t_vk_start, tS),
+                         t1: Math.max(tS, Z.t_vk_start + 0.1) },
+        { anteil: 1 - q, t0: Math.max(Z.t_vk_start, tS),
+                         t1: Math.max(Z.t_vk_ende, tS + 0.1) }
+      ];
+    } else {
+      tranchen = [
+        { anteil: vq,     t0: Z.t_vk_start, t1: Math.max(Z.t_vk_start + 0.1, Z.t_baustart) },
+        { anteil: 1 - vq, t0: Math.max(Z.t_vk_start, Z.t_baustart), t1: Z.t_vk_ende }
+      ];
+    }
     tranchen.forEach(function (tr) {
       if (tr.anteil <= 0) return;
       var betrag = ERT.stwe_erloes * tr.anteil;
@@ -923,7 +969,7 @@ window.APP = window.APP || {};
     return zeitpunkt < Z.t_bb ? vor : nach;
   };
 
-  E.finanzierung = function (p, Z, TR, gesamtinvestition, fk_limit_vor, haltenWert) {
+  E.finanzierung = function (p, Z, TR, gesamtinvestition, fk_limit_vor, haltenWert, vorverkaufIst) {
     var f = p.finanzierung, N = TR.N;
     /* Das verpflichtete Eigenkapital bemisst sich an der Quote nach
        Baubewilligung — das ist der Stand, mit dem das Projekt gebaut wird. */
@@ -948,10 +994,13 @@ window.APP = window.APP || {};
       return { ek: ek, fk: fk };
     }
 
-    /* Zinsrabatt aus der Vorverkaufsstaffel */
+    /* Zinsrabatt aus der Vorverkaufsstaffel. Liegt ein echter
+       Verkaufsstand vor, ersetzt dessen Quote die Planannahme. */
+    var quoteWirksam = (vorverkaufIst === null || vorverkaufIst === undefined)
+      ? num(f.vorverkauf_quote) : vorverkaufIst;
     var rabattBp = 0;
     (f.staffel || []).slice().sort(function (a, b) { return num(a.ab) - num(b.ab); })
-      .forEach(function (s) { if (num(f.vorverkauf_quote) >= num(s.ab)) rabattBp = num(s.bp); });
+      .forEach(function (s) { if (quoteWirksam >= num(s.ab)) rabattBp = num(s.bp); });
 
     function satzFor(mitte) {
       if (mitte < Z.t_bb) return pct(f.zins_vor_bb);
@@ -1028,6 +1077,7 @@ window.APP = window.APP || {};
       ek_zins_kalk: ekZinsKalk, fk_peak: fkPeak, kapital_peak: kapitalPeak,
       ek_max: ekMax, ek_eingesetzt: ekPeak, fk_deckel: fkDeckel,
       deckel_verletzt: deckelVerletzt, rabatt_bp: rabattBp,
+      vorverkauf_wirksam: quoteWirksam,
       ueberschuss: ueberschuss, endsaldo: kumFinal, rest_fk: restFK
     };
   };
@@ -1097,6 +1147,12 @@ window.APP = window.APP || {};
     var ERT = E.ertraege(p, F);
     var VER = E.vermarktung(p, ERT);
 
+    /* Verkaufsstand: die echte Quote ersetzt die Vorverkaufsannahme in
+       Erlösverteilung und Zinsstaffel. */
+    var VKI = E.verkaufInfo(p);
+    var vorverkaufIst = (VKI && ERT.stwe_erloes > 0)
+      ? Math.min(100, VKI.verkauft_chf / ERT.stwe_erloes * 100) : null;
+
     /* Fixpunkt: Entwicklungshonorar und Bauzinsen hängen von den
        Anlagekosten ab, die ihrerseits beides enthalten. */
     var anlagekosten = BAU.total + E.kaufpreis(p, F) * 1.05;
@@ -1108,7 +1164,7 @@ window.APP = window.APP || {};
       var akNeu = ERW.total + BAU.total + (p.finanzierung.bauzinsen_aktivieren ? bauzinsenAkt : 0);
       TR = E.zeitreihen(p, Z, ERW, BAU, ERT, VER, BET);
       var gesamt = akNeu + VER.total;
-      FIN = E.finanzierung(p, Z, TR, gesamt, fkLimit, ERT.halten_wert);
+      FIN = E.finanzierung(p, Z, TR, gesamt, fkLimit, ERT.halten_wert, vorverkaufIst);
       /* Der kalkulatorische Eigenkapitalzins zählt zu den Finanzierungs-
          kosten wie der Fremdkapitalzins — siehe Kommentar in E.finanzierung. */
       bauzinsenAkt = FIN.bauzinsen + FIN.bereitstellung + FIN.ek_zins_kalk;
@@ -1197,6 +1253,13 @@ window.APP = window.APP || {};
       nimm('finanzierung.bauzinsen', finKosten, 'Bauzinsen');
     })();
 
+    if (VKI && VKI.ohne_erloes > 0) {
+      warn.push({ art: 'warn', text: 'In der Verkaufsübersicht sind <b>' + VKI.ohne_erloes +
+        ' verkaufte Einheit(en) ohne erfassten Erlös</b> — sie zählen mit 0 CHF in Quote und ' +
+        'Erlösverteilung. Auf der Seite «Erträge & Verwertung» die Erlöse erfassen oder die ' +
+        'Vorschläge übernehmen.' });
+    }
+
     if (ueberzahlt > 0.5) {
       warn.push({ art: 'warn', text: 'Bei ' + ueberzahltZeilen.length + ' Position(en) ist mehr ' +
         'bezahlt als kalkuliert — zusammen <b>' + A.fmt(ueberzahlt) + ' CHF</b> (' +
@@ -1231,6 +1294,12 @@ window.APP = window.APP || {};
       warnungen: warn,
       ist_anzahl: istAnzahl,
       ist_zeilen: istZeilen,
+      verkauf: VKI ? {
+        datum: VKI.datum, name: VKI.name,
+        verkauft_n: VKI.verkauft_n, verkauft_chf: VKI.verkauft_chf,
+        ohne_erloes: VKI.ohne_erloes, reserviert_n: VKI.reserviert_n,
+        frei_n: VKI.frei_n, quote: vorverkaufIst, einheiten: VKI.einheiten
+      } : null,
       zahlungsstand: {
         bezahlt: bezahltTotal, offen: Math.max(0, wirksamTotal - bezahltTotal),
         vertraglich: vertragTotal, kosten: wirksamTotal,

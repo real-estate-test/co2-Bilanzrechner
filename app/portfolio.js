@@ -679,8 +679,9 @@ window.APP = window.APP || {};
       var zs = A.state.r.zahlungsstand;
       U.leeren(stand).appendChild(el('div', { class: 'cols c4' }, [
         U.kachel('bereits bezahlt', fmt(zs.bezahlt),
-          zs.kosten > 0 ? A.fmtPct(zs.bezahlt / zs.kosten * 100) + ' der Kosten' : ''),
-        U.kachel('noch offen', fmt(zs.offen)),
+          (zs.kosten > 0 ? A.fmtPct(zs.bezahlt / zs.kosten * 100) + ' der Kosten' : '') +
+          (zs.ueberzahlt > 0.5 ? ' · davon ' + fmt(zs.ueberzahlt) + ' über der Kalkulation' : '')),
+        U.kachel('noch offen', fmt(zs.offen), 'kalkulierte Kosten abzüglich bezahlt'),
         U.kachel('vertraglich gesichert', fmt(zs.vertraglich),
           zs.kosten > 0 ? A.fmtPct(zs.vertraglich / zs.kosten * 100) + ' der Kosten' : ''),
         U.kachel('Kosten total', fmt(zs.kosten), 'Ist, wo erfasst, sonst Soll')
@@ -710,7 +711,9 @@ window.APP = window.APP || {};
       zellen.ist.textContent = fmt(s.ist);
       zellen.bez.textContent = fmt(s.bezahlt);
       zellen.vtr.textContent = s.vertragAnzahl ? s.vertragAnzahl + '×' : '';
-      zellen.off.textContent = fmt(s.ist - s.bezahlt);
+      var offenS = s.ist - s.bezahlt;
+      zellen.off.textContent = offenS < -0.5 ? 'Nachtrag ' + fmt(-offenS) : fmt(offenS);
+      zellen.off.style.color = offenS < -0.5 ? 'var(--neg)' : '';
       zellen.abw.textContent = (d > 0 ? '+' : '') + fmt(d);
       zellen.abw.style.color = d > 0 ? 'var(--neg)' : (d < 0 ? 'var(--pos)' : '');
       zellen.pct.textContent = s.soll > 0 ? A.fmtPct((s.ist / s.soll - 1) * 100) : '';
@@ -764,14 +767,28 @@ window.APP = window.APP || {};
           pctZelle.textContent = z.soll > 0 ? A.fmtPct((v / z.soll - 1) * 100) : '';
         }
 
+        /* Mehr bezahlt als kalkuliert kommt durch Nachträge und
+           Unvorhergesehenes regelmässig vor. Der Mehrbetrag zählt voll in
+           den Kapitalbedarf; markiert wird er nur, damit der Nachtrag auch
+           in der Ist-Spalte nachgeführt wird. */
         var offen = wirksam - b;
-        offZelle.textContent = b > 0 ? fmt(offen) : '—';
-        offZelle.className = 'n' + (b > 0 ? '' : ' muted');
-        /* Mehr bezahlt als die Position kostet — meist ein Tippfehler. */
-        offZelle.style.color = offen < -0.5 ? 'var(--neg)' : '';
-        bezInp.classList.toggle('bad', b > wirksam + 0.5);
-        bezInp.title = b > wirksam + 0.5
-          ? 'Es ist mehr bezahlt als die Position kostet — in der Rechnung wird auf den Betrag der Zeile begrenzt.'
+        var mehr = b - wirksam;
+        if (b <= 0) {
+          offZelle.textContent = '—'; offZelle.className = 'n muted'; offZelle.style.color = '';
+        } else if (mehr > 0.5) {
+          offZelle.textContent = 'Nachtrag ' + fmt(mehr);
+          offZelle.className = 'n';
+          offZelle.style.color = 'var(--neg)';
+        } else {
+          offZelle.textContent = fmt(offen);
+          offZelle.className = 'n';
+          offZelle.style.color = '';
+        }
+        bezInp.classList.toggle('warnfeld', mehr > 0.5);
+        bezInp.title = mehr > 0.5
+          ? 'Es ist ' + fmt(mehr) + ' CHF mehr bezahlt als kalkuliert. Der Betrag zählt voll ' +
+            'in den Kapitalbedarf. Damit er auch Marge und Rendite erreicht, den Nachtrag in ' +
+            'der Spalte Ist nachführen.'
           : '';
       }
 
@@ -825,7 +842,7 @@ window.APP = window.APP || {};
         gr.zeilen.forEach(function (z) {
           var w = wirksamFuer(z);
           s.soll += z.soll; s.ist += w;
-          s.bezahlt += Math.min(num(p.bezahlt[z.key]), Math.max(0, w));
+          s.bezahlt += num(p.bezahlt[z.key]);
           if (p.vertrag[z.key]) s.vertragAnzahl += 1;
         });
         summeSetzen(gr.zellen, s);
@@ -870,11 +887,13 @@ window.APP = window.APP || {};
               'Nachgelagerte Grössen — Reserve auf BKP 20–29, Baunebenkosten, ' +
               'Projektmanagement-Honorar sowie Marge und Rendite — ziehen automatisch nach.')
           : null,
-        U.hinweis('info', '<b>Bereits bezahlt</b> ändert die Höhe der Kosten nicht, wohl aber ' +
-          'ihren Zeitpunkt: Der Betrag gilt als bis zum Stichtag geflossen, der Rest der Position ' +
-          'erst danach. Weil das Kapital damit früher gebunden ist, steigen die Finanzierungskosten. ' +
-          '<b>Vertrag</b> hält fest, welche Eintragung vertraglich gesichert ist — ohne Wirkung auf ' +
-          'die Rechnung. <b>Offen</b> ist die Differenz aus Ist und bereits bezahlt.')
+        U.hinweis('info', '<b>Bereits bezahlt</b> bestimmt den Zeitpunkt des Mittelabflusses: ' +
+          'Der Betrag gilt als bis zum Stichtag geflossen, der Rest der Position erst danach. ' +
+          'Weil das Kapital damit früher gebunden ist, steigen die Finanzierungskosten. ' +
+          'Ist durch einen <b>Nachtrag</b> mehr bezahlt als kalkuliert, zählt der Mehrbetrag ' +
+          'voll in den Kapitalbedarf — für Marge und Rendite gehört er zusätzlich in die Spalte ' +
+          '<b>Ist</b>. <b>Vertrag</b> hält fest, welche Eintragung vertraglich gesichert ist, ' +
+          'ohne Wirkung auf die Rechnung. <b>Offen</b> ist die Differenz aus Ist und bereits bezahlt.')
       ])
     ], [schalter]));
 

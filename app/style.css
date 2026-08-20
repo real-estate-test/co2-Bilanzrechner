@@ -216,6 +216,8 @@ table input[type=number] { text-align: right; font-family: var(--mono); }
 table input:hover, table select:hover { border-color: var(--line2); }
 table input:focus, table select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent2); }
 table input.bad { border-color: var(--warn); background: var(--warnbg); }
+/* Kein Fehler, sondern eine Auffälligkeit: mehr bezahlt als kalkuliert. */
+table input.warnfeld { border-color: var(--warn); }
 td.w1 { width: 1%; white-space: nowrap; }
 
 .bar { height: 5px; border-radius: 3px; background: var(--accent); min-width: 1px; }

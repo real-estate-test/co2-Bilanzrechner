@@ -75,10 +75,13 @@ Eingabe wie `2500*` lässt den bisherigen Wert stehen und markiert das Feld, sta
 zu fallen. Verweise auf andere Felder gibt es bewusst nicht.
 
 **Zahlungsstand** Je Kostenzeile lässt sich erfassen, wie viel bereits bezahlt ist und ob
-die Eintragung vertraglich gesichert ist. Der bezahlte Betrag ändert die Höhe der Kosten
-nicht, wohl aber ihren Zeitpunkt: Er gilt als bis zum Stichtag geflossen, der Rest der
-Position erst danach. Weil das Kapital damit früher gebunden ist, steigen die
-Finanzierungskosten. Das Vertragskennzeichen ist reine Dokumentation.
+die Eintragung vertraglich gesichert ist. Der bezahlte Betrag bestimmt den Zeitpunkt des
+Mittelabflusses: Er gilt als bis zum Stichtag geflossen, der Rest der Position erst danach.
+Weil das Kapital damit früher gebunden ist, steigen die Finanzierungskosten. Nach oben gibt
+es keine Grenze — Nachträge und Unvorhergesehenes führen regelmässig dazu, dass für eine
+Position mehr bezahlt wird als veranschlagt; der Mehrbetrag zählt voll in den Kapitalbedarf.
+Damit er auch Marge und Rendite erreicht, gehört er zusätzlich in die Spalte Ist; darauf
+weist eine Meldung hin. Das Vertragskennzeichen ist reine Dokumentation.
 
 **Finanzierung** Die Eigenkapitalquote gilt je Phase — vor und nach der Baubewilligung
 getrennt, weil Banken vor der Bewilligung zurückhaltender finanzieren. Der kalkulatorische

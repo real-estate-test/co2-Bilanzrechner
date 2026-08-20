@@ -726,12 +726,13 @@ window.APP = window.APP || {};
     var tS = Z.t_stichtag || 0;
     var bezahltMap = p.bezahlt || {};
 
-    function bezahltFuer(key, betrag) {
+    /* Bewusst ohne Obergrenze: Nachträge und Unvorhergesehenes führen
+       regelmässig dazu, dass für eine Position mehr bezahlt wird als
+       veranschlagt. Der Mehrbetrag ist echtes Geld und gehört in den
+       Kapitalbedarf. */
+    function bezahltFuer(key) {
       var v = num(bezahltMap[key]);
-      if (!(v > 0)) return 0;
-      /* Mehr als der Betrag der Zeile kann nicht geflossen sein — sonst
-         erzeugte ein Tippfehler negative Restkosten. */
-      return Math.min(v, Math.max(0, betrag));
+      return v > 0 ? v : 0;
     }
 
     /* Verteilung einer Kostenzeile über die Zeitachse. Ist ein Teil bereits
@@ -740,13 +741,16 @@ window.APP = window.APP || {};
        Verteilung, beginnt aber frühestens am Stichtag. Zeilen ohne
        erfasste Zahlung bleiben unangetastet. */
     function verteile(ziel, key, betrag, von, bis, kurveZ) {
-      var bez = bezahltFuer(key, betrag);
+      var bez = bezahltFuer(key);
       if (bez <= 0) {
         addArr(ziel, spread(betrag, von, bis, N, kurveZ));
         return;
       }
       if (tS > 0) addArr(ziel, spread(bez, 0, tS, N, 'linear'));
       else addArr(ziel, punkt(bez, 0, N));
+      /* Ist bereits mehr bezahlt als die Position kostet, bleibt für die
+         Zukunft nichts übrig. Eine negative Restzahlung wäre eine
+         Rückerstattung, die es nicht gibt. */
       var rest = betrag - bez;
       if (rest > 0.005) {
         addArr(ziel, spread(rest, Math.max(von, tS), Math.max(bis, tS), N, kurveZ));
@@ -787,15 +791,14 @@ window.APP = window.APP || {};
       var bezahltBau = 0;
       Object.keys(BAU.bloecke).forEach(function (bid) {
         BAU.bloecke[bid].zeilen.forEach(function (z) {
-          bezahltBau += bezahltFuer('bau.' + bid + '.' + z.id, z.betrag);
+          bezahltBau += bezahltFuer('bau.' + bid + '.' + z.id);
         });
       });
-      bezahltBau = Math.min(bezahltBau, BAU.total);
       if (bezahltBau > 0) {
         if (tS > 0) addArr(det.bau, spread(bezahltBau, 0, tS, N, 'linear'));
         else addArr(det.bau, punkt(bezahltBau, 0, N));
       }
-      var offenBau = BAU.total - bezahltBau;
+      var offenBau = Math.max(0, BAU.total - bezahltBau);
       phasen.forEach(function (ph) {
         addArr(det.bau, spread(offenBau * ph.anteil,
           Math.max(ph.von, tS), Math.max(ph.bis, tS), N, 'linear'));
@@ -1161,20 +1164,36 @@ window.APP = window.APP || {};
     /* Zahlungsstand: nur über Zeilen, die es auch gibt — verwaiste
        Schlüssel aus gelöschten Zeilen dürfen die Summe nicht aufblähen. */
     var bezahltTotal = 0, vertragTotal = 0, wirksamTotal = 0;
+    var ueberzahlt = 0, ueberzahltZeilen = [];
     (function () {
       var bez = p.bezahlt || {}, vtr = p.vertrag || {};
-      function nimm(key, betrag) {
+      function nimm(key, betrag, label) {
         wirksamTotal += betrag;
-        bezahltTotal += Math.min(num(bez[key]), Math.max(0, betrag));
+        var b = num(bez[key]);
+        bezahltTotal += b;
+        /* Mehr bezahlt als kalkuliert — meist ein Nachtrag, der im
+           Ist-Wert noch fehlt. */
+        if (b > betrag + 0.5) { ueberzahlt += b - betrag; ueberzahltZeilen.push(label); }
         if (vtr[key]) vertragTotal += betrag;
       }
-      ERW.zeilen.forEach(function (z) { nimm('erwerb.' + z.id, z.betrag); });
+      ERW.zeilen.forEach(function (z) { nimm('erwerb.' + z.id, z.betrag, z.label); });
       Object.keys(BAU.bloecke).forEach(function (bid) {
-        BAU.bloecke[bid].zeilen.forEach(function (z) { nimm('bau.' + bid + '.' + z.id, z.betrag); });
+        BAU.bloecke[bid].zeilen.forEach(function (z) {
+          nimm('bau.' + bid + '.' + z.id, z.betrag, 'BKP ' + z.bkp + ' · ' + z.label);
+        });
       });
-      VER.zeilen.forEach(function (z) { nimm('vermarktung.' + z.id, z.betrag); });
-      nimm('finanzierung.bauzinsen', finKosten);
+      VER.zeilen.forEach(function (z) { nimm('vermarktung.' + z.id, z.betrag, z.label); });
+      nimm('finanzierung.bauzinsen', finKosten, 'Bauzinsen');
     })();
+
+    if (ueberzahlt > 0.5) {
+      warn.push({ art: 'warn', text: 'Bei ' + ueberzahltZeilen.length + ' Position(en) ist mehr ' +
+        'bezahlt als kalkuliert — zusammen <b>' + A.fmt(ueberzahlt) + ' CHF</b> (' +
+        ueberzahltZeilen.slice(0, 3).join(', ') +
+        (ueberzahltZeilen.length > 3 ? ' u. a.' : '') + '). Der Mehrbetrag steckt im ' +
+        'Kapitalbedarf und damit in den Finanzierungskosten, nicht aber im Gewinn. ' +
+        'Tragen Sie den Nachtrag in der Spalte <b>Ist</b> nach, damit Marge und Rendite ihn zeigen.' });
+    }
 
     /* Wie viele Positionen rechnen mit einem Ist-Wert statt mit der Schätzung? */
     var istAnzahl = 0, istZeilen = [];
@@ -1203,7 +1222,8 @@ window.APP = window.APP || {};
       ist_zeilen: istZeilen,
       zahlungsstand: {
         bezahlt: bezahltTotal, offen: Math.max(0, wirksamTotal - bezahltTotal),
-        vertraglich: vertragTotal, kosten: wirksamTotal
+        vertraglich: vertragTotal, kosten: wirksamTotal,
+        ueberzahlt: ueberzahlt, ueberzahlt_zeilen: ueberzahltZeilen
       },
       kpi: {
         anlagekosten: anlagekosten,

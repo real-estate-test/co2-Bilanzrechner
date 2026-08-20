@@ -378,11 +378,22 @@
   pruefe('Zahlungsstand weist den bezahlten Betrag aus',
     4000000, rzp1.zahlungsstand.bezahlt, 1);
 
-  /* Mehr bezahlt als die Position kostet, wird auf sie begrenzt */
-  zp.bezahlt['bau.neubau.b2_oi_stwe'] = 99000000;
+  /* Nachträge: mehr bezahlt als kalkuliert ist der Normalfall und zählt
+     voll in den Kapitalbedarf — ohne Begrenzung nach oben. */
+  var kalkuliert = rzp1.bau.bloecke.neubau.zeilen
+    .find(function (x) { return x.id === 'b2_oi_stwe'; }).betrag;
+  zp.bezahlt['bau.neubau.b2_oi_stwe'] = kalkuliert + 1500000;
   var rzp2 = E.compute(zp);
-  pruefe('Überzahlung wird auf den Betrag der Zeile begrenzt',
-    rzp2.bau.total, summeBau2(rzp2), 1);
+  pruefe('Nachtrag erhöht den Kapitalbedarf um seinen Betrag',
+    rzp2.bau.total + 1500000, summeBau2(rzp2), 1);
+  pruefe('Nachtrag wird als Überzahlung ausgewiesen',
+    1500000, rzp2.zahlungsstand.ueberzahlt, 1);
+  pruefe('Nachtrag erzeugt keine Rückerstattung in der Zukunft',
+    1, rzp2.reihen.det.bau.every(function (x) { return x >= -0.5; }) ? 1 : 0);
+  pruefe('Nachtrag lässt den kalkulierten Gewinn unberührt',
+    rzp1.bau.total, rzp2.bau.total, 1);
+  pruefe('Nachtrag erzeugt eine Warnung',
+    1, rzp2.warnungen.some(function (w) { return /mehr\s*bezahlt/.test(w.text); }) ? 1 : 0);
 
   /* Vertragskennzeichen ist reine Dokumentation */
   var vp = A.defaultProject();

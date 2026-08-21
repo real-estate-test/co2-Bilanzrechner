@@ -11,6 +11,7 @@ window.APP = window.APP || {};
   A.state = { p: null, r: null, seite: 'projekt', dirty: false, konflikt: null };
   A.ziele = null;          // firmenweite Zielwerte (nur im Serverbetrieb)
   A.firmen = null;         // Liste der Immobiliengefässe (nur im Serverbetrieb)
+  A.zahlungsplan = null;   // firmenweite Zahlungsmodalitäten (nur im Serverbetrieb)
 
   A.SEITEN = [
     { id: 'portfolio',    ix: '0',  label: 'Portfolio' },
@@ -348,9 +349,24 @@ window.APP = window.APP || {};
      Ampeln im Portfolio für alle dasselbe bedeuten. */
   function zieleAnwenden(p) {
     if (A.ziele && p) p.ziele = A.clone(A.ziele);
+    vorgabenAnwenden(p);
     return p;
   }
   A.zieleAnwenden = zieleAnwenden;
+
+  /* Firmenweite Zahlungsmodalitäten. Anders als die Zielwerte sind sie
+     übersteuerbar: Sobald ein Projekt einen eigenen Plan führt, bleibt
+     es unberührt. Ohne eigenen Plan folgt es der Vorgabe — eine Änderung
+     in der Verwaltung wirkt damit auf alle mitlaufenden Projekte. */
+  function vorgabenAnwenden(p) {
+    if (!p || !p.vermarktung) return p;
+    if (p.vermarktung.zahlungsplan_eigen) return p;
+    if (Array.isArray(A.zahlungsplan) && A.zahlungsplan.length) {
+      p.vermarktung.zahlungsplan = A.clone(A.zahlungsplan);
+    }
+    return p;
+  }
+  A.vorgabenAnwenden = vorgabenAnwenden;
 
   function neuesProjekt() {
     var n = A.defaultProject();
@@ -396,12 +412,14 @@ window.APP = window.APP || {};
           if (!serverModus) return null;
           return Promise.all([
             A.store.einstellung('ziele').catch(function () { return null; }),
-            A.store.einstellung('firmen').catch(function () { return null; })
+            A.store.einstellung('firmen').catch(function () { return null; }),
+            A.store.einstellung('zahlungsplan').catch(function () { return null; })
           ]);
         })
         .then(function (geladen) {
           if (geladen && geladen[0]) A.ziele = geladen[0];
           if (geladen && Array.isArray(geladen[1])) A.firmen = geladen[1];
+          if (geladen && Array.isArray(geladen[2])) A.zahlungsplan = geladen[2];
           /* Zentralen Verkaufsstand übernehmen, falls er neuer ist als der
              lokale — geladen wird er nur von Hand. */
           return A.verkauf.zentralLaden().then(function () { weiter(serverModus); });

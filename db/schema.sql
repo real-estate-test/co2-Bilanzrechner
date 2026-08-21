@@ -100,6 +100,23 @@ insert into einstellungen (schluessel, wert) values
   ('vorgabewerte', '{}'::jsonb)
 on conflict (schluessel) do nothing;
 
+-- Firmenweite Zahlungsmodalitäten beim Verkauf von Stockwerkeigentum.
+-- Anders als die Zielwerte sind sie im Projekt übersteuerbar: Projekte
+-- ohne eigenen Plan folgen dieser Vorgabe.
+insert into einstellungen (schluessel, wert) values
+  ('zahlungsplan', '[
+     {"label": "Beurkundung / Anzahlung", "anteil": 20, "bezug": "beurkundung"},
+     {"label": "Baustart",                "anteil": 30, "bezug": "baustart"},
+     {"label": "Rohbau fertig",           "anteil": 30, "bezug": "rohbau"},
+     {"label": "Übergabe",                "anteil": 20, "bezug": "fertigstellung"}
+   ]'::jsonb)
+on conflict (schluessel) do nothing;
+
+-- Liste der Immobiliengefässe, denen Projekte zugeordnet werden.
+insert into einstellungen (schluessel, wert) values
+  ('firmen', '[]'::jsonb)
+on conflict (schluessel) do nothing;
+
 -- Zugelassene E-Mail-Domänen für die Registrierung. Leer bedeutet:
 -- ausser dem allerersten Konto kann sich niemand registrieren. Der
 -- Verwalter trägt hier die Firmendomäne ein und öffnet damit gezielt.

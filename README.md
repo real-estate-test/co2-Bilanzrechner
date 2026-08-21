@@ -74,6 +74,13 @@ werden gespeichert und wandern über den Server zu allen Mitarbeitenden. Eine un
 Eingabe wie `2500*` lässt den bisherigen Wert stehen und markiert das Feld, statt auf null
 zu fallen. Verweise auf andere Felder gibt es bewusst nicht.
 
+**Zahlungsmodalitäten** Der Zahlungsplan beim Verkauf von Stockwerkeigentum lässt sich in
+der Verwaltung firmenweit vorgeben. Anders als die Zielwerte ist er im Projekt
+übersteuerbar: Ein Projekt folgt entweder der Vorgabe — dann wirkt jede Änderung in der
+Verwaltung unmittelbar, auch rückwirkend — oder führt einen eigenen Plan und bleibt
+unberührt. Bestehende Projekte gelten als eigener Plan, damit eine neue Vorgabe sie nicht
+umstellt.
+
 **Verkaufsstand** (Seite Vermarktung & Verkauf, direkt über dem Zahlungsplan) Drei Herkünfte: *kein Verkauf*, die zentrale *Verkaufsübersicht*
 (real-estate-test.github.io/verkaufs-bersicht) oder eine *eigene Liste* für Projekte ohne
 öffentliche Vermarktungsseite. Beide Quellen liefern dieselbe Struktur und wirken gleich —

@@ -6,7 +6,7 @@ window.APP = window.APP || {};
 (function (A) {
   'use strict';
 
-  A.SCHEMA = 9;
+  A.SCHEMA = 10;
 
   /* ---------------------------------------------------------------
      Stammlisten
@@ -498,6 +498,10 @@ window.APP = window.APP || {};
         muster: 60000,                   // Musterwohnung / Visualisierung
         beurkundung_verkauf: 0.15,       // % Verkaufserlös (Anteil Verkäufer)
         exit_nebenkosten: 1.00,          // % Exit-Erlös
+        /* false = es gilt die Firmenvorgabe aus der Verwaltung, die beim
+           Öffnen des Projektes eingesetzt wird. true = dieses Projekt
+           führt einen eigenen Plan und bleibt von der Vorgabe unberührt. */
+        zahlungsplan_eigen: false,
         zahlungsplan: [
           { label: 'Beurkundung / Anzahlung', anteil: 20, bezug: 'beurkundung' },
           { label: 'Baustart',                anteil: 30, bezug: 'baustart' },
@@ -953,6 +957,13 @@ window.APP = window.APP || {};
     if (version < 9 && p.verkauf) {
       if (!p.verkauf.modus) p.verkauf.modus = p.verkauf.projekt_id ? 'uebersicht' : '';
       if (!Array.isArray(p.verkauf.manuell)) p.verkauf.manuell = [];
+    }
+
+    /* --- Schema 9 -> 10: Zahlungsplan kennt neu eine Firmenvorgabe.
+       Bestehende Projekte behalten ihren Plan — sie gelten als eigener
+       Plan, damit eine Vorgabe sie nicht rückwirkend umstellt. -------- */
+    if (version < 10 && p.vermarktung) {
+      p.vermarktung.zahlungsplan_eigen = true;
     }
 
     /* Startdatum aus einem vorhandenen Startjahr ableiten */

@@ -1383,19 +1383,73 @@ window.APP = window.APP || {};
        welche Einheiten die Raten überhaupt laufen. */
     out.appendChild(verkaufsstandPanel(p));
 
-    out.appendChild(U.panel('Zahlungsplan Stockwerkeigentum',
-      'steuert, wann die Käuferzahlungen den Baukredit entlasten', [
-      el('div', { class: 'panelbody' }, [U.tabelle([
+    /* Firmenvorgabe oder eigener Plan. Ohne eigenen Plan folgt das
+       Projekt der Vorgabe aus der Verwaltung — die Tabelle ist dann
+       schreibgeschützt, damit unklar bleibende Eingaben gar nicht
+       entstehen. */
+    var eigen = !!p.vermarktung.zahlungsplan_eigen;
+    var vorgabeDa = Array.isArray(A.zahlungsplan) && A.zahlungsplan.length;
+
+    var zpSchalter = el('div', { class: 'seg' });
+    [['Firmenvorgabe', false], ['eigener Plan', true]].forEach(function (o) {
+      var b = el('button', { type: 'button', text: o[0], class: eigen === o[1] ? 'on' : '' });
+      b.addEventListener('click', function () {
+        if (eigen === o[1]) return;
+        p.vermarktung.zahlungsplan_eigen = o[1];
+        /* Zurück zur Vorgabe: den Plan der Firma wieder einsetzen. */
+        if (!o[1] && A.vorgabenAnwenden) A.vorgabenAnwenden(p);
+        A.recompute(); A.markDirty(); A.render();
+      });
+      zpSchalter.appendChild(b);
+    });
+
+    var zpKoerper = [];
+    if (eigen) {
+      zpKoerper.push(el('div', { class: 'panelbody' }, [U.tabelle([
         { label: 'Rate' }, { label: 'fällig' }, { label: 'Anteil %', n: true }, { label: '' }
-      ], zp)]),
-      el('div', { class: 'panelbody' }, [
+      ], zp)]));
+      zpKoerper.push(el('div', { class: 'panelbody' }, [
         el('button', { text: '+ Rate', onclick: function () {
           plan.push({ label: 'Rate', anteil: 0, bezug: 'fertigstellung' }); A.recompute(); A.render();
         } }),
+        vorgabeDa
+          ? el('button', { class: 'ghost', text: 'Firmenvorgabe übernehmen',
+              title: 'Ersetzt den eigenen Plan durch die Vorgabe aus der Verwaltung.',
+              onclick: function () {
+                p.vermarktung.zahlungsplan = A.clone(A.zahlungsplan);
+                A.recompute(); A.markDirty(); A.render();
+              } })
+          : null,
         U.hinweis('info', 'Ergeben die Raten nicht 100 %, verteilt das Modell die Erlöse ' +
           'anteilig auf die erfassten Raten.')
-      ])
-    ]));
+      ]));
+    } else {
+      /* Schreibgeschützte Ansicht der geltenden Vorgabe */
+      var fest = plan.map(function (r) {
+        return el('tr', {}, [
+          el('td', { text: r.label }),
+          el('td', { class: 'muted', text: A.ZAHLUNG_BEZUG[r.bezug] || r.bezug }),
+          el('td', { class: 'n', text: A.fmt(r.anteil, 1) + ' %' })
+        ]);
+      });
+      var summe = plan.reduce(function (a, r) { return a + U.parseZahl(r.anteil); }, 0);
+      fest.push(el('tr', { class: 'total' }, [
+        el('td', { text: 'Summe' }), el('td', {}),
+        el('td', { class: 'n', text: A.fmt(summe, 1) + ' %' })
+      ]));
+      zpKoerper.push(el('div', { class: 'panelbody' }, [U.tabelle([
+        { label: 'Rate' }, { label: 'fällig', w: '30%' }, { label: 'Anteil %', n: true, w: '18%' }
+      ], fest)]));
+      zpKoerper.push(el('div', { class: 'panelbody' }, [
+        U.hinweis('info', 'Es gilt die <b>Firmenvorgabe</b> aus der Verwaltung. Eine Änderung ' +
+          'dort wirkt unmittelbar auf dieses Projekt. Für abweichende Modalitäten oben auf ' +
+          '<b>eigener Plan</b> wechseln — das Projekt bleibt dann von der Vorgabe unberührt.')
+      ]));
+    }
+
+    out.appendChild(U.panel('Zahlungsplan Stockwerkeigentum',
+      'steuert, wann die Käuferzahlungen den Baukredit entlasten',
+      zpKoerper, [zpSchalter]));
 
     var zus = el('div', { class: 'panelbody' });
     U.derived.push(function () {

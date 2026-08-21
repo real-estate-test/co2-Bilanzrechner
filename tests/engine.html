@@ -432,6 +432,45 @@
   pruefe('Eigene Liste: fehlender Betrag warnt',
     1, rmv2.warnungen.some(function (w) { return /ohne erfassten Erlös/.test(w.text); }) ? 1 : 0);
 
+  /* ---- Firmenvorgabe Zahlungsmodalitäten ------------------------- */
+  /* Der Rechenkern kennt nur den Plan im Projekt; die Vorgabe wird beim
+     Öffnen eingesetzt. Geprüft wird deshalb beides: dass der Plan wirkt
+     und dass die Übernahme das Richtige tut. */
+  function vorgabeAnwenden(zp, plan) {
+    if (!zp.vermarktung.zahlungsplan_eigen && plan) zp.vermarktung.zahlungsplan = A.clone(plan);
+    return zp;
+  }
+  var zpA = A.defaultProject();
+  pruefe('Neues Projekt folgt der Firmenvorgabe',
+    0, zpA.vermarktung.zahlungsplan_eigen ? 1 : 0);
+  var rzpA = E.compute(zpA);
+  var vorgabe = [{ label: 'Anzahlung', anteil: 60, bezug: 'beurkundung' },
+                 { label: 'Übergabe', anteil: 40, bezug: 'fertigstellung' }];
+  vorgabeAnwenden(zpA, vorgabe);
+  pruefe('Vorgabe wird übernommen', 2, zpA.vermarktung.zahlungsplan.length);
+  var rzpB = E.compute(zpA);
+  pruefe('Ein früherer Zahlungsplan ändert die Bauzinsen',
+    1, Math.abs(rzpB.fin.bauzinsen - rzpA.fin.bauzinsen) > 1 ? 1 : 0);
+  pruefe('Der Zahlungsplan ändert die Erlössumme nicht',
+    rzpA.reihen.det.verkauf.reduce(function (s2, x) { return s2 + x; }, 0),
+    rzpB.reihen.det.verkauf.reduce(function (s2, x) { return s2 + x; }, 0), 1);
+
+  /* Ein eigener Plan bleibt von der Vorgabe unberührt */
+  zpA.vermarktung.zahlungsplan_eigen = true;
+  zpA.vermarktung.zahlungsplan = [{ label: 'Alles bei Übergabe', anteil: 100, bezug: 'fertigstellung' }];
+  vorgabeAnwenden(zpA, vorgabe);
+  pruefe('Eigener Plan bleibt bei geänderter Vorgabe stehen',
+    1, zpA.vermarktung.zahlungsplan.length);
+  pruefe('Eigener Plan behält seinen Anteil',
+    100, zpA.vermarktung.zahlungsplan[0].anteil);
+
+  /* Bestehende Projekte gelten als eigener Plan, damit eine Vorgabe sie
+     nicht rückwirkend umstellt. */
+  var altZp = A.defaultProject();
+  altZp.schema = 9;
+  pruefe('Altprojekt behält seinen Plan als eigenen',
+    1, A.migrate(JSON.parse(JSON.stringify(altZp))).vermarktung.zahlungsplan_eigen ? 1 : 0);
+
   /* ---- Soll bleibt der gerechnete Wert, auch beim Kaufpreis ------- */
   var kp = A.defaultProject();
   kp.erwerb.preis_modus = 'total'; kp.erwerb.preis_total = 3500000;

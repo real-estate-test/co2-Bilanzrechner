@@ -178,6 +178,118 @@ window.APP = window.APP || {};
 
     out.appendChild(U.panel('Firmenweite Zielwerte', 'Grundlage der Ampeln im Portfolio', [zielBody]));
 
+    /* --- Zahlungsmodalitäten --------------------------------------- */
+    var zpBody = el('div', { class: 'panelbody' });
+
+    function zpZeichnen(plan) {
+      U.leeren(zpBody);
+      var arbeit = A.clone(plan);
+
+      function neuZeichnen() { zpZeichnen(arbeit); }
+
+      var zeilen = arbeit.map(function (r, i) {
+        var bez = el('input', { type: 'text', value: r.label || '',
+          style: 'width:100%;padding:5px 8px;border:1px solid var(--line2);border-radius:5px' });
+        bez.addEventListener('input', function () { r.label = bez.value; });
+        var faellig = el('select', { style: 'width:100%;padding:5px 8px;border:1px solid var(--line2);border-radius:5px' });
+        Object.keys(A.ZAHLUNG_BEZUG).forEach(function (k) {
+          faellig.appendChild(el('option', { value: k, text: A.ZAHLUNG_BEZUG[k],
+            selected: r.bezug === k ? '' : null }));
+        });
+        faellig.addEventListener('change', function () { r.bezug = faellig.value; });
+        var anteil = el('input', { type: 'text', value: A.fmt(r.anteil, 1),
+          style: 'width:80px;padding:5px 8px;border:1px solid var(--line2);border-radius:5px;text-align:right' });
+        anteil.addEventListener('input', function () {
+          r.anteil = U.parseZahl(anteil.value); summeZeigen();
+        });
+        return el('tr', {}, [
+          el('td', {}, [bez]),
+          el('td', { style: 'width:190px' }, [faellig]),
+          el('td', { style: 'width:100px' }, [anteil]),
+          el('td', { class: 'w1' }, [el('button', { class: 'ghost sm', text: '×',
+            onclick: function () { arbeit.splice(i, 1); neuZeichnen(); } })])
+        ]);
+      });
+
+      var summeZelle = el('td', { class: 'n' });
+      var summeTag = el('td', {});
+      function summeZeigen() {
+        var s2 = arbeit.reduce(function (a, r) { return a + U.parseZahl(r.anteil); }, 0);
+        summeZelle.textContent = A.fmt(s2, 1) + ' %';
+        var ab = Math.abs(s2 - 100) > 0.1;
+        summeZelle.style.color = ab ? 'var(--warn)' : '';
+        U.leeren(summeTag);
+        if (ab) summeTag.appendChild(el('span', { class: 'tag warn', text: 'nicht 100 %' }));
+      }
+      zeilen.push(el('tr', { class: 'total' }, [
+        el('td', { text: 'Summe' }), el('td', {}), summeZelle, summeTag
+      ]));
+      summeZeigen();
+
+      zpBody.appendChild(U.tabelle([
+        { label: 'Rate' }, { label: 'fällig' }, { label: 'Anteil %', n: true }, { label: '' }
+      ], zeilen));
+
+      /* Wie viele Projekte hängen an der Vorgabe? Eine Änderung wirkt auf
+         sie unmittelbar — das gehört vor den Speichern-Knopf. */
+      var mit = 0, eigen = 0;
+      try {
+        A.store.alle(true).forEach(function (q) {
+          if (q.vermarktung && q.vermarktung.zahlungsplan_eigen) eigen++; else mit++;
+        });
+      } catch (e) { /* Projektliste nicht verfügbar */ }
+
+      zpBody.appendChild(el('div', { style: 'margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap' }, [
+        el('button', { text: '+ Rate', onclick: function () {
+          arbeit.push({ label: 'Rate', anteil: 0, bezug: 'fertigstellung' }); neuZeichnen();
+        } }),
+        el('button', { class: 'primary', text: 'Vorgabe speichern', onclick: function () {
+          var rein = arbeit.filter(function (r) { return String(r.label || '').trim(); })
+            .map(function (r) {
+              return { label: String(r.label).trim(), anteil: U.parseZahl(r.anteil),
+                       bezug: A.ZAHLUNG_BEZUG[r.bezug] ? r.bezug : 'fertigstellung' };
+            });
+          A.zahlungsplan = rein;
+          var fertig = function () {
+            /* Mitlaufende Projekte sofort nachziehen, damit die Vorgabe
+               nicht erst beim nächsten Öffnen greift. */
+            if (A.state.p) { A.vorgabenAnwenden(A.state.p); A.recompute(); }
+            A.meldung('ok', 'Zahlungsmodalitäten gespeichert — sie gelten für alle Projekte ' +
+              'ohne eigenen Plan.');
+            A.render();
+          };
+          if (A.store.modus === 'server') {
+            A.store.einstellungSetzen('zahlungsplan', rein).then(fertig)
+              .catch(function (f) { A.meldung('warn', f.message); });
+          } else { fertig(); }
+        } }),
+        el('span', { class: 'muted', style: 'font-size:11.5px',
+          text: mit + ' Projekt(e) folgen der Vorgabe · ' + eigen + ' mit eigenem Plan' })
+      ]));
+
+      zpBody.appendChild(el('div', { class: 'hilfe', style: 'margin-top:10px',
+        text: 'Anders als die Zielwerte sind diese Modalitäten im Projekt übersteuerbar: ' +
+              'Auf der Seite «Vermarktung & Verkauf» lässt sich je Projekt ein eigener Plan ' +
+              'führen. Projekte ohne eigenen Plan übernehmen jede Änderung hier — auch ' +
+              'rückwirkend, was Cashflow und Bauzinsen verschiebt. Bereits freigegebene ' +
+              'Stichtage behalten den damals geltenden Plan.' }));
+    }
+
+    if (A.store.modus === 'server') {
+      zpBody.appendChild(el('div', { class: 'muted', text: 'wird geladen …' }));
+      A.store.einstellung('zahlungsplan').then(function (plan) {
+        if (Array.isArray(plan) && plan.length) A.zahlungsplan = plan;
+        zpZeichnen(A.zahlungsplan || A.defaultProject().vermarktung.zahlungsplan);
+      }).catch(function () {
+        zpZeichnen(A.zahlungsplan || A.defaultProject().vermarktung.zahlungsplan);
+      });
+    } else {
+      zpZeichnen(A.zahlungsplan || A.defaultProject().vermarktung.zahlungsplan);
+    }
+
+    out.appendChild(U.panel('Zahlungsmodalitäten Stockwerkeigentum',
+      'Vorgabe für alle Projekte ohne eigenen Plan', [zpBody]));
+
     /* --- Immobiliengefässe ----------------------------------------- */
     var firmenBody = el('div', { class: 'panelbody' });
 

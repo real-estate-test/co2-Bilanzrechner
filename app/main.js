@@ -362,7 +362,19 @@ window.APP = window.APP || {};
     if (!p || !p.vermarktung) return p;
     if (p.vermarktung.zahlungsplan_eigen) return p;
     if (Array.isArray(A.zahlungsplan) && A.zahlungsplan.length) {
-      p.vermarktung.zahlungsplan = A.clone(A.zahlungsplan);
+      /* Freigabe und Zahlungsdatum sind Projektfakten, keine Vorgabe —
+         sie werden über die Raten hinweg gerettet, solange die Rate an
+         derselben Stelle dieselbe Fälligkeit hat. */
+      var alt = p.vermarktung.zahlungsplan || [];
+      p.vermarktung.zahlungsplan = A.clone(A.zahlungsplan).map(function (r, i) {
+        if (alt[i] && alt[i].bezug === r.bezug) {
+          r.frei = !!alt[i].frei;
+          r.datum = alt[i].datum || '';
+        } else {
+          r.frei = false; r.datum = '';
+        }
+        return r;
+      });
     }
     return p;
   }

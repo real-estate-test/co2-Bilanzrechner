@@ -6,7 +6,7 @@ window.APP = window.APP || {};
 (function (A) {
   'use strict';
 
-  A.SCHEMA = 10;
+  A.SCHEMA = 11;
 
   /* ---------------------------------------------------------------
      Stammlisten
@@ -502,6 +502,10 @@ window.APP = window.APP || {};
            Öffnen des Projektes eingesetzt wird. true = dieses Projekt
            führt einen eigenen Plan und bleibt von der Vorgabe unberührt. */
         zahlungsplan_eigen: false,
+        /* «frei» hält fest, dass eine Rate fällig gestellt bzw. bezahlt
+           ist; «datum» das tatsächliche Zahlungsdatum. Beides sind
+           Projektfakten und keine Firmenvorgabe — sie überleben deshalb
+           das Einsetzen der Vorgabe. */
         zahlungsplan: [
           { label: 'Beurkundung / Anzahlung', anteil: 20, bezug: 'beurkundung' },
           { label: 'Baustart',                anteil: 30, bezug: 'baustart' },
@@ -601,7 +605,10 @@ window.APP = window.APP || {};
         projekt_id: '',                  // id in der Verkaufsübersicht
         stand: null,                     // { datum, geholt, einheiten: [...] }
         manuell: [],                     // eigene Einheitenliste, gleiche Struktur
-        preise: {}                       // Erlös je Einheiten-Nr, manuell erfasst
+        preise: {},                      // Erlös je Einheiten-Nr, manuell erfasst
+        /* Beurkundungsdatum je Einheiten-Nr. Es steht bewusst neben dem
+           eingefrorenen Stand, damit es eine Aktualisierung überlebt. */
+        daten: {}
       },
 
       ist: {},                           // Ist-Werte je Kostenzeile
@@ -964,6 +971,21 @@ window.APP = window.APP || {};
        Plan, damit eine Vorgabe sie nicht rückwirkend umstellt. -------- */
     if (version < 10 && p.vermarktung) {
       p.vermarktung.zahlungsplan_eigen = true;
+    }
+
+    /* --- Schema 10 -> 11: Freigabe und Zahlungsdatum je Rate,
+       Beurkundungsdatum je verkaufte Einheit. Ohne Eintrag rechnet alles
+       wie bisher. --------------------------------------------------- */
+    if (version < 11) {
+      if (p.verkauf && (!p.verkauf.daten || typeof p.verkauf.daten !== 'object')) {
+        p.verkauf.daten = {};
+      }
+      if (p.vermarktung && Array.isArray(p.vermarktung.zahlungsplan)) {
+        p.vermarktung.zahlungsplan.forEach(function (r) {
+          if (r.frei === undefined) r.frei = false;
+          if (r.datum === undefined) r.datum = '';
+        });
+      }
     }
 
     /* Startdatum aus einem vorhandenen Startjahr ableiten */

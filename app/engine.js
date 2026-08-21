@@ -743,6 +743,15 @@ window.APP = window.APP || {};
     return erfasst > 0 ? erfasst : num(u.preis);
   };
 
+  /* Ein erfasstes Datum als Zeitpunkt auf der Projektachse. Ohne
+     gültiges Datum null — der Aufrufer entscheidet dann selbst. */
+  E.zeitpunkt = function (p, Z, datum) {
+    if (!p.startdatum || !datum) return null;
+    var d0 = Date.parse(p.startdatum), d1 = Date.parse(datum);
+    if (!isFinite(d0) || !isFinite(d1)) return null;
+    return Math.max(0, Math.min(Z.t_ende, (d1 - d0) / 31557600000));
+  };
+
   E.verkaufInfo = function (p) {
     var v = p.verkauf;
     if (!v) return null;
@@ -911,39 +920,67 @@ window.APP = window.APP || {};
       }
     }
 
-    /* Zwei Verkaufstranchen. Ohne Verkaufsstand wie bisher: Vorverkaufs-
-       annahme bis Baustart, Rest danach. Mit Verkaufsstand ersetzen die
-       Fakten die Annahme: die verkauften Einheiten gelten als bis zum
-       Stichtag beurkundet (Raten folgen dem Zahlungsplan), der Rest folgt
-       der geplanten Vermarktung, frühestens ab Stichtag. Verteilt wird
-       stets der KALKULIERTE Erlös — der erfasste Verkaufsstand bestimmt
-       nur die Quote und den Zeitpunkt, nicht die Höhe. */
-    var tranchen;
+    /* Verkaufserlöse. Ohne Verkaufsstand wie bisher: Vorverkaufsannahme
+       bis Baustart, Rest danach.
+
+       Mit Verkaufsstand zählen die Fakten. Jede verkaufte Einheit bringt
+       ihren Erlös nach dem Zahlungsplan ein, gerechnet ab ihrem
+       Beurkundungsdatum. Je Rate gilt:
+         erfasstes Zahlungsdatum → dieser Zeitpunkt
+         freigegeben ohne Datum  → der Termin laut Plan, auch rückwirkend
+         noch nicht freigegeben  → der Termin laut Plan, frühestens aber
+                                   am Stichtag: was offen ist, kann nicht
+                                   in der Vergangenheit geflossen sein.
+       Verteilt wird stets der KALKULIERTE Erlös — der Verkaufsstand
+       bestimmt Quote und Zeitpunkt, nicht die Höhe. */
     var vkInfo = E.verkaufInfo(p);
-    if (vkInfo && ERT.stwe_erloes > 0) {
-      var q = Math.min(1, Math.max(0, vkInfo.verkauft_chf / ERT.stwe_erloes));
-      tranchen = [
-        { anteil: q,     t0: Math.min(Z.t_vk_start, tS),
-                         t1: Math.max(tS, Z.t_vk_start + 0.1) },
-        { anteil: 1 - q, t0: Math.max(Z.t_vk_start, tS),
-                         t1: Math.max(Z.t_vk_ende, tS + 0.1) }
-      ];
+    var vkDaten = (p.verkauf && p.verkauf.daten) || {};
+
+    function ratenZeit(r, tBeurk) {
+      var erfasst = E.zeitpunkt(p, Z, r.datum);
+      if (erfasst !== null) return erfasst;
+      var t = zahlungsZeit(r.bezug, tBeurk);
+      return r.frei ? t : Math.max(t, tS);
+    }
+
+    function planVerteilen(betrag, tBeurk, mitFreigabe) {
+      if (betrag <= 0) return;
+      plan.forEach(function (r) {
+        var teil = betrag * num(r.anteil) / planSumme;
+        var tz = mitFreigabe ? ratenZeit(r, tBeurk) : zahlungsZeit(r.bezug, tBeurk);
+        addArr(det.verkauf, spread(teil, tz, tz + 0.5, N, 'linear'));
+      });
+    }
+
+    if (vkInfo && ERT.stwe_erloes > 0 && vkInfo.verkauft_chf > 0) {
+      /* Der verkaufte Anteil, gedeckelt auf den kalkulierten Erlös —
+         mehr als kalkuliert lässt sich nicht verteilen. */
+      var faktor = Math.min(1, ERT.stwe_erloes / vkInfo.verkauft_chf);
+      var verkauftTotal = 0;
+      (vkInfo.einheiten || []).forEach(function (u) {
+        if (u.status !== 'sold') return;
+        var erloes = E.verkaufErloes(p.verkauf, u) * faktor;
+        if (erloes <= 0) return;
+        verkauftTotal += erloes;
+        /* Ohne erfasstes Beurkundungsdatum gilt der Stichtag — bis dahin
+           ist die Einheit nachweislich verkauft. */
+        var tB = E.zeitpunkt(p, Z, vkDaten[u.id]);
+        planVerteilen(erloes, tB === null ? tS : tB, true);
+      });
+      /* Der noch nicht verkaufte Rest folgt der geplanten Vermarktung,
+         frühestens ab Stichtag. */
+      var rest = Math.max(0, ERT.stwe_erloes - verkauftTotal);
+      planVerteilen(rest, (Math.max(Z.t_vk_start, tS) + Math.max(Z.t_vk_ende, tS + 0.1)) / 2, false);
     } else {
-      tranchen = [
+      var tranchen = [
         { anteil: vq,     t0: Z.t_vk_start, t1: Math.max(Z.t_vk_start + 0.1, Z.t_baustart) },
         { anteil: 1 - vq, t0: Math.max(Z.t_vk_start, Z.t_baustart), t1: Z.t_vk_ende }
       ];
-    }
-    tranchen.forEach(function (tr) {
-      if (tr.anteil <= 0) return;
-      var betrag = ERT.stwe_erloes * tr.anteil;
-      var tMitte = (tr.t0 + tr.t1) / 2;
-      plan.forEach(function (r) {
-        var teil = betrag * num(r.anteil) / planSumme;
-        var tz = zahlungsZeit(r.bezug, tMitte);
-        addArr(det.verkauf, spread(teil, tz, tz + 0.5, N, 'linear'));
+      tranchen.forEach(function (tr) {
+        if (tr.anteil <= 0) return;
+        planVerteilen(ERT.stwe_erloes * tr.anteil, (tr.t0 + tr.t1) / 2, false);
       });
-    });
+    }
 
     /* Exit an Investor und kalkulatorische Realisierung des Halteanteils */
     var tExit = Z.t_bauende + num(p.zeit.exit_verzoegerung) / 12;

@@ -75,7 +75,14 @@ Eingabe wie `2500*` lässt den bisherigen Wert stehen und markiert das Feld, sta
 zu fallen. Verweise auf andere Felder gibt es bewusst nicht.
 
 **Zahlungsmodalitäten** Der Zahlungsplan beim Verkauf von Stockwerkeigentum lässt sich in
-der Verwaltung firmenweit vorgeben. Anders als die Zielwerte ist er im Projekt
+der Verwaltung firmenweit vorgeben. Je Rate hält das Projekt fest, ob sie **freigegeben**
+(fällig gestellt bzw. bezahlt) ist, und optional das tatsächliche **Zahlungsdatum**. Beides
+sind Projektfakten und bleiben auch dann bearbeitbar, wenn der Plan der Firmenvorgabe
+folgt; sie überleben deren Einsetzen. Wirkung: eine freigegebene Rate fliesst zum Termin
+laut Plan, auch rückwirkend — eine noch offene frühestens am Stichtag, denn was offen ist,
+kann nicht in der Vergangenheit geflossen sein. Ein erfasstes Zahlungsdatum geht beidem
+vor. Beim Verkaufsstand trägt jede verkaufte Einheit ihr **Beurkundungsdatum**; es ist der
+Nullpunkt ihres Zahlungsplans, ohne Eintrag gilt der Stichtag. Anders als die Zielwerte ist er im Projekt
 übersteuerbar: Ein Projekt folgt entweder der Vorgabe — dann wirkt jede Änderung in der
 Verwaltung unmittelbar, auch rückwirkend — oder führt einen eigenen Plan und bleibt
 unberührt. Bestehende Projekte gelten als eigener Plan, damit eine neue Vorgabe sie nicht

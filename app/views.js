@@ -1076,6 +1076,21 @@ window.APP = window.APP || {};
     }
     koerper.push(U.body(kopf, 'c3'));
 
+    if (!p.verkauf.daten || typeof p.verkauf.daten !== 'object') p.verkauf.daten = {};
+
+    /* Beurkundungsdatum je verkaufte Einheit. Es steht neben dem
+       eingefrorenen Stand und überlebt damit eine Aktualisierung. */
+    function beurkundungsFeld(u) {
+      var d = el('input', { type: 'date', value: p.verkauf.daten[u.id] || '',
+        style: 'padding:3px 5px;border:1px solid var(--line2);border-radius:5px;font-size:12px' });
+      d.addEventListener('change', function () {
+        if (d.value) p.verkauf.daten[u.id] = d.value;
+        else delete p.verkauf.daten[u.id];
+        A.recompute(); A.markDirty();
+      });
+      return d;
+    }
+
     var info = p.verkauf.modus ? A.engine.verkaufInfo(p) : null;
 
     /* Eigene Liste: dieselbe Struktur wie die Übersicht, nur von Hand
@@ -1098,6 +1113,8 @@ window.APP = window.APP || {};
         ], { rerender: true })]));
         tr.appendChild(el('td', { style: 'width:126px' }, [
           U.zelleNum(u, 'preis', { gross: true, platzhalter: 'CHF' })]));
+        tr.appendChild(el('td', { style: 'width:148px' },
+          u.status === 'sold' ? [beurkundungsFeld(u)] : []));
         tr.appendChild(U.dTd(function () {
           return u.flaeche > 0 && u.preis > 0 ? fmt(u.preis / u.flaeche) + ' /m²' : '—';
         }, 'muted'));
@@ -1106,13 +1123,14 @@ window.APP = window.APP || {};
         return tr;
       });
       if (!mz.length) {
-        mz.push(el('tr', {}, [el('td', { colspan: 8, class: 'muted',
+        mz.push(el('tr', {}, [el('td', { colspan: 9, class: 'muted',
           text: 'Noch keine Einheit erfasst.' })]));
       }
       koerper.push(el('div', { class: 'panelbody' }, [U.tabelle([
         { label: 'Nr.' }, { label: 'Haus / Gruppe' }, { label: 'Zi.', n: true },
         { label: 'Fläche m²', n: true }, { label: 'Status' },
-        { label: 'Preis bzw. Erlös CHF', n: true }, { label: 'CHF/m²', n: true }, { label: '' }
+        { label: 'Preis bzw. Erlös CHF', n: true }, { label: 'Beurkundet am' },
+        { label: 'CHF/m²', n: true }, { label: '' }
       ], mz)]));
       koerper.push(el('div', { class: 'panelbody' }, [
         el('button', { class: 'schreibend', text: '+ Einheit', onclick: function () {
@@ -1144,9 +1162,10 @@ window.APP = window.APP || {};
               } })
           : null,
         U.hinweis('info', 'Für Projekte <b>ohne öffentliche Verkaufsseite</b>. Die Liste wird von ' +
-          'Hand gepflegt und wirkt genau wie die zentrale Übersicht: verkaufte Einheiten gelten als ' +
-          'per Stichtag beurkundet, ihr Betrag zählt als Erlös, reservierte werden ausgewiesen, ' +
-          'aber nicht gerechnet.')
+          'Hand gepflegt und wirkt genau wie die zentrale Übersicht: der Betrag verkaufter ' +
+          'Einheiten zählt als Erlös, reservierte werden ausgewiesen, aber nicht gerechnet. Das ' +
+          '<b>Beurkundungsdatum</b> ist der Nullpunkt des Zahlungsplans dieser Einheit; ohne ' +
+          'Eintrag gilt der Stichtag.')
       ]));
     }
 
@@ -1188,10 +1207,12 @@ window.APP = window.APP || {};
             A.recompute(); A.markDirty();
           });
           tr.appendChild(el('td', { style: 'width:130px' }, [inp]));
+          tr.appendChild(el('td', { style: 'width:148px' }, [beurkundungsFeld(u)]));
           var vs = A.verkauf.vorschlag(p, u);
           tr.appendChild(el('td', { class: 'muted', style: 'font-size:10.5px',
             text: vs.wert > 0 ? 'Vorschlag ' + fmt(vs.wert) + ' (' + vs.quelle + ')' : vs.quelle }));
         } else {
+          tr.appendChild(el('td', {}));
           tr.appendChild(el('td', {}));
           tr.appendChild(el('td', {}));
         }
@@ -1199,10 +1220,11 @@ window.APP = window.APP || {};
       });
 
       if (!manuell) koerper.push(el('div', { class: 'panelbody' }, [U.tabelle([
-        { label: 'Nr.' }, { label: 'Haus / Gruppe', w: '14%' }, { label: 'Zi.', n: true, w: '5%' },
-        { label: 'Fläche', n: true, w: '9%' }, { label: 'Status', w: '9%' },
-        { label: 'Preis Übersicht', n: true, w: '11%' },
-        { label: 'Erlös CHF', n: true, w: '12%' }, { label: 'Herkunft Vorschlag', w: '20%' }
+        { label: 'Nr.' }, { label: 'Haus / Gruppe', w: '12%' }, { label: 'Zi.', n: true, w: '5%' },
+        { label: 'Fläche', n: true, w: '8%' }, { label: 'Status', w: '8%' },
+        { label: 'Preis Übersicht', n: true, w: '10%' },
+        { label: 'Erlös CHF', n: true, w: '11%' }, { label: 'Beurkundet am', w: '13%' },
+        { label: 'Herkunft Vorschlag', w: '17%' }
       ], zeilen)]));
 
       if (!manuell) koerper.push(el('div', { class: 'panelbody' }, [
@@ -1347,8 +1369,39 @@ window.APP = window.APP || {};
 
     /* Zahlungsplan */
     var plan = p.vermarktung.zahlungsplan;
+
+    /* Freigabe und Zahlungsdatum je Rate. Beides sind Projektfakten und
+       bleiben deshalb auch dann bearbeitbar, wenn der Plan selbst der
+       Firmenvorgabe folgt. */
+    function freigabeZellen(r) {
+      var box = el('input', { type: 'checkbox', checked: r.frei ? '' : null });
+      var datum = el('input', { type: 'date', value: r.datum || '',
+        style: 'padding:3px 5px;border:1px solid var(--line2);border-radius:5px;font-size:12px' });
+      function stand() {
+        datum.disabled = false;
+        box.title = r.frei
+          ? 'Rate ist fällig gestellt bzw. bezahlt — sie fliesst zum Termin laut Plan, auch rückwirkend.'
+          : 'Rate ist noch offen — sie fliesst frühestens am Stichtag.';
+      }
+      box.addEventListener('change', function () {
+        r.frei = box.checked;
+        stand(); A.recompute(); A.markDirty();
+      });
+      datum.addEventListener('change', function () {
+        r.datum = datum.value || '';
+        /* Ein erfasstes Zahlungsdatum bedeutet, dass die Rate geflossen ist. */
+        if (r.datum && !r.frei) { r.frei = true; box.checked = true; }
+        stand(); A.recompute(); A.markDirty();
+      });
+      stand();
+      return [
+        el('td', { class: 'w1', style: 'text-align:center' }, [box]),
+        el('td', { style: 'width:150px' }, [datum])
+      ];
+    }
+
     var zp = plan.map(function (r, i) {
-      return el('tr', {}, [
+      var tr = el('tr', {}, [
         el('td', {}, [(function () {
           var inp = el('input', { type: 'text', value: r.label });
           inp.addEventListener('input', function () { r.label = inp.value; A.markDirty(); });
@@ -1357,10 +1410,12 @@ window.APP = window.APP || {};
         el('td', { style: 'width:170px' }, [U.zelleSel(r, 'bezug', Object.keys(A.ZAHLUNG_BEZUG).map(function (k) {
           return { id: k, label: A.ZAHLUNG_BEZUG[k] };
         }), { rerender: false })]),
-        el('td', { style: 'width:90px' }, [U.zelleNum(r, 'anteil', { dez: 1 })]),
-        el('td', { class: 'w1' }, [el('button', { class: 'ghost sm', text: '×',
-          onclick: function () { plan.splice(i, 1); A.recompute(); A.render(); } })])
+        el('td', { style: 'width:90px' }, [U.zelleNum(r, 'anteil', { dez: 1 })])
       ]);
+      freigabeZellen(r).forEach(function (td) { tr.appendChild(td); });
+      tr.appendChild(el('td', { class: 'w1' }, [el('button', { class: 'ghost sm', text: '×',
+        onclick: function () { plan.splice(i, 1); A.recompute(); A.render(); } })]));
+      return tr;
     });
     /* Die Summe muss mitlaufen, wenn eine Rate geändert wird — als
        fester Text wäre sie nach der ersten Eingabe falsch. */
@@ -1376,7 +1431,13 @@ window.APP = window.APP || {};
       if (d) summeHinweis.appendChild(el('span', { class: 'tag warn', text: 'nicht 100 %' }));
     });
     zp.push(el('tr', { class: 'total' }, [
-      el('td', { text: 'Summe' }), el('td', {}), summeZelle, summeHinweis
+      el('td', { text: 'Summe' }), el('td', {}), summeZelle,
+      U.dTd(function () {
+        var f = plan.filter(function (r) { return r.frei; })
+          .reduce(function (a, r) { return a + U.parseZahl(r.anteil); }, 0);
+        return A.fmt(f, 1) + ' % frei';
+      }, 'muted'),
+      el('td', {}), summeHinweis
     ]));
 
     /* Der Verkaufsstand steht vor dem Zahlungsplan: er bestimmt, für
@@ -1406,7 +1467,8 @@ window.APP = window.APP || {};
     var zpKoerper = [];
     if (eigen) {
       zpKoerper.push(el('div', { class: 'panelbody' }, [U.tabelle([
-        { label: 'Rate' }, { label: 'fällig' }, { label: 'Anteil %', n: true }, { label: '' }
+        { label: 'Rate' }, { label: 'fällig', w: '18%' }, { label: 'Anteil %', n: true, w: '10%' },
+        { label: 'frei', w: '5%' }, { label: 'Zahlungsdatum', w: '16%' }, { label: '', w: '1%' }
       ], zp)]));
       zpKoerper.push(el('div', { class: 'panelbody' }, [
         el('button', { text: '+ Rate', onclick: function () {
@@ -1421,29 +1483,43 @@ window.APP = window.APP || {};
               } })
           : null,
         U.hinweis('info', 'Ergeben die Raten nicht 100 %, verteilt das Modell die Erlöse ' +
-          'anteilig auf die erfassten Raten.')
+          'anteilig auf die erfassten Raten. <b>frei</b> heisst: die Rate ist fällig gestellt ' +
+          'bzw. bezahlt — sie fliesst dann zum Termin laut Plan, auch rückwirkend. Eine noch ' +
+          'nicht freigegebene Rate fliesst frühestens am Stichtag. Ein erfasstes ' +
+          '<b>Zahlungsdatum</b> geht beidem vor.')
       ]));
     } else {
       /* Schreibgeschützte Ansicht der geltenden Vorgabe */
       var fest = plan.map(function (r) {
-        return el('tr', {}, [
+        var tr = el('tr', {}, [
           el('td', { text: r.label }),
           el('td', { class: 'muted', text: A.ZAHLUNG_BEZUG[r.bezug] || r.bezug }),
           el('td', { class: 'n', text: A.fmt(r.anteil, 1) + ' %' })
         ]);
+        freigabeZellen(r).forEach(function (td) { tr.appendChild(td); });
+        return tr;
       });
       var summe = plan.reduce(function (a, r) { return a + U.parseZahl(r.anteil); }, 0);
+      /* Die Freigabe wird ohne Neuaufbau der Seite umgeschaltet — die
+         Summe muss deshalb nachgeführt werden, nicht fest stehen. */
       fest.push(el('tr', { class: 'total' }, [
         el('td', { text: 'Summe' }), el('td', {}),
-        el('td', { class: 'n', text: A.fmt(summe, 1) + ' %' })
+        el('td', { class: 'n', text: A.fmt(summe, 1) + ' %' }),
+        el('td', { class: 'muted', colspan: 2 }, [U.d(function () {
+          var f = plan.filter(function (r) { return r.frei; })
+            .reduce(function (a, r) { return a + U.parseZahl(r.anteil); }, 0);
+          return A.fmt(f, 1) + ' % frei';
+        }, '')])
       ]));
       zpKoerper.push(el('div', { class: 'panelbody' }, [U.tabelle([
-        { label: 'Rate' }, { label: 'fällig', w: '30%' }, { label: 'Anteil %', n: true, w: '18%' }
+        { label: 'Rate' }, { label: 'fällig', w: '20%' }, { label: 'Anteil %', n: true, w: '12%' },
+        { label: 'frei', w: '5%' }, { label: 'Zahlungsdatum', w: '18%' }
       ], fest)]));
       zpKoerper.push(el('div', { class: 'panelbody' }, [
-        U.hinweis('info', 'Es gilt die <b>Firmenvorgabe</b> aus der Verwaltung. Eine Änderung ' +
-          'dort wirkt unmittelbar auf dieses Projekt. Für abweichende Modalitäten oben auf ' +
-          '<b>eigener Plan</b> wechseln — das Projekt bleibt dann von der Vorgabe unberührt.')
+        U.hinweis('info', 'Es gilt die <b>Firmenvorgabe</b> aus der Verwaltung — Raten, ' +
+          'Fälligkeit und Anteile sind deshalb hier nicht änderbar. <b>Freigabe</b> und ' +
+          '<b>Zahlungsdatum</b> sind dagegen Fakten dieses Projektes und bleiben bearbeitbar. ' +
+          'Für abweichende Modalitäten oben auf <b>eigener Plan</b> wechseln.')
       ]));
     }
 

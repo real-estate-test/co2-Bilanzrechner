@@ -432,6 +432,60 @@
   pruefe('Eigene Liste: fehlender Betrag warnt',
     1, rmv2.warnungen.some(function (w) { return /ohne erfassten Erlös/.test(w.text); }) ? 1 : 0);
 
+  /* ---- Freigabe der Raten und Beurkundungsdatum ------------------- */
+  var fz = A.defaultProject();
+  fz.startdatum = '2026-01-01'; fz.stichtag = '2028-01-01';
+  var rfz0 = E.compute(fz);
+  var stweF = rfz0.ertraege.stwe_erloes;
+  var summeVk = function (res) {
+    return res.reihen.det.verkauf.reduce(function (s2, x) { return s2 + x; }, 0);
+  };
+  fz.verkauf.modus = 'manuell';
+  fz.verkauf.manuell = [
+    { id: 'W1', gruppe: 'A', zimmer: 4.5, flaeche: 120, art: 'unit', status: 'sold', preis: stweF * 0.30 },
+    { id: 'W2', gruppe: 'A', zimmer: 3.5, flaeche: 95, art: 'unit', status: 'sold', preis: stweF * 0.30 },
+    { id: 'W3', gruppe: 'A', zimmer: 2.5, flaeche: 70, art: 'unit', status: 'available', preis: stweF * 0.40 }
+  ];
+  var rfz1 = E.compute(fz);
+  pruefe('Verkaufsstand verteilt weiterhin genau den Erlös', stweF, summeVk(rfz1), 1);
+
+  /* Jahre, die vor dem Stichtag beginnen. Der Stichtag liegt selten genau
+     auf einer Jahresgrenze — das 365.25-Tage-Jahr lässt einen kleinen Rest
+     in das Jahr fallen, in dem der Stichtag liegt. Die Prüfungen tragen
+     deshalb eine Toleranz von 1 % des Erlöses. */
+  var vorStichtag = function (res) {
+    var t = res.zeit.t_stichtag, s2 = 0;
+    res.reihen.det.verkauf.forEach(function (x, j) { if (j < t) s2 += x; });
+    return s2;
+  };
+  pruefe('Ohne Freigabe fliesst so gut wie nichts vor dem Stichtag',
+    0, vorStichtag(rfz1), stweF * 0.01);
+
+  /* Beurkundungsdatum allein bewegt nichts, solange nichts frei ist */
+  fz.verkauf.daten = { W1: '2026-06-01', W2: '2027-06-01' };
+  var rfz2 = E.compute(fz);
+  pruefe('Datum allein verschiebt noch keine Zahlung',
+    rfz1.fin.bauzinsen, rfz2.fin.bauzinsen, 1);
+
+  /* Freigegebene Anzahlung fliesst zum Beurkundungsdatum */
+  fz.vermarktung.zahlungsplan[0].frei = true;
+  var rfz3 = E.compute(fz);
+  pruefe('Freigabe zieht die Anzahlung vor', 1, rfz3.fin.bauzinsen < rfz2.fin.bauzinsen ? 1 : 0);
+  pruefe('Freigegebene Anzahlung liegt vor dem Stichtag',
+    1, vorStichtag(rfz3) > stweF * 0.05 ? 1 : 0);
+  pruefe('Auch mit Freigabe bleibt die Erlössumme gleich', stweF, summeVk(rfz3), 1);
+  /* Anzahlung = 20 % der beiden verkauften Einheiten, je Einheit zu ihrem
+     Datum — 2026 und 2027 je rund eine Rate. */
+  pruefe('Anzahlung folgt dem Datum je Einheit',
+    stweF * 0.60 * 0.20, vorStichtag(rfz3), stweF * 0.01);
+
+  /* Ein erfasstes Zahlungsdatum geht dem Plan vor */
+  fz.vermarktung.zahlungsplan[0].datum = '2026-07-15';
+  var rfz4 = E.compute(fz);
+  pruefe('Zahlungsdatum bündelt beide Anzahlungen',
+    1, rfz4.fin.bauzinsen < rfz3.fin.bauzinsen ? 1 : 0);
+  pruefe('Zahlungsdatum lässt die Erlössumme unberührt', stweF, summeVk(rfz4), 1);
+
   /* ---- Firmenvorgabe Zahlungsmodalitäten ------------------------- */
   /* Der Rechenkern kennt nur den Plan im Projekt; die Vorgabe wird beim
      Öffnen eingesetzt. Geprüft wird deshalb beides: dass der Plan wirkt

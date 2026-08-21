@@ -312,6 +312,7 @@ window.APP = window.APP || {};
       formelFehler = '';
       if (e.formel) p.formeln[pfad] = e.formel; else delete p.formeln[pfad];
       A.set(p, pfad, e.wert);
+      if (opts.onchange) opts.onchange(e.wert);
       pruefen(); A.recompute();
     });
     inp.addEventListener('focus', function () {

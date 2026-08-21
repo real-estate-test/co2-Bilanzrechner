@@ -12,6 +12,7 @@ window.APP = window.APP || {};
   A.ziele = null;          // firmenweite Zielwerte (nur im Serverbetrieb)
   A.firmen = null;         // Liste der Immobiliengefässe (nur im Serverbetrieb)
   A.zahlungsplan = null;   // firmenweite Zahlungsmodalitäten (nur im Serverbetrieb)
+  A.zahlungsfristen = null;// firmenweite Fristen rund um die Beurkundung
 
   A.SEITEN = [
     { id: 'portfolio',    ix: '0',  label: 'Portfolio' },
@@ -361,6 +362,16 @@ window.APP = window.APP || {};
   function vorgabenAnwenden(p) {
     if (!p || !p.vermarktung) return p;
     if (p.vermarktung.zahlungsplan_eigen) return p;
+    /* Fristen: die Vorgabe gilt, solange das Projekt keine eigenen führt. */
+    if (A.zahlungsfristen && !(p.vermarktung.fristen || {}).eigen) {
+      var f = p.vermarktung.fristen || {};
+      ['tagebuch_tage', 'nach_tagebuch_tage', 'decke_ug_pct', 'unterlagsboden_pct']
+        .forEach(function (k) {
+          if (A.zahlungsfristen[k] !== undefined) f[k] = A.zahlungsfristen[k];
+        });
+      f.eigen = false;
+      p.vermarktung.fristen = f;
+    }
     if (Array.isArray(A.zahlungsplan) && A.zahlungsplan.length) {
       /* Freigabe und Zahlungsdatum sind Projektfakten, keine Vorgabe —
          sie werden über die Raten hinweg gerettet, solange die Rate an
@@ -425,13 +436,23 @@ window.APP = window.APP || {};
           return Promise.all([
             A.store.einstellung('ziele').catch(function () { return null; }),
             A.store.einstellung('firmen').catch(function () { return null; }),
-            A.store.einstellung('zahlungsplan').catch(function () { return null; })
+            A.store.einstellung('zahlungsplan').catch(function () { return null; }),
+            A.store.einstellung('zahlungsfristen').catch(function () { return null; })
           ]);
         })
         .then(function (geladen) {
           if (geladen && geladen[0]) A.ziele = geladen[0];
           if (geladen && Array.isArray(geladen[1])) A.firmen = geladen[1];
-          if (geladen && Array.isArray(geladen[2])) A.zahlungsplan = geladen[2];
+          if (geladen && Array.isArray(geladen[2])) {
+            /* «fertigstellung» hiess früher, was heute «uebergabe» ist. */
+            A.zahlungsplan = geladen[2].map(function (r) {
+              if (r.bezug === 'fertigstellung') r.bezug = 'uebergabe';
+              return r;
+            });
+          }
+          if (geladen && geladen[3] && typeof geladen[3] === 'object') {
+            A.zahlungsfristen = geladen[3];
+          }
           /* Zentralen Verkaufsstand übernehmen, falls er neuer ist als der
              lokale — geladen wird er nur von Hand. */
           return A.verkauf.zentralLaden().then(function () { weiter(serverModus); });

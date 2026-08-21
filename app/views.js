@@ -1077,19 +1077,37 @@ window.APP = window.APP || {};
     koerper.push(U.body(kopf, 'c3'));
 
     if (!p.verkauf.daten || typeof p.verkauf.daten !== 'object') p.verkauf.daten = {};
+    if (!p.verkauf.uebergaben || typeof p.verkauf.uebergaben !== 'object') p.verkauf.uebergaben = {};
 
-    /* Beurkundungsdatum je verkaufte Einheit. Es steht neben dem
-       eingefrorenen Stand und überlebt damit eine Aktualisierung. */
-    function beurkundungsFeld(u) {
-      var d = el('input', { type: 'date', value: p.verkauf.daten[u.id] || '',
+    /* Vertragsdaten je verkaufte Einheit. Sie stehen neben dem
+       eingefrorenen Stand und überleben damit eine Aktualisierung.
+       Das Übergabedatum ist zwingend: ohne es fliesst die Übergaberate
+       nicht — nach Bauende wird das Feld deshalb rot. */
+    function datumsFeld(ablage, u, pflichtNachBau) {
+      var d = el('input', { type: 'date', value: ablage[u.id] || '',
         style: 'padding:3px 5px;border:1px solid var(--line2);border-radius:5px;font-size:12px' });
+      function malen() {
+        var fehlt = pflichtNachBau && !ablage[u.id];
+        var r = A.state.r;
+        var ueberfaellig = fehlt && r && r.zeit.t_bauende <= r.zeit.t_stichtag;
+        d.classList.toggle('bad', !!ueberfaellig);
+        d.style.borderColor = ueberfaellig ? 'var(--warn)' : '';
+        d.title = fehlt
+          ? (ueberfaellig
+              ? 'Die Bauzeit ist abgelaufen und das Übergabedatum fehlt — die Übergaberate fliesst nicht.'
+              : 'Ohne Übergabedatum fliesst die Übergaberate dieser Einheit nicht.')
+          : '';
+      }
       d.addEventListener('change', function () {
-        if (d.value) p.verkauf.daten[u.id] = d.value;
-        else delete p.verkauf.daten[u.id];
-        A.recompute(); A.markDirty();
+        if (d.value) ablage[u.id] = d.value; else delete ablage[u.id];
+        malen(); A.recompute(); A.markDirty();
       });
+      malen();
+      U.derived.push(malen);
       return d;
     }
+    function beurkundungsFeld(u) { return datumsFeld(p.verkauf.daten, u, false); }
+    function uebergabeFeld(u) { return datumsFeld(p.verkauf.uebergaben, u, true); }
 
     var info = p.verkauf.modus ? A.engine.verkaufInfo(p) : null;
 
@@ -1115,6 +1133,8 @@ window.APP = window.APP || {};
           U.zelleNum(u, 'preis', { gross: true, platzhalter: 'CHF' })]));
         tr.appendChild(el('td', { style: 'width:148px' },
           u.status === 'sold' ? [beurkundungsFeld(u)] : []));
+        tr.appendChild(el('td', { style: 'width:148px' },
+          u.status === 'sold' ? [uebergabeFeld(u)] : []));
         tr.appendChild(U.dTd(function () {
           return u.flaeche > 0 && u.preis > 0 ? fmt(u.preis / u.flaeche) + ' /m²' : '—';
         }, 'muted'));
@@ -1123,14 +1143,14 @@ window.APP = window.APP || {};
         return tr;
       });
       if (!mz.length) {
-        mz.push(el('tr', {}, [el('td', { colspan: 9, class: 'muted',
+        mz.push(el('tr', {}, [el('td', { colspan: 10, class: 'muted',
           text: 'Noch keine Einheit erfasst.' })]));
       }
       koerper.push(el('div', { class: 'panelbody' }, [U.tabelle([
         { label: 'Nr.' }, { label: 'Haus / Gruppe' }, { label: 'Zi.', n: true },
         { label: 'Fläche m²', n: true }, { label: 'Status' },
         { label: 'Preis bzw. Erlös CHF', n: true }, { label: 'Beurkundet am' },
-        { label: 'CHF/m²', n: true }, { label: '' }
+        { label: 'Übergabe am' }, { label: 'CHF/m²', n: true }, { label: '' }
       ], mz)]));
       koerper.push(el('div', { class: 'panelbody' }, [
         el('button', { class: 'schreibend', text: '+ Einheit', onclick: function () {
@@ -1179,8 +1199,11 @@ window.APP = window.APP || {};
             (vk.ohne_erloes ? ' · ' + vk.ohne_erloes + ' ohne Erlös' : '')),
           U.kachel('reserviert', vk.reserviert_n + ' Einheiten', 'ausgewiesen, nicht gerechnet'),
           U.kachel('frei', vk.frei_n + ' Einheiten'),
-          U.kachel('Vorverkaufsquote', vk.quote === null ? '—' : A.fmtPct(vk.quote, 1),
-            'ersetzt die Planannahme in Erlösverteilung und Zinsstaffel')
+          vk.ohne_uebergabe > 0.5
+            ? U.kachel('ohne Übergabedatum', fmt(vk.ohne_uebergabe),
+                vk.ohne_uebergabe_n + ' Rate(n) fliessen nicht', 'neg')
+            : U.kachel('Vorverkaufsquote', vk.quote === null ? '—' : A.fmtPct(vk.quote, 1),
+                'ersetzt die Planannahme in Erlösverteilung und Zinsstaffel')
         ]));
       });
       koerper.push(kacheln);
@@ -1208,10 +1231,12 @@ window.APP = window.APP || {};
           });
           tr.appendChild(el('td', { style: 'width:130px' }, [inp]));
           tr.appendChild(el('td', { style: 'width:148px' }, [beurkundungsFeld(u)]));
+          tr.appendChild(el('td', { style: 'width:148px' }, [uebergabeFeld(u)]));
           var vs = A.verkauf.vorschlag(p, u);
           tr.appendChild(el('td', { class: 'muted', style: 'font-size:10.5px',
             text: vs.wert > 0 ? 'Vorschlag ' + fmt(vs.wert) + ' (' + vs.quelle + ')' : vs.quelle }));
         } else {
+          tr.appendChild(el('td', {}));
           tr.appendChild(el('td', {}));
           tr.appendChild(el('td', {}));
           tr.appendChild(el('td', {}));
@@ -1223,8 +1248,8 @@ window.APP = window.APP || {};
         { label: 'Nr.' }, { label: 'Haus / Gruppe', w: '12%' }, { label: 'Zi.', n: true, w: '5%' },
         { label: 'Fläche', n: true, w: '8%' }, { label: 'Status', w: '8%' },
         { label: 'Preis Übersicht', n: true, w: '10%' },
-        { label: 'Erlös CHF', n: true, w: '11%' }, { label: 'Beurkundet am', w: '13%' },
-        { label: 'Herkunft Vorschlag', w: '17%' }
+        { label: 'Erlös CHF', n: true, w: '10%' }, { label: 'Beurkundet am', w: '12%' },
+        { label: 'Übergabe am', w: '12%' }, { label: 'Herkunft Vorschlag', w: '13%' }
       ], zeilen)]));
 
       if (!manuell) koerper.push(el('div', { class: 'panelbody' }, [
@@ -1522,6 +1547,50 @@ window.APP = window.APP || {};
           'Für abweichende Modalitäten oben auf <b>eigener Plan</b> wechseln.')
       ]));
     }
+
+    /* Fristen: sie bestimmen die Termine, die sich nicht aus dem
+       Bauzeitmodell ergeben. Sie sind immer bearbeitbar; die erste
+       Abweichung von der Vorgabe macht sie zu eigenen Werten. */
+    if (!p.vermarktung.fristen) {
+      p.vermarktung.fristen = { eigen: false, tagebuch_tage: 10,
+        nach_tagebuch_tage: 3, decke_ug_pct: 20, unterlagsboden_pct: 75 };
+    }
+    var fr = p.vermarktung.fristen;
+
+    function fristFeld(schluessel, label, einheit, hilfe) {
+      return U.num(p, 'vermarktung.fristen.' + schluessel, label, {
+        unit: einheit, dez: 0, ohneBadge: true, hilfe: hilfe,
+        onchange: function () { fr.eigen = true; }
+      });
+    }
+
+    zpKoerper.push(el('div', { class: 'panelbody' }, [
+      el('div', { class: 'k', style: 'font-size:11px;color:var(--kopf);margin-bottom:8px;' +
+        'text-transform:uppercase;letter-spacing:.07em', text: 'Fristen und Schätzwerte' }),
+      U.body([
+        fristFeld('tagebuch_tage', 'Beurkundung → Tagebucheintrag', 'Tage',
+          'Grundbuchämter arbeiten unterschiedlich schnell.'),
+        fristFeld('nach_tagebuch_tage', 'Tagebucheintrag → Zahlung', 'Tage'),
+        fristFeld('decke_ug_pct', 'Decke UG fertig', '% der Bauzeit',
+          'Schätzung, solange kein Datum erfasst ist.'),
+        fristFeld('unterlagsboden_pct', 'Unterlagsboden fertig', '% der Bauzeit',
+          'Schätzung, solange kein Datum erfasst ist.')
+      ], 'c4'),
+      el('div', { style: 'margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap' }, [
+        el('span', { class: 'tag ' + (fr.eigen ? 'warn' : 'pos'),
+          text: fr.eigen ? 'eigene Fristen' : 'Firmenvorgabe' }),
+        (A.zahlungsfristen && fr.eigen)
+          ? el('button', { class: 'ghost sm', text: 'Firmenvorgabe übernehmen', onclick: function () {
+              fr.eigen = false;
+              if (A.vorgabenAnwenden) A.vorgabenAnwenden(p);
+              A.recompute(); A.markDirty(); A.render();
+            } })
+          : null,
+        el('span', { class: 'muted', style: 'font-size:11.5px',
+          text: 'Die Termine für Decke UG und Unterlagsboden werden geschätzt, bis in der ' +
+                'Spalte Zahlungsdatum ein Datum steht.' })
+      ])
+    ]));
 
     out.appendChild(U.panel('Zahlungsplan Stockwerkeigentum',
       'steuert, wann die Käuferzahlungen den Baukredit entlasten',

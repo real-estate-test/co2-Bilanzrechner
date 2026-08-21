@@ -267,6 +267,47 @@ window.APP = window.APP || {};
           text: mit + ' Projekt(e) folgen der Vorgabe · ' + eigen + ' mit eigenem Plan' })
       ]));
 
+      /* Fristen und Schätzwerte — sie bestimmen die Termine, die sich
+         nicht aus dem Bauzeitmodell ergeben. */
+      var frVorgabe = A.zahlungsfristen || A.defaultProject().vermarktung.fristen;
+      var frFelder = {};
+      var frZeile = el('div', { style: 'display:flex;gap:18px;flex-wrap:wrap;align-items:flex-end;margin-top:16px' });
+      [['tagebuch_tage', 'Beurkundung → Tagebucheintrag', 'Tage'],
+       ['nach_tagebuch_tage', 'Tagebucheintrag → Zahlung', 'Tage'],
+       ['decke_ug_pct', 'Decke UG fertig', '% der Bauzeit'],
+       ['unterlagsboden_pct', 'Unterlagsboden fertig', '% der Bauzeit']
+      ].forEach(function (f) {
+        var inp = el('input', { type: 'text', value: A.fmt(frVorgabe[f[0]], 0),
+          style: 'width:70px;padding:6px 9px;border:1px solid var(--line2);border-radius:5px;text-align:right' });
+        frFelder[f[0]] = inp;
+        frZeile.appendChild(el('div', {}, [
+          el('div', { class: 'k', style: 'font-size:11px;color:var(--muted);margin-bottom:4px', text: f[1] }),
+          el('div', {}, [inp, el('span', { text: ' ' + f[2] })])
+        ]));
+      });
+      frZeile.appendChild(el('button', { class: 'primary', text: 'Fristen speichern', onclick: function () {
+        var neu = {};
+        Object.keys(frFelder).forEach(function (k) { neu[k] = U.parseZahl(frFelder[k].value); });
+        A.zahlungsfristen = neu;
+        var fertig = function () {
+          if (A.state.p) { A.vorgabenAnwenden(A.state.p); A.recompute(); }
+          A.meldung('ok', 'Fristen gespeichert — sie gelten für alle Projekte ohne eigene Fristen.');
+        };
+        if (A.store.modus === 'server') {
+          A.store.einstellungSetzen('zahlungsfristen', neu).then(fertig)
+            .catch(function (f) { A.meldung('warn', f.message); });
+        } else { fertig(); }
+      } }));
+
+      zpBody.appendChild(el('div', { class: 'k',
+        style: 'font-size:11px;color:var(--kopf);margin-top:18px;text-transform:uppercase;letter-spacing:.07em',
+        text: 'Fristen und Schätzwerte' }));
+      zpBody.appendChild(frZeile);
+      zpBody.appendChild(el('div', { class: 'hilfe', style: 'margin-top:8px',
+        text: 'Der Tagebucheintrag folgt der Beurkundung; die Rate «3 Tage nach Tagebucheintrag» ' +
+              'ergibt sich daraus je Einheit. Decke UG und Unterlagsboden haben keinen Modelltermin — ' +
+              'bis im Projekt ein Datum erfasst ist, gelten diese Anteile der Bauzeit.' }));
+
       zpBody.appendChild(el('div', { class: 'hilfe', style: 'margin-top:10px',
         text: 'Anders als die Zielwerte sind diese Modalitäten im Projekt übersteuerbar: ' +
               'Auf der Seite «Vermarktung & Verkauf» lässt sich je Projekt ein eigener Plan ' +

@@ -108,8 +108,15 @@ insert into einstellungen (schluessel, wert) values
      {"label": "Beurkundung / Anzahlung", "anteil": 20, "bezug": "beurkundung"},
      {"label": "Baustart",                "anteil": 30, "bezug": "baustart"},
      {"label": "Rohbau fertig",           "anteil": 30, "bezug": "rohbau"},
-     {"label": "Übergabe",                "anteil": 20, "bezug": "fertigstellung"}
+     {"label": "Übergabe",                "anteil": 20, "bezug": "uebergabe"}
    ]'::jsonb)
+on conflict (schluessel) do nothing;
+
+-- Fristen rund um die Beurkundung und Schätzwerte für die Bautermine,
+-- die sich nicht aus dem Bauzeitmodell ergeben.
+insert into einstellungen (schluessel, wert) values
+  ('zahlungsfristen', '{"tagebuch_tage": 10, "nach_tagebuch_tage": 3,
+                        "decke_ug_pct": 20, "unterlagsboden_pct": 75}'::jsonb)
 on conflict (schluessel) do nothing;
 
 -- Liste der Immobiliengefässe, denen Projekte zugeordnet werden.

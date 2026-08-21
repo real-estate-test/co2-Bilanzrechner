@@ -752,6 +752,18 @@ window.APP = window.APP || {};
     return Math.max(0, Math.min(Z.t_ende, (d1 - d0) / 31557600000));
   };
 
+  /* Fristen des Projektes, mit den Vorgabewerten als Rückfall. */
+  E.fristen = function (p) {
+    var f = (p.vermarktung && p.vermarktung.fristen) || {};
+    function w(k, vorgabe) { return f[k] === undefined || f[k] === null ? vorgabe : num(f[k]); }
+    return {
+      tagebuch_tage: w('tagebuch_tage', 10),
+      nach_tagebuch_tage: w('nach_tagebuch_tage', 3),
+      decke_ug_pct: w('decke_ug_pct', 20),
+      unterlagsboden_pct: w('unterlagsboden_pct', 75)
+    };
+  };
+
   E.verkaufInfo = function (p) {
     var v = p.verkauf;
     if (!v) return null;
@@ -911,12 +923,37 @@ window.APP = window.APP || {};
     var plan = (p.vermarktung.zahlungsplan || []).filter(function (r) { return num(r.anteil) > 0; });
     var planSumme = plan.reduce(function (s, r) { return s + num(r.anteil); }, 0) || 100;
 
-    function zahlungsZeit(bezug, tVerkauf) {
+    var FR = E.fristen(p);
+    var bauzeit = Math.max(1 / 12, Z.t_bauende - Z.t_baustart);
+
+    /* Termin einer Rate. null bedeutet: es fliesst nichts — das gilt für
+       «bei Übergabe» ohne erfasstes Übergabedatum der Einheit.
+         Vertragstermine kommen aus den Daten der Einheit,
+         Bautermine aus dem Modell,
+         die beiden von Hand freigegebenen aus einer Schätzung über die
+         Bauzeit, bis ein Datum erfasst ist. */
+    function zahlungsZeit(bezug, ctx) {
+      var tK = ctx.tBeurk;
       switch (bezug) {
-        case 'beurkundung':    return tVerkauf;
-        case 'baustart':       return Math.max(tVerkauf, Z.t_baustart);
-        case 'rohbau':         return Math.max(tVerkauf, Z.t_rohbau);
-        default:               return Math.max(tVerkauf, Z.t_bauende);
+        case 'beurkundung':
+          return tK;
+        case 'tagebuch':
+          return tK === null ? null
+            : tK + (FR.tagebuch_tage + FR.nach_tagebuch_tage) / 365.25;
+        case 'baustart':
+          return Math.max(tK === null ? 0 : tK, Z.t_baustart);
+        case 'decke_ug':
+          return Math.max(tK === null ? 0 : tK, Z.t_baustart + bauzeit * pct(FR.decke_ug_pct));
+        case 'rohbau':
+          return Math.max(tK === null ? 0 : tK, Z.t_rohbau);
+        case 'unterlagsboden':
+          return Math.max(tK === null ? 0 : tK, Z.t_baustart + bauzeit * pct(FR.unterlagsboden_pct));
+        case 'uebergabe':
+          /* Verkaufte Einheit ohne Übergabedatum: kein Geldfluss. Für den
+             noch nicht verkauften Rest gilt die Fertigstellung. */
+          return ctx.verkauft ? ctx.tUeb : Math.max(tK === null ? 0 : tK, Z.t_bauende);
+        default:
+          return Math.max(tK === null ? 0 : tK, Z.t_bauende);
       }
     }
 
@@ -924,30 +961,42 @@ window.APP = window.APP || {};
        bis Baustart, Rest danach.
 
        Mit Verkaufsstand zählen die Fakten. Jede verkaufte Einheit bringt
-       ihren Erlös nach dem Zahlungsplan ein, gerechnet ab ihrem
-       Beurkundungsdatum. Je Rate gilt:
-         erfasstes Zahlungsdatum → dieser Zeitpunkt
-         freigegeben ohne Datum  → der Termin laut Plan, auch rückwirkend
-         noch nicht freigegeben  → der Termin laut Plan, frühestens aber
-                                   am Stichtag: was offen ist, kann nicht
-                                   in der Vergangenheit geflossen sein.
-       Verteilt wird stets der KALKULIERTE Erlös — der Verkaufsstand
-       bestimmt Quote und Zeitpunkt, nicht die Höhe. */
+       ihren Erlös nach dem Zahlungsplan ein, gerechnet ab ihren eigenen
+       Vertragsdaten. Je Rate gilt:
+         Zahlungsdatum im Plan erfasst → dieser Zeitpunkt
+         Vertragstermin der Einheit    → dieser Zeitpunkt
+         freigegebener Bautermin       → Termin laut Modell, auch rückwirkend
+         offener Bautermin             → Termin laut Modell, frühestens aber
+                                         am Stichtag
+       «bei Übergabe» ohne erfasstes Datum bringt bei einer verkauften
+       Einheit gar nichts ein — die Übergabe hat nachweislich nicht
+       stattgefunden. Der Betrag bleibt im Erlös, fehlt aber im
+       Zahlungsstrom; das verteuert die Finanzierung und wird gemeldet. */
     var vkInfo = E.verkaufInfo(p);
     var vkDaten = (p.verkauf && p.verkauf.daten) || {};
+    var vkUeb = (p.verkauf && p.verkauf.uebergaben) || {};
+    var ohneUebergabe = 0, ohneUebergabeN = 0;
 
-    function ratenZeit(r, tBeurk) {
+    function ratenZeit(r, ctx) {
       var erfasst = E.zeitpunkt(p, Z, r.datum);
       if (erfasst !== null) return erfasst;
-      var t = zahlungsZeit(r.bezug, tBeurk);
+      var t = zahlungsZeit(r.bezug, ctx);
+      if (t === null) return null;
+      /* Vertragstermine sind Fakten und werden nicht auf den Stichtag
+         geschoben; Bautermine schon, solange sie nicht freigegeben sind. */
+      if (A.ZAHLUNG_ART[r.bezug] === 'einheit') return t;
       return r.frei ? t : Math.max(t, tS);
     }
 
-    function planVerteilen(betrag, tBeurk, mitFreigabe) {
+    function planVerteilen(betrag, ctx, mitFreigabe) {
       if (betrag <= 0) return;
       plan.forEach(function (r) {
         var teil = betrag * num(r.anteil) / planSumme;
-        var tz = mitFreigabe ? ratenZeit(r, tBeurk) : zahlungsZeit(r.bezug, tBeurk);
+        var tz = mitFreigabe ? ratenZeit(r, ctx) : zahlungsZeit(r.bezug, ctx);
+        if (tz === null) {
+          ohneUebergabe += teil; ohneUebergabeN += 1;
+          return;
+        }
         addArr(det.verkauf, spread(teil, tz, tz + 0.5, N, 'linear'));
       });
     }
@@ -965,12 +1014,19 @@ window.APP = window.APP || {};
         /* Ohne erfasstes Beurkundungsdatum gilt der Stichtag — bis dahin
            ist die Einheit nachweislich verkauft. */
         var tB = E.zeitpunkt(p, Z, vkDaten[u.id]);
-        planVerteilen(erloes, tB === null ? tS : tB, true);
+        planVerteilen(erloes, {
+          tBeurk: tB === null ? tS : tB,
+          tUeb: E.zeitpunkt(p, Z, vkUeb[u.id]),
+          verkauft: true
+        }, true);
       });
       /* Der noch nicht verkaufte Rest folgt der geplanten Vermarktung,
          frühestens ab Stichtag. */
       var rest = Math.max(0, ERT.stwe_erloes - verkauftTotal);
-      planVerteilen(rest, (Math.max(Z.t_vk_start, tS) + Math.max(Z.t_vk_ende, tS + 0.1)) / 2, false);
+      planVerteilen(rest, {
+        tBeurk: (Math.max(Z.t_vk_start, tS) + Math.max(Z.t_vk_ende, tS + 0.1)) / 2,
+        tUeb: null, verkauft: false
+      }, false);
     } else {
       var tranchen = [
         { anteil: vq,     t0: Z.t_vk_start, t1: Math.max(Z.t_vk_start + 0.1, Z.t_baustart) },
@@ -978,7 +1034,8 @@ window.APP = window.APP || {};
       ];
       tranchen.forEach(function (tr) {
         if (tr.anteil <= 0) return;
-        planVerteilen(ERT.stwe_erloes * tr.anteil, (tr.t0 + tr.t1) / 2, false);
+        planVerteilen(ERT.stwe_erloes * tr.anteil,
+          { tBeurk: (tr.t0 + tr.t1) / 2, tUeb: null, verkauft: false }, false);
       });
     }
 
@@ -1007,7 +1064,8 @@ window.APP = window.APP || {};
       aus[i] = det.erwerb[i] + det.bau[i] + det.vermarktung[i] + det.betrieb[i];
       ein[i] = det.verkauf[i] + det.miete[i] + det.exit[i];
     }
-    return { N: N, aus: aus, ein: ein, det: det, phasen: phasen };
+    return { N: N, aus: aus, ein: ein, det: det, phasen: phasen,
+             ohne_uebergabe: ohneUebergabe, ohne_uebergabe_n: ohneUebergabeN };
   };
 
   /* ---------------------------------------------------------------
@@ -1309,6 +1367,20 @@ window.APP = window.APP || {};
       nimm('finanzierung.bauzinsen', finKosten, 'Bauzinsen');
     })();
 
+    /* Verkaufte Einheiten ohne Übergabedatum: ihr Anteil an der
+       Übergaberate fliesst nicht. Nach Bauende ist das überfällig. */
+    if (TR.ohne_uebergabe > 0.5) {
+      var ueberfaellig = Z.t_bauende <= Z.t_stichtag;
+      warn.push({ art: ueberfaellig ? 'warn' : 'info',
+        text: (ueberfaellig
+          ? '<b>Die Bauzeit ist abgelaufen</b>, aber bei ' + TR.ohne_uebergabe_n +
+            ' verkauften Einheit(en) fehlt das Übergabedatum. '
+          : 'Bei ' + TR.ohne_uebergabe_n + ' verkauften Einheit(en) fehlt das Übergabedatum. ') +
+          '<b>' + A.fmt(TR.ohne_uebergabe) + ' CHF</b> fliessen deshalb nicht in den ' +
+          'Zahlungsstrom — der Erlös bleibt bestehen, die Finanzierungskosten steigen. ' +
+          'Die Daten stehen im Verkaufsstand neben «Beurkundet am».' });
+    }
+
     if (VKI && VKI.ohne_erloes > 0) {
       warn.push({ art: 'warn', text: 'In der Verkaufsübersicht sind <b>' + VKI.ohne_erloes +
         ' verkaufte Einheit(en) ohne erfassten Erlös</b> — sie zählen mit 0 CHF in Quote und ' +
@@ -1354,7 +1426,8 @@ window.APP = window.APP || {};
         modus: VKI.modus, datum: VKI.datum, name: VKI.name,
         verkauft_n: VKI.verkauft_n, verkauft_chf: VKI.verkauft_chf,
         ohne_erloes: VKI.ohne_erloes, reserviert_n: VKI.reserviert_n,
-        frei_n: VKI.frei_n, quote: vorverkaufIst, einheiten: VKI.einheiten
+        frei_n: VKI.frei_n, quote: vorverkaufIst, einheiten: VKI.einheiten,
+        ohne_uebergabe: TR.ohne_uebergabe, ohne_uebergabe_n: TR.ohne_uebergabe_n
       } : null,
       zahlungsstand: {
         bezahlt: bezahltTotal, offen: Math.max(0, wirksamTotal - bezahltTotal),

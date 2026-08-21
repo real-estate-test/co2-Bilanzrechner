@@ -75,7 +75,19 @@ Eingabe wie `2500*` lässt den bisherigen Wert stehen und markiert das Feld, sta
 zu fallen. Verweise auf andere Felder gibt es bewusst nicht.
 
 **Zahlungsmodalitäten** Der Zahlungsplan beim Verkauf von Stockwerkeigentum lässt sich in
-der Verwaltung firmenweit vorgeben. Je Rate hält das Projekt fest, ob sie **freigegeben**
+der Verwaltung firmenweit vorgeben. Die Fälligkeiten unterscheiden drei Arten: **Vertragstermine je Einheit** (bei Beurkundung,
+3 Tage nach Tagebucheintrag, bei Übergabe), **Bautermine aus dem Modell** (Baustart, Rohbau
+fertig) und **Bautermine von Hand** (Decke UG fertig, Fertigstellung Unterlagsboden). Der
+Tagebucheintrag folgt der Beurkundung nach einer einstellbaren Frist; die beiden von Hand
+freigegebenen Termine werden bis zur Erfassung eines Datums über einen Anteil der Bauzeit
+geschätzt. Fristen und Schätzwerte sind firmenweit vorgegeben und je Projekt übersteuerbar.
+
+«bei Übergabe» braucht das Übergabedatum der Einheit — ohne dieses fliesst die Rate einer
+verkauften Einheit **nicht**. Der Erlös bleibt bestehen, er fehlt nur im Zahlungsstrom, was
+die Finanzierungskosten erhöht. Nach Ablauf der Bauzeit wird das fehlende Datum rot
+markiert und gemeldet.
+
+Je Rate hält das Projekt fest, ob sie **freigegeben**
 (fällig gestellt bzw. bezahlt) ist, und optional das tatsächliche **Zahlungsdatum**. Beides
 sind Projektfakten und bleiben auch dann bearbeitbar, wenn der Plan der Firmenvorgabe
 folgt; sie überleben deren Einsetzen. Wirkung: eine freigegebene Rate fliesst zum Termin

@@ -6,7 +6,7 @@ window.APP = window.APP || {};
 (function (A) {
   'use strict';
 
-  A.SCHEMA = 11;
+  A.SCHEMA = 12;
 
   /* ---------------------------------------------------------------
      Stammlisten
@@ -256,11 +256,30 @@ window.APP = window.APP || {};
     }
   };
 
+  /* Fälligkeiten der Kaufpreisraten, chronologisch. Drei Arten:
+       Vertragstermine je Einheit   — beurkundung, tagebuch, uebergabe
+       Bautermine aus dem Modell    — baustart, rohbau
+       Bautermine von Hand          — decke_ug, unterlagsboden
+     Die Unterscheidung steuert, woher der Zeitpunkt kommt. */
   A.ZAHLUNG_BEZUG = {
     beurkundung:    'bei Beurkundung',
+    tagebuch:       '3 Tage nach Tagebucheintrag',
     baustart:       'bei Baustart',
+    decke_ug:       'Decke UG fertig',
     rohbau:         'bei Rohbau fertig',
-    fertigstellung: 'bei Übergabe'
+    unterlagsboden: 'Fertigstellung Unterlagsboden',
+    uebergabe:      'bei Übergabe'
+  };
+
+  /* Welche Fälligkeit ihren Termin woher bezieht. */
+  A.ZAHLUNG_ART = {
+    beurkundung:    'einheit',    // Beurkundungsdatum der Einheit
+    tagebuch:       'einheit',    // Beurkundung + Fristen
+    uebergabe:      'einheit',    // eigenes Übergabedatum, ohne das nichts fliesst
+    baustart:       'modell',
+    rohbau:         'modell',
+    decke_ug:       'hand',       // Schätzung aus der Bauzeit, bis ein Datum steht
+    unterlagsboden: 'hand'
   };
 
   A.BLOCK_LABELS = {
@@ -502,6 +521,16 @@ window.APP = window.APP || {};
            Öffnen des Projektes eingesetzt wird. true = dieses Projekt
            führt einen eigenen Plan und bleibt von der Vorgabe unberührt. */
         zahlungsplan_eigen: false,
+        /* Fristen rund um die Beurkundung und Schätzwerte für die beiden
+           von Hand freigegebenen Bautermine. «eigen» wird gesetzt, sobald
+           ein Wert von der Firmenvorgabe abweicht. */
+        fristen: {
+          eigen: false,
+          tagebuch_tage: 10,          // Beurkundung → Tagebucheintrag
+          nach_tagebuch_tage: 3,      // Tagebucheintrag → Zahlung
+          decke_ug_pct: 20,           // % der Bauzeit, bis ein Datum erfasst ist
+          unterlagsboden_pct: 75
+        },
         /* «frei» hält fest, dass eine Rate fällig gestellt bzw. bezahlt
            ist; «datum» das tatsächliche Zahlungsdatum. Beides sind
            Projektfakten und keine Firmenvorgabe — sie überleben deshalb
@@ -510,7 +539,7 @@ window.APP = window.APP || {};
           { label: 'Beurkundung / Anzahlung', anteil: 20, bezug: 'beurkundung' },
           { label: 'Baustart',                anteil: 30, bezug: 'baustart' },
           { label: 'Rohbau fertig',           anteil: 30, bezug: 'rohbau' },
-          { label: 'Übergabe',                anteil: 20, bezug: 'fertigstellung' }
+          { label: 'Übergabe',                anteil: 20, bezug: 'uebergabe' }
         ]
       },
 
@@ -606,9 +635,11 @@ window.APP = window.APP || {};
         stand: null,                     // { datum, geholt, einheiten: [...] }
         manuell: [],                     // eigene Einheitenliste, gleiche Struktur
         preise: {},                      // Erlös je Einheiten-Nr, manuell erfasst
-        /* Beurkundungsdatum je Einheiten-Nr. Es steht bewusst neben dem
-           eingefrorenen Stand, damit es eine Aktualisierung überlebt. */
-        daten: {}
+        /* Beurkundungs- und Übergabedatum je Einheiten-Nr. Beide stehen
+           bewusst neben dem eingefrorenen Stand, damit sie eine
+           Aktualisierung überleben. */
+        daten: {},
+        uebergaben: {}
       },
 
       ist: {},                           // Ist-Werte je Kostenzeile
@@ -985,6 +1016,20 @@ window.APP = window.APP || {};
           if (r.frei === undefined) r.frei = false;
           if (r.datum === undefined) r.datum = '';
         });
+      }
+    }
+
+    /* --- Schema 11 -> 12: «bei Übergabe» bezieht seinen Termin neu aus
+       dem Übergabedatum der Einheit statt aus dem Bauende. Der Schlüssel
+       heisst deshalb «uebergabe»; «fertigstellung» wird umgeschrieben. -- */
+    if (version < 12) {
+      if (p.vermarktung && Array.isArray(p.vermarktung.zahlungsplan)) {
+        p.vermarktung.zahlungsplan.forEach(function (r) {
+          if (r.bezug === 'fertigstellung') r.bezug = 'uebergabe';
+        });
+      }
+      if (p.verkauf && (!p.verkauf.uebergaben || typeof p.verkauf.uebergaben !== 'object')) {
+        p.verkauf.uebergaben = {};
       }
     }
 

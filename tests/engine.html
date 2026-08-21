@@ -366,6 +366,9 @@
     { id: 'A4', gruppe: 'Haus A', zimmer: 2.5, flaeche: 70, geschoss: '3', art: 'unit', status: 'available', preis: 700000 }
   ] };
   vk.verkauf.preise = { A1: stweV * 0.35, A2: stweV * 0.25 };
+  /* Ohne Übergabedatum fliesst die Übergaberate nicht — für die
+     Summenprüfung werden die Daten deshalb erfasst. */
+  vk.verkauf.uebergaben = { A1: '2030-03-01', A2: '2030-03-01' };
   var rvk1 = E.compute(vk);
   pruefe('Echte Vorverkaufsquote = erfasster Erlös ÷ STWE-Erlös',
     60, rvk1.fin.vorverkauf_wirksam, 0.1);
@@ -402,6 +405,7 @@
   var rmv0 = E.compute(mv);
   var stweM = rmv0.ertraege.stwe_erloes;
   mv.verkauf.modus = 'manuell';
+  mv.verkauf.uebergaben = { W1: '2030-03-01', W2: '2030-03-01' };
   mv.verkauf.manuell = [
     { id: 'W1', gruppe: 'Haus A', zimmer: 4.5, flaeche: 120, geschoss: '1', art: 'unit', status: 'sold', preis: stweM * 0.35 },
     { id: 'W2', gruppe: 'Haus A', zimmer: 3.5, flaeche: 95, geschoss: '2', art: 'unit', status: 'sold', preis: stweM * 0.25 },
@@ -432,7 +436,11 @@
   pruefe('Eigene Liste: fehlender Betrag warnt',
     1, rmv2.warnungen.some(function (w) { return /ohne erfassten Erlös/.test(w.text); }) ? 1 : 0);
 
-  /* ---- Freigabe der Raten und Beurkundungsdatum ------------------- */
+  /* ---- Freigabe der Raten und Vertragsdaten ----------------------- */
+  /* Vertragstermine (Beurkundung, Tagebuch, Übergabe) sind Fakten der
+     Einheit und fliessen zu ihrem Datum. Bautermine (Baustart, Rohbau,
+     Decke UG, Unterlagsboden) fliessen frühestens am Stichtag, solange
+     sie nicht freigegeben sind. */
   var fz = A.defaultProject();
   fz.startdatum = '2026-01-01'; fz.stichtag = '2028-01-01';
   var rfz0 = E.compute(fz);
@@ -446,45 +454,127 @@
     { id: 'W2', gruppe: 'A', zimmer: 3.5, flaeche: 95, art: 'unit', status: 'sold', preis: stweF * 0.30 },
     { id: 'W3', gruppe: 'A', zimmer: 2.5, flaeche: 70, art: 'unit', status: 'available', preis: stweF * 0.40 }
   ];
+  fz.verkauf.daten = { W1: '2026-06-01', W2: '2027-06-01' };
+  fz.verkauf.uebergaben = { W1: '2030-03-01', W2: '2030-03-01' };
   var rfz1 = E.compute(fz);
   pruefe('Verkaufsstand verteilt weiterhin genau den Erlös', stweF, summeVk(rfz1), 1);
 
   /* Jahre, die vor dem Stichtag beginnen. Der Stichtag liegt selten genau
      auf einer Jahresgrenze — das 365.25-Tage-Jahr lässt einen kleinen Rest
-     in das Jahr fallen, in dem der Stichtag liegt. Die Prüfungen tragen
-     deshalb eine Toleranz von 1 % des Erlöses. */
+     in das Jahr fallen, in dem der Stichtag liegt. */
   var vorStichtag = function (res) {
     var t = res.zeit.t_stichtag, s2 = 0;
     res.reihen.det.verkauf.forEach(function (x, j) { if (j < t) s2 += x; });
     return s2;
   };
-  pruefe('Ohne Freigabe fliesst so gut wie nichts vor dem Stichtag',
-    0, vorStichtag(rfz1), stweF * 0.01);
+  /* Die Anzahlung ist ein Vertragstermin: sie fliesst zum Beurkundungs-
+     datum, ohne dass etwas freigegeben werden müsste. */
+  pruefe('Anzahlung folgt dem Beurkundungsdatum je Einheit',
+    stweF * 0.60 * 0.20, vorStichtag(rfz1), stweF * 0.01);
 
-  /* Beurkundungsdatum allein bewegt nichts, solange nichts frei ist */
-  fz.verkauf.daten = { W1: '2026-06-01', W2: '2027-06-01' };
-  var rfz2 = E.compute(fz);
-  pruefe('Datum allein verschiebt noch keine Zahlung',
-    rfz1.fin.bauzinsen, rfz2.fin.bauzinsen, 1);
-
-  /* Freigegebene Anzahlung fliesst zum Beurkundungsdatum */
-  fz.vermarktung.zahlungsplan[0].frei = true;
-  var rfz3 = E.compute(fz);
-  pruefe('Freigabe zieht die Anzahlung vor', 1, rfz3.fin.bauzinsen < rfz2.fin.bauzinsen ? 1 : 0);
-  pruefe('Freigegebene Anzahlung liegt vor dem Stichtag',
-    1, vorStichtag(rfz3) > stweF * 0.05 ? 1 : 0);
-  pruefe('Auch mit Freigabe bleibt die Erlössumme gleich', stweF, summeVk(rfz3), 1);
-  /* Anzahlung = 20 % der beiden verkauften Einheiten, je Einheit zu ihrem
-     Datum — 2026 und 2027 je rund eine Rate. */
-  pruefe('Anzahlung folgt dem Datum je Einheit',
-    stweF * 0.60 * 0.20, vorStichtag(rfz3), stweF * 0.01);
+  /* Die Baustartrate dagegen ist ein Bautermin. Baustart liegt hier vor
+     dem Stichtag; ohne Freigabe wird sie auf den Stichtag geschoben. */
+  var bt = A.migrate(A.clone(fz));
+  bt.zeit.dauer_entwicklung = 6; bt.zeit.dauer_bewilligung = 3; bt.zeit.dauer_vorbereitung = 1;
+  var rbt1 = E.compute(bt);
+  bt.vermarktung.zahlungsplan[1].frei = true;      // Baustart erreicht
+  var rbt2 = E.compute(bt);
+  pruefe('Freigabe zieht die Baustartrate vor',
+    1, rbt2.fin.bauzinsen < rbt1.fin.bauzinsen ? 1 : 0);
+  pruefe('Freigabe lässt die Erlössumme unberührt', summeVk(rbt1), summeVk(rbt2), 1);
 
   /* Ein erfasstes Zahlungsdatum geht dem Plan vor */
-  fz.vermarktung.zahlungsplan[0].datum = '2026-07-15';
-  var rfz4 = E.compute(fz);
-  pruefe('Zahlungsdatum bündelt beide Anzahlungen',
-    1, rfz4.fin.bauzinsen < rfz3.fin.bauzinsen ? 1 : 0);
-  pruefe('Zahlungsdatum lässt die Erlössumme unberührt', stweF, summeVk(rfz4), 1);
+  bt.vermarktung.zahlungsplan[1].datum = '2026-07-15';
+  var rbt3 = E.compute(bt);
+  pruefe('Zahlungsdatum zieht die Rate weiter vor',
+    1, rbt3.fin.bauzinsen < rbt2.fin.bauzinsen ? 1 : 0);
+  pruefe('Zahlungsdatum lässt die Erlössumme unberührt', summeVk(rbt2), summeVk(rbt3), 1);
+
+  /* ---- Neue Fälligkeiten ------------------------------------------ */
+  var nf = A.defaultProject();
+  nf.startdatum = '2026-01-01'; nf.stichtag = '2028-01-01';
+  var rnf0 = E.compute(nf);
+  var stweN = rnf0.ertraege.stwe_erloes;
+  var summeN = function (res) {
+    return res.reihen.det.verkauf.reduce(function (s2, x) { return s2 + x; }, 0);
+  };
+  pruefe('Ohne Verkaufsstand fliesst der ganze Erlös', stweN, summeN(rnf0), 1);
+
+  nf.verkauf.modus = 'manuell';
+  nf.verkauf.manuell = [
+    { id: 'W1', gruppe: 'A', zimmer: 4.5, flaeche: 120, art: 'unit', status: 'sold', preis: stweN * 0.30 },
+    { id: 'W2', gruppe: 'A', zimmer: 3.5, flaeche: 95, art: 'unit', status: 'sold', preis: stweN * 0.30 },
+    { id: 'W3', gruppe: 'A', zimmer: 2.5, flaeche: 70, art: 'unit', status: 'available', preis: stweN * 0.40 }
+  ];
+  nf.verkauf.daten = { W1: '2026-06-01', W2: '2026-09-01' };
+
+  /* «bei Übergabe» ohne Datum: der Anteil der verkauften Einheiten fliesst
+     nicht — 20 % des Plans auf 60 % verkauften Erlös. */
+  var rnf1 = E.compute(nf);
+  pruefe('Übergaberate ohne Datum fliesst nicht',
+    stweN * 0.60 * 0.20, rnf1.reihen.ohne_uebergabe, 1);
+  pruefe('Sie fehlt genau im Zahlungsstrom',
+    stweN - stweN * 0.60 * 0.20, summeN(rnf1), 1);
+  pruefe('Zwei Einheiten ohne Übergabedatum', 2, rnf1.reihen.ohne_uebergabe_n);
+  pruefe('Der Erlös selbst bleibt unberührt', stweN, rnf1.ertraege.stwe_erloes, 1);
+  pruefe('Vor Bauende ist es ein Hinweis, keine Warnung',
+    1, rnf1.warnungen.some(function (w) {
+      return /Übergabedatum/.test(w.text) && w.art === 'info'; }) ? 1 : 0);
+
+  /* Mit Übergabedaten fliesst wieder alles */
+  nf.verkauf.uebergaben = { W1: '2029-03-01', W2: '2029-06-01' };
+  var rnf2 = E.compute(nf);
+  pruefe('Mit Übergabedatum fliesst der ganze Erlös', stweN, summeN(rnf2), 1);
+  pruefe('Nichts bleibt liegen', 0, rnf2.reihen.ohne_uebergabe, 1);
+
+  /* Nach Bauende ohne Datum wird daraus eine Warnung */
+  var spaet = A.migrate(A.clone(nf));
+  spaet.verkauf.uebergaben = {};
+  spaet.stichtag = '2033-01-01';
+  var rspaet = E.compute(spaet);
+  pruefe('Nach Bauende wird daraus eine Warnung',
+    1, rspaet.warnungen.some(function (w) {
+      return /Übergabedatum/.test(w.text) && w.art === 'warn'; }) ? 1 : 0);
+
+  /* «3 Tage nach Tagebucheintrag» = Beurkundung + 10 + 3 Tage */
+  var tgb = A.defaultProject();
+  tgb.startdatum = '2026-01-01'; tgb.stichtag = '2028-01-01';
+  tgb.vermarktung.zahlungsplan = [
+    { label: 'Tagebuch', anteil: 100, bezug: 'tagebuch', frei: false, datum: '' }
+  ];
+  var stweT = E.compute(tgb).ertraege.stwe_erloes;
+  tgb.verkauf.modus = 'manuell';
+  tgb.verkauf.manuell = [
+    { id: 'T1', gruppe: 'A', zimmer: 4.5, flaeche: 120, art: 'unit', status: 'sold', preis: stweT }
+  ];
+  tgb.verkauf.daten = { T1: '2026-06-01' };
+  var rtgb = E.compute(tgb);
+  pruefe('Tagebuchrate verteilt den ganzen Erlös', stweT, summeN(rtgb), 1);
+  /* Beurkundung 0.4137 J + 13 Tage = 0.4493 J — die Zahlung liegt im
+     ersten Projektjahr, nicht erst am Stichtag. */
+  pruefe('Tagebuchrate liegt im ersten Projektjahr',
+    1, rtgb.reihen.det.verkauf[0] > stweT * 0.9 ? 1 : 0);
+  /* Längere Frist verschiebt den Zufluss nach hinten */
+  tgb.vermarktung.fristen = { eigen: true, tagebuch_tage: 200, nach_tagebuch_tage: 3,
+    decke_ug_pct: 20, unterlagsboden_pct: 75 };
+  var rtgb2 = E.compute(tgb);
+  pruefe('Längere Frist verschiebt den Zufluss',
+    1, rtgb2.reihen.det.verkauf[0] < rtgb.reihen.det.verkauf[0] ? 1 : 0);
+
+  /* Decke UG: Schätzung aus der Bauzeit, bis ein Datum erfasst ist */
+  var du = A.defaultProject();
+  du.startdatum = '2026-01-01'; du.stichtag = '2026-02-01';
+  du.vermarktung.zahlungsplan = [
+    { label: 'Decke UG', anteil: 100, bezug: 'decke_ug', frei: true, datum: '' }
+  ];
+  var rdu1 = E.compute(du);
+  du.vermarktung.fristen = { eigen: true, tagebuch_tage: 10, nach_tagebuch_tage: 3,
+    decke_ug_pct: 90, unterlagsboden_pct: 95 };
+  var rdu2 = E.compute(du);
+  pruefe('Späterer Schätzwert verschiebt die Decke-UG-Rate',
+    1, summeN(rdu2) > 0 && rdu2.fin.bauzinsen > rdu1.fin.bauzinsen ? 1 : 0);
+  pruefe('Decke-UG-Rate verteilt den ganzen Erlös',
+    rdu2.ertraege.stwe_erloes, summeN(rdu2), 1);
 
   /* ---- Firmenvorgabe Zahlungsmodalitäten ------------------------- */
   /* Der Rechenkern kennt nur den Plan im Projekt; die Vorgabe wird beim

@@ -74,7 +74,7 @@ werden gespeichert und wandern über den Server zu allen Mitarbeitenden. Eine un
 Eingabe wie `2500*` lässt den bisherigen Wert stehen und markiert das Feld, statt auf null
 zu fallen. Verweise auf andere Felder gibt es bewusst nicht.
 
-**Verkaufsstand** Drei Herkünfte: *kein Verkauf*, die zentrale *Verkaufsübersicht*
+**Verkaufsstand** (Seite Vermarktung & Verkauf, direkt über dem Zahlungsplan) Drei Herkünfte: *kein Verkauf*, die zentrale *Verkaufsübersicht*
 (real-estate-test.github.io/verkaufs-bersicht) oder eine *eigene Liste* für Projekte ohne
 öffentliche Vermarktungsseite. Beide Quellen liefern dieselbe Struktur und wirken gleich —
 die eigene Liste wird von Hand gepflegt (Status je Einheit, Betrag als Erlös) und lässt

@@ -1020,9 +1020,6 @@ window.APP = window.APP || {};
           'ohne verkaufte STWE-Flächen')
       ]));
     });
-    /* --- Verkaufsstand aus der Verkaufsübersicht -------------------- */
-    out.appendChild(verkaufsstandPanel(p));
-
     out.appendChild(U.panel('Zusammenzug Verwertung', null, [zus]));
 
     return out;
@@ -1125,7 +1122,8 @@ window.APP = window.APP || {};
         } }),
         p.spiegel && p.spiegel.aktiv && p.spiegel.einheiten.length
           ? el('button', { class: 'schreibend', text: 'aus Wohnungsspiegel übernehmen',
-              title: 'Legt für jede Einheit des Spiegels eine Zeile an — Status «frei», danach von Hand setzen.',
+              title: 'Legt für jede Einheit des Wohnungsspiegels (Seite Erträge & Verwertung) ' +
+                     'eine Zeile an — Status «frei», danach von Hand setzen.',
               onclick: function () {
                 var da = {};
                 p.verkauf.manuell.forEach(function (u) { da[String(u.id).trim().toLowerCase()] = true; });
@@ -1327,8 +1325,9 @@ window.APP = window.APP || {};
 
   V.vermarktung = function (p) {
     init();
-    var out = el('div', {}, [U.kopf('Vermarktungskosten',
-      'Provisionen, Marketing und der Zahlungsplan beim Verkauf von Stockwerkeigentum.')]);
+    var out = el('div', {}, [U.kopf('Vermarktung',
+      'Provisionen, Marketing, Verkaufsstand und der Zahlungsplan beim Verkauf von ' +
+      'Stockwerkeigentum.')]);
 
     out.appendChild(U.panel('Provisionen & Marketing', null, [
       U.body([
@@ -1379,6 +1378,10 @@ window.APP = window.APP || {};
     zp.push(el('tr', { class: 'total' }, [
       el('td', { text: 'Summe' }), el('td', {}), summeZelle, summeHinweis
     ]));
+
+    /* Der Verkaufsstand steht vor dem Zahlungsplan: er bestimmt, für
+       welche Einheiten die Raten überhaupt laufen. */
+    out.appendChild(verkaufsstandPanel(p));
 
     out.appendChild(U.panel('Zahlungsplan Stockwerkeigentum',
       'steuert, wann die Käuferzahlungen den Baukredit entlasten', [

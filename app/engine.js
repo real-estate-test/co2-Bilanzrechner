@@ -1275,7 +1275,7 @@ window.APP = window.APP || {};
     if (VKI && VKI.ohne_erloes > 0) {
       warn.push({ art: 'warn', text: 'In der Verkaufsübersicht sind <b>' + VKI.ohne_erloes +
         ' verkaufte Einheit(en) ohne erfassten Erlös</b> — sie zählen mit 0 CHF in Quote und ' +
-        'Erlösverteilung. Auf der Seite «Erträge & Verwertung» die Erlöse erfassen oder die ' +
+        'Erlösverteilung. Auf der Seite «Vermarktung & Verkauf» die Erlöse erfassen oder die ' +
         'Vorschläge übernehmen.' });
     }
 

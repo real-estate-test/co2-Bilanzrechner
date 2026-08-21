@@ -21,7 +21,7 @@ window.APP = window.APP || {};
     { id: 'baukosten',    ix: '5',  label: 'Baukosten' },
     { id: 'ertraege',     ix: '6',  label: 'Erträge & Verwertung' },
     { id: 'betrieb',      ix: '7',  label: 'Betrieb' },
-    { id: 'vermarktung',  ix: '8',  label: 'Vermarktung' },
+    { id: 'vermarktung',  ix: '8',  label: 'Vermarktung & Verkauf' },
     { id: 'finanzierung', ix: '9',  label: 'Finanzierung' },
     { id: 'ergebnis',     ix: '→',  label: 'Ergebnis',  gruppe: 'aus' },
     { id: 'analyse',      ix: '→',  label: 'Analyse' },

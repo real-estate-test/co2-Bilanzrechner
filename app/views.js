@@ -1035,22 +1035,29 @@ window.APP = window.APP || {};
   /* Verkaufsstand: Zuordnung zur zentralen Verkaufsübersicht, Erlöse je
      verkaufte Einheit und die Wirkung auf Quote und Finanzierung. */
   function verkaufsstandPanel(p) {
-    if (!p.verkauf) p.verkauf = { projekt_id: '', stand: null, preise: {} };
+    if (!p.verkauf) p.verkauf = { modus: '', projekt_id: '', stand: null, manuell: [], preise: {} };
+    if (!Array.isArray(p.verkauf.manuell)) p.verkauf.manuell = [];
     var stand = A.verkauf.gespeichert();
     var koerper = [];
+    var manuell = p.verkauf.modus === 'manuell';
 
-    var auswahl = [{ id: '', label: '— keine Zuordnung —' }]
-      .concat(((stand && stand.projekte) || []).map(function (x) {
-        return { id: x.id, label: x.name };
-      }));
-    /* Eine bestehende Zuordnung bleibt wählbar, auch wenn die Übersicht
-       das Projekt nicht mehr führt. */
-    if (p.verkauf.projekt_id && !auswahl.some(function (o) { return o.id === p.verkauf.projekt_id; })) {
-      auswahl.push({ id: p.verkauf.projekt_id, label: p.verkauf.projekt_id + ' (nicht in der Übersicht)' });
-    }
+    var kopf = [U.seg(p, 'verkauf.modus', [
+      { id: '', label: 'kein Verkauf', hint: 'Es ist nichts verkauft' },
+      { id: 'uebersicht', label: 'Verkaufsübersicht', hint: 'Projekt mit öffentlicher Vermarktungsseite' },
+      { id: 'manuell', label: 'eigene Liste', hint: 'Projekt ohne öffentliche Verkaufsseite' }
+    ], 'Herkunft des Verkaufsstands')];
 
-    koerper.push(U.body([
-      U.sel(p, 'verkauf.projekt_id', auswahl, 'Projekt in der Verkaufsübersicht', {
+    if (p.verkauf.modus === 'uebersicht') {
+      var auswahl = [{ id: '', label: '— noch nicht zugeordnet —' }]
+        .concat(((stand && stand.projekte) || []).map(function (x) {
+          return { id: x.id, label: x.name };
+        }));
+      /* Eine bestehende Zuordnung bleibt wählbar, auch wenn die Übersicht
+         das Projekt nicht mehr führt. */
+      if (p.verkauf.projekt_id && !auswahl.some(function (o) { return o.id === p.verkauf.projekt_id; })) {
+        auswahl.push({ id: p.verkauf.projekt_id, label: p.verkauf.projekt_id + ' (nicht in der Übersicht)' });
+      }
+      kopf.push(U.sel(p, 'verkauf.projekt_id', auswahl, 'Projekt in der Verkaufsübersicht', {
         ohneBadge: true,
         onchange: function () {
           A.verkauf.uebernehmen(p, stand);
@@ -1058,8 +1065,8 @@ window.APP = window.APP || {};
         },
         hilfe: 'Taucht das Projekt in der Übersicht nicht auf, ist nichts verkauft. ' +
                'Aktualisiert wird von Hand — Schalter im Portfolio und in der Kopfleiste.'
-      }),
-      el('div', { class: 'f' }, [
+      }));
+      kopf.push(el('div', { class: 'f' }, [
         el('label', {}, [el('span', { text: 'Stand der Übersicht' })]),
         el('div', { class: 'kachel' }, [
           el('div', { class: 'v', style: 'font-size:15px',
@@ -1068,10 +1075,82 @@ window.APP = window.APP || {};
           el('div', { class: 's', text: p.verkauf.stand && p.verkauf.stand.geholt
             ? 'übernommen am ' + p.verkauf.stand.geholt : '' })
         ])
-      ])
-    ], 'c3'));
+      ]));
+    }
+    koerper.push(U.body(kopf, 'c3'));
 
-    var info = p.verkauf.projekt_id ? A.engine.verkaufInfo(p) : null;
+    var info = p.verkauf.modus ? A.engine.verkaufInfo(p) : null;
+
+    /* Eigene Liste: dieselbe Struktur wie die Übersicht, nur von Hand
+       gepflegt — damit rechnet der Kern ohne Unterschied. */
+    if (manuell) {
+      var mz = p.verkauf.manuell.map(function (u, i) {
+        var tr = el('tr', {});
+        var nr = el('input', { type: 'text', value: u.id || '' });
+        nr.addEventListener('input', function () { u.id = nr.value; A.recompute(); A.markDirty(); });
+        tr.appendChild(el('td', { style: 'width:82px' }, [nr]));
+        var gr = el('input', { type: 'text', value: u.gruppe || '', placeholder: 'Haus A' });
+        gr.addEventListener('input', function () { u.gruppe = gr.value; A.markDirty(); });
+        tr.appendChild(el('td', { style: 'width:120px' }, [gr]));
+        tr.appendChild(el('td', { style: 'width:66px' }, [U.zelleNum(u, 'zimmer', { dez: 1 })]));
+        tr.appendChild(el('td', { style: 'width:80px' }, [U.zelleNum(u, 'flaeche', { dez: 0 })]));
+        tr.appendChild(el('td', { style: 'width:132px' }, [U.zelleSel(u, 'status', [
+          { id: 'available', label: 'frei' },
+          { id: 'reserved', label: 'reserviert' },
+          { id: 'sold', label: 'verkauft' }
+        ], { rerender: true })]));
+        tr.appendChild(el('td', { style: 'width:126px' }, [
+          U.zelleNum(u, 'preis', { gross: true, platzhalter: 'CHF' })]));
+        tr.appendChild(U.dTd(function () {
+          return u.flaeche > 0 && u.preis > 0 ? fmt(u.preis / u.flaeche) + ' /m²' : '—';
+        }, 'muted'));
+        tr.appendChild(el('td', { class: 'w1' }, [el('button', { class: 'ghost sm schreibend', text: '×',
+          onclick: function () { p.verkauf.manuell.splice(i, 1); A.recompute(); A.render(); } })]));
+        return tr;
+      });
+      if (!mz.length) {
+        mz.push(el('tr', {}, [el('td', { colspan: 8, class: 'muted',
+          text: 'Noch keine Einheit erfasst.' })]));
+      }
+      koerper.push(el('div', { class: 'panelbody' }, [U.tabelle([
+        { label: 'Nr.' }, { label: 'Haus / Gruppe' }, { label: 'Zi.', n: true },
+        { label: 'Fläche m²', n: true }, { label: 'Status' },
+        { label: 'Preis bzw. Erlös CHF', n: true }, { label: 'CHF/m²', n: true }, { label: '' }
+      ], mz)]));
+      koerper.push(el('div', { class: 'panelbody' }, [
+        el('button', { class: 'schreibend', text: '+ Einheit', onclick: function () {
+          p.verkauf.manuell.push({ id: 'Nr. ' + (p.verkauf.manuell.length + 1), gruppe: '',
+            zimmer: 3.5, flaeche: 0, geschoss: '', art: 'unit', status: 'available', preis: 0 });
+          A.recompute(); A.render();
+        } }),
+        p.spiegel && p.spiegel.aktiv && p.spiegel.einheiten.length
+          ? el('button', { class: 'schreibend', text: 'aus Wohnungsspiegel übernehmen',
+              title: 'Legt für jede Einheit des Spiegels eine Zeile an — Status «frei», danach von Hand setzen.',
+              onclick: function () {
+                var da = {};
+                p.verkauf.manuell.forEach(function (u) { da[String(u.id).trim().toLowerCase()] = true; });
+                var n = 0;
+                p.spiegel.einheiten.forEach(function (e) {
+                  var anz = Math.max(1, Math.round(e.anzahl || 1));
+                  for (var i = 0; i < anz; i++) {
+                    var nr = String(e.nr || '') + (anz > 1 ? '.' + (i + 1) : '');
+                    if (da[nr.trim().toLowerCase()]) continue;
+                    p.verkauf.manuell.push({ id: nr, gruppe: '', zimmer: e.zimmer || 0,
+                      flaeche: e.flaeche || 0, geschoss: String(e.geschoss || ''), art: 'unit',
+                      status: 'available', preis: e.preis || 0 });
+                    n++;
+                  }
+                });
+                A.recompute(); A.render();
+                A.meldung('ok', n + ' Einheit(en) aus dem Wohnungsspiegel übernommen — Status setzen.');
+              } })
+          : null,
+        U.hinweis('info', 'Für Projekte <b>ohne öffentliche Verkaufsseite</b>. Die Liste wird von ' +
+          'Hand gepflegt und wirkt genau wie die zentrale Übersicht: verkaufte Einheiten gelten als ' +
+          'per Stichtag beurkundet, ihr Betrag zählt als Erlös, reservierte werden ausgewiesen, ' +
+          'aber nicht gerechnet.')
+      ]));
+    }
 
     if (info) {
       var kacheln = el('div', { class: 'panelbody' });
@@ -1089,7 +1168,7 @@ window.APP = window.APP || {};
       });
       koerper.push(kacheln);
 
-      var zeilen = info.einheiten.map(function (u) {
+      var zeilen = manuell ? [] : info.einheiten.map(function (u) {
         var tr = el('tr', {});
         tr.appendChild(el('td', { text: u.id }));
         tr.appendChild(el('td', { class: 'muted', text: u.gruppe }));
@@ -1121,14 +1200,14 @@ window.APP = window.APP || {};
         return tr;
       });
 
-      koerper.push(el('div', { class: 'panelbody' }, [U.tabelle([
+      if (!manuell) koerper.push(el('div', { class: 'panelbody' }, [U.tabelle([
         { label: 'Nr.' }, { label: 'Haus / Gruppe', w: '14%' }, { label: 'Zi.', n: true, w: '5%' },
         { label: 'Fläche', n: true, w: '9%' }, { label: 'Status', w: '9%' },
         { label: 'Preis Übersicht', n: true, w: '11%' },
         { label: 'Erlös CHF', n: true, w: '12%' }, { label: 'Herkunft Vorschlag', w: '20%' }
       ], zeilen)]));
 
-      koerper.push(el('div', { class: 'panelbody' }, [
+      if (!manuell) koerper.push(el('div', { class: 'panelbody' }, [
         el('button', { class: 'schreibend', text: 'Vorschläge übernehmen',
           title: 'Füllt nur leere Erlösfelder — von Hand Erfasstes bleibt stehen.',
           onclick: function () {
@@ -1147,14 +1226,16 @@ window.APP = window.APP || {};
           'Erlös zählen mit 0 CHF. Verkaufte gelten als per Stichtag beurkundet, die Raten ' +
           'folgen dem Zahlungsplan der Vermarktung.')
       ]));
-    } else if (p.verkauf.projekt_id) {
+    } else if (p.verkauf.modus === 'uebersicht' && p.verkauf.projekt_id) {
       koerper.push(el('div', { class: 'panelbody' }, [
         U.hinweis('info', 'Für die Zuordnung liegt noch kein übernommener Stand vor — im ' +
           '<b>Portfolio</b> oder in der Kopfleiste «Verkaufsstand aktualisieren» ausführen.')
       ]));
     }
 
-    return U.panel('Verkaufsstand', 'Status aus der zentralen Verkaufsübersicht, Erlöse von Hand', koerper);
+    return U.panel('Verkaufsstand',
+      manuell ? 'eigene Liste — für Projekte ohne öffentliche Verkaufsseite'
+              : 'Status aus der zentralen Verkaufsübersicht, Erlöse von Hand', koerper);
   }
 
   V.betrieb = function (p) {

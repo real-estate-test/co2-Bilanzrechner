@@ -74,8 +74,11 @@ werden gespeichert und wandern über den Server zu allen Mitarbeitenden. Eine un
 Eingabe wie `2500*` lässt den bisherigen Wert stehen und markiert das Feld, statt auf null
 zu fallen. Verweise auf andere Felder gibt es bewusst nicht.
 
-**Verkaufsstand** Jedes Projekt lässt sich einem Projekt der zentralen
-Verkaufsübersicht (real-estate-test.github.io/verkaufs-bersicht) zuordnen. Geladen wird
+**Verkaufsstand** Drei Herkünfte: *kein Verkauf*, die zentrale *Verkaufsübersicht*
+(real-estate-test.github.io/verkaufs-bersicht) oder eine *eigene Liste* für Projekte ohne
+öffentliche Vermarktungsseite. Beide Quellen liefern dieselbe Struktur und wirken gleich —
+die eigene Liste wird von Hand gepflegt (Status je Einheit, Betrag als Erlös) und lässt
+sich aus dem Wohnungsspiegel vorbefüllen. Bei der Übersicht wird jedes Projekt zugeordnet. Geladen wird
 ausschliesslich von Hand — Schalter im Portfolio und in der Kopfleiste; der Stand wird am
 Projekt eingefroren, damit Rechenkern und Snapshots reproduzierbar bleiben, und im
 Firmenbetrieb zentral abgelegt, sodass alle denselben Stand sehen. Die Übersicht liefert

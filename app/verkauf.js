@@ -118,7 +118,9 @@ window.APP = window.APP || {};
   /* Den Auszug des zugeordneten Projekts im Projekt einfrieren.
      Manuell erfasste Erlöse bleiben dabei immer stehen. */
   VK.uebernehmen = function (p, stand) {
-    if (!p.verkauf) p.verkauf = { projekt_id: '', stand: null, preise: {} };
+    if (!p.verkauf) p.verkauf = { modus: '', projekt_id: '', stand: null, manuell: [], preise: {} };
+    /* Eine eigene Liste wird nie von aussen überschrieben. */
+    if (p.verkauf.modus === 'manuell') return false;
     if (!p.verkauf.projekt_id) { p.verkauf.stand = null; return false; }
     var quelle = (stand && stand.projekte || []).find(function (x) {
       return x.id === p.verkauf.projekt_id;
@@ -143,7 +145,7 @@ window.APP = window.APP || {};
   VK.aktualisierenAlle = function () {
     return VK.holen().then(function (stand) {
       var projekte = A.store.alle(true).filter(function (q) {
-        return q.verkauf && q.verkauf.projekt_id;
+        return q.verkauf && q.verkauf.modus === 'uebersicht' && q.verkauf.projekt_id;
       });
       var kette = Promise.resolve(0);
       projekte.forEach(function (q) {
@@ -170,8 +172,11 @@ window.APP = window.APP || {};
      --------------------------------------------------------------- */
 
   VK.vorschlag = function (p, einheit) {
-    var st = p.verkauf && p.verkauf.stand;
-    if (einheit.preis > 0) return { wert: einheit.preis, quelle: 'Preis der Übersicht' };
+    var v = p.verkauf || {};
+    var alle = v.modus === 'manuell'
+      ? (Array.isArray(v.manuell) ? v.manuell : [])
+      : ((v.stand && v.stand.einheiten) || []);
+    if (einheit.preis > 0) return { wert: einheit.preis, quelle: 'Preis der Quelle' };
 
     if (p.spiegel && p.spiegel.aktiv && Array.isArray(p.spiegel.einheiten)) {
       var nr = String(einheit.id).trim().toLowerCase();
@@ -181,7 +186,7 @@ window.APP = window.APP || {};
       if (sp && num(sp.preis) > 0) return { wert: num(sp.preis), quelle: 'Wohnungsspiegel Nr. ' + sp.nr };
     }
 
-    var frei = (st ? st.einheiten : []).filter(function (u) {
+    var frei = alle.filter(function (u) {
       return u.art === einheit.art && u.status === 'available' && u.preis > 0;
     });
     if (einheit.flaeche > 0) {

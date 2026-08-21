@@ -6,7 +6,7 @@ window.APP = window.APP || {};
 (function (A) {
   'use strict';
 
-  A.SCHEMA = 8;
+  A.SCHEMA = 9;
 
   /* ---------------------------------------------------------------
      Stammlisten
@@ -589,8 +589,14 @@ window.APP = window.APP || {};
          Verkaufsstand mit ein. Die Erlöse je verkaufte Einheit trägt der
          Anwender selbst ein (die Übersicht liefert nur den Status). */
       verkauf: {
-        projekt_id: '',                  // id in der Verkaufsübersicht, '' = keine
+        /* '' = kein Verkauf · 'uebersicht' = zentrale Verkaufsübersicht ·
+           'manuell' = eigene Liste für Projekte ohne öffentliche
+           Vermarktungsseite. Beide Quellen liefern dieselbe Struktur,
+           der Rechenkern unterscheidet sie nicht. */
+        modus: '',
+        projekt_id: '',                  // id in der Verkaufsübersicht
         stand: null,                     // { datum, geholt, einheiten: [...] }
+        manuell: [],                     // eigene Einheitenliste, gleiche Struktur
         preise: {}                       // Erlös je Einheiten-Nr, manuell erfasst
       },
 
@@ -939,6 +945,14 @@ window.APP = window.APP || {};
       if (!p.bezahlt || typeof p.bezahlt !== 'object') p.bezahlt = {};
       if (!p.vertrag || typeof p.vertrag !== 'object') p.vertrag = {};
       if (!p.stichtag) p.stichtag = A.heute();
+    }
+
+    /* --- Schema 8 -> 9: Verkaufsstand kennt neu eine eigene Liste für
+       Projekte ohne öffentliche Vermarktungsseite. Eine bestehende
+       Zuordnung zur Übersicht bleibt bestehen. ------------------------ */
+    if (version < 9 && p.verkauf) {
+      if (!p.verkauf.modus) p.verkauf.modus = p.verkauf.projekt_id ? 'uebersicht' : '';
+      if (!Array.isArray(p.verkauf.manuell)) p.verkauf.manuell = [];
     }
 
     /* Startdatum aus einem vorhandenen Startjahr ableiten */

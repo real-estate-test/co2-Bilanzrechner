@@ -736,17 +736,36 @@ window.APP = window.APP || {};
      Die Übersicht liefert nur den Status; als Erlös zählt ausschliesslich,
      was der Anwender je Einheit erfasst hat (p.verkauf.preise).
      ----------------------------------------------------------------- */
+  /* Wirksamer Erlös einer Einheit: was von Hand erfasst wurde, sonst der
+     Preis aus der Quelle. In der eigenen Liste ist beides dasselbe Feld. */
+  E.verkaufErloes = function (v, u) {
+    var erfasst = num((v.preise || {})[u.id]);
+    return erfasst > 0 ? erfasst : num(u.preis);
+  };
+
   E.verkaufInfo = function (p) {
     var v = p.verkauf;
-    if (!v || !v.projekt_id || !v.stand || !Array.isArray(v.stand.einheiten)) return null;
-    var preise = v.preise || {};
-    var o = { datum: v.stand.datum, name: v.stand.name,
+    if (!v) return null;
+    /* Fehlt der Modus (Altbestand oder Import), ihn aus dem Inhalt
+       ableiten — sonst bliebe ein zugeordnetes Projekt still wirkungslos. */
+    if (!v.modus) {
+      if (v.projekt_id && v.stand) v.modus = 'uebersicht';
+      else if (Array.isArray(v.manuell) && v.manuell.length) v.modus = 'manuell';
+      else return null;
+    }
+    var quelle = v.modus === 'manuell'
+      ? (Array.isArray(v.manuell) ? v.manuell : [])
+      : (v.projekt_id && v.stand && Array.isArray(v.stand.einheiten) ? v.stand.einheiten : null);
+    if (!quelle) return null;
+    var o = { modus: v.modus,
+              datum: v.modus === 'manuell' ? 'eigene Liste' : (v.stand ? v.stand.datum : ''),
+              name: v.modus === 'manuell' ? '' : (v.stand ? v.stand.name : ''),
               verkauft_n: 0, verkauft_chf: 0, ohne_erloes: 0,
-              reserviert_n: 0, frei_n: 0, einheiten: v.stand.einheiten };
-    v.stand.einheiten.forEach(function (u) {
+              reserviert_n: 0, frei_n: 0, einheiten: quelle };
+    quelle.forEach(function (u) {
       if (u.status === 'sold') {
         o.verkauft_n += 1;
-        var pr = num(preise[u.id]);
+        var pr = E.verkaufErloes(v, u);
         if (pr > 0) o.verkauft_chf += pr; else o.ohne_erloes += 1;
       } else if (u.status === 'reserved') {
         /* Reservationen werden ausgewiesen, aber nicht gerechnet —
@@ -1295,7 +1314,7 @@ window.APP = window.APP || {};
       ist_anzahl: istAnzahl,
       ist_zeilen: istZeilen,
       verkauf: VKI ? {
-        datum: VKI.datum, name: VKI.name,
+        modus: VKI.modus, datum: VKI.datum, name: VKI.name,
         verkauft_n: VKI.verkauft_n, verkauft_chf: VKI.verkauft_chf,
         ohne_erloes: VKI.ohne_erloes, reserviert_n: VKI.reserviert_n,
         frei_n: VKI.frei_n, quote: vorverkaufIst, einheiten: VKI.einheiten

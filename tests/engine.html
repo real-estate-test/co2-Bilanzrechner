@@ -357,6 +357,7 @@
   vk.finanzierung.vorverkauf_quote = 40;
   var rvk0 = E.compute(vk);
   var stweV = rvk0.ertraege.stwe_erloes;
+  vk.verkauf.modus = 'uebersicht';
   vk.verkauf.projekt_id = 'testprojekt';
   vk.verkauf.stand = { datum: '2026-08-19', geholt: '2026-08-20', name: 'Test', einheiten: [
     { id: 'A1', gruppe: 'Haus A', zimmer: 4.5, flaeche: 120, geschoss: '1', art: 'unit', status: 'sold', preis: 0 },
@@ -389,9 +390,47 @@
     1, rvk2.warnungen.some(function (w) { return /ohne erfassten Erlös/.test(w.text); }) ? 1 : 0);
 
   /* Ohne Zuordnung bleibt alles bei der Planannahme */
-  vk.verkauf.projekt_id = '';
+  vk.verkauf.modus = ''; vk.verkauf.projekt_id = '';
   pruefe('Ohne Zuordnung gilt die Planquote',
     40, E.compute(vk).fin.vorverkauf_wirksam, 0.1);
+
+  /* Eigene Liste für Projekte ohne öffentliche Verkaufsseite — gleiche
+     Struktur, gleiche Wirkung wie die zentrale Übersicht. */
+  var mv = A.defaultProject();
+  mv.startdatum = '2026-01-01'; mv.stichtag = '2027-01-01';
+  mv.finanzierung.vorverkauf_quote = 40;
+  var rmv0 = E.compute(mv);
+  var stweM = rmv0.ertraege.stwe_erloes;
+  mv.verkauf.modus = 'manuell';
+  mv.verkauf.manuell = [
+    { id: 'W1', gruppe: 'Haus A', zimmer: 4.5, flaeche: 120, geschoss: '1', art: 'unit', status: 'sold', preis: stweM * 0.35 },
+    { id: 'W2', gruppe: 'Haus A', zimmer: 3.5, flaeche: 95, geschoss: '2', art: 'unit', status: 'sold', preis: stweM * 0.25 },
+    { id: 'W3', gruppe: 'Haus A', zimmer: 3.5, flaeche: 95, geschoss: '2', art: 'unit', status: 'reserved', preis: 900000 },
+    { id: 'W4', gruppe: 'Haus A', zimmer: 2.5, flaeche: 70, geschoss: '3', art: 'unit', status: 'available', preis: 700000 }
+  ];
+  var rmv1 = E.compute(mv);
+  pruefe('Eigene Liste ergibt dieselbe Quote wie die Übersicht',
+    60, rmv1.fin.vorverkauf_wirksam, 0.1);
+  pruefe('Eigene Liste schaltet die Zinsstaffel', 50, rmv1.fin.rabatt_bp);
+  pruefe('Eigene Liste verschiebt Erlöse, ändert die Summe nicht',
+    rmv0.reihen.det.verkauf.reduce(function (s2, x) { return s2 + x; }, 0),
+    rmv1.reihen.det.verkauf.reduce(function (s2, x) { return s2 + x; }, 0), 1);
+  pruefe('Eigene Liste: reservierte zählen nicht als Erlös',
+    Math.round(stweM * 0.6), Math.round(rmv1.verkauf.verkauft_chf), 1);
+  pruefe('Eigene Liste wird als Modus ausgewiesen',
+    1, rmv1.verkauf.modus === 'manuell' ? 1 : 0);
+  /* Erfasster Erlös in p.verkauf.preise geht dem Betrag der Zeile vor */
+  mv.verkauf.preise = { W1: stweM * 0.10 };
+  pruefe('Von Hand erfasster Erlös geht dem Listenbetrag vor',
+    Math.round(stweM * 0.35), Math.round(rmv1.verkauf.verkauft_chf - E.compute(mv).verkauf.verkauft_chf + stweM * 0.10), 1);
+  /* Ein Eintrag ohne Betrag zählt 0 und warnt */
+  mv.verkauf.preise = {};
+  mv.verkauf.manuell[1].preis = 0;
+  var rmv2 = E.compute(mv);
+  pruefe('Eigene Liste: Einheit ohne Betrag zählt 0',
+    Math.round(stweM * 0.35), Math.round(rmv2.verkauf.verkauft_chf), 1);
+  pruefe('Eigene Liste: fehlender Betrag warnt',
+    1, rmv2.warnungen.some(function (w) { return /ohne erfassten Erlös/.test(w.text); }) ? 1 : 0);
 
   /* ---- Soll bleibt der gerechnete Wert, auch beim Kaufpreis ------- */
   var kp = A.defaultProject();

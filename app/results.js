@@ -561,7 +561,10 @@ window.APP = window.APP || {};
     var vk = r.verkauf;
     var verkauft = (vk.einheiten || []).filter(function (u) { return u.status === 'sold'; });
     var zeilen = verkauft.map(function (u) {
-      var erloes = (p.verkauf.preise || {})[u.id];
+      /* Gleiche Quelle wie die Summe: erfasster Preis, sonst der Preis
+         aus der Liste. Sonst steht «ohne Erlös» neben einem Total,
+         das den Betrag längst enthält. */
+      var erloes = A.engine.verkaufErloes(p.verkauf, u);
       return el('tr', {}, [
         el('td', { text: u.id }),
         el('td', { class: 'muted', text: u.gruppe }),

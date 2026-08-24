@@ -71,7 +71,8 @@ window.APP = window.APP || {};
         })(),
         U.sel(p, 'status', A.STATUS.map(function (s) { return { id: s, label: s }; }), 'Projektstatus', { ohneBadge: true, stufe: 'standard' }),
         U.txt(p, 'notiz', 'Kurznotiz', { stufe: 'standard', platzhalter: 'z. B. Variante gemäss Studie Meier 03/26' })
-      ], 'c3')
+      ], 'c3'),
+      standortBlock(p)
     ]));
 
     /* Szenario */
@@ -193,6 +194,96 @@ window.APP = window.APP || {};
 
     return out;
   };
+
+  /* Standort für die Karte im Portfolio. Gesucht wird nur auf
+     Knopfdruck; das Ergebnis bleibt im Projekt und wird nie wieder
+     nachgeschlagen. Von Hand überschreibbar. */
+  function standortBlock(p) {
+    if (!p.geo) p.geo = { lat: 0, lon: 0, bezeichnung: '', gesucht: '' };
+    var koerper = el('div', { class: 'panelbody' });
+    var treffer = el('div', { style: 'margin-top:10px' });
+
+    function stand() {
+      U.leeren(koerper);
+      var hat = p.geo.lat && p.geo.lon;
+      koerper.appendChild(el('div', {
+        style: 'display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap' }, [
+        el('div', { class: 'f', style: 'margin:0;min-width:150px' }, [
+          el('label', {}, [el('span', { text: 'Breite' })]),
+          el('div', { class: 'inp' }, [(function () {
+            var i = el('input', { type: 'text', inputmode: 'decimal',
+              value: hat ? A.fmt(p.geo.lat, 6) : '', placeholder: '47.391' });
+            i.addEventListener('input', function () {
+              p.geo.lat = U.parseZahl(i.value); p.geo.bezeichnung = 'von Hand';
+              A.markDirty();
+            });
+            return i;
+          })()])
+        ]),
+        el('div', { class: 'f', style: 'margin:0;min-width:150px' }, [
+          el('label', {}, [el('span', { text: 'Länge' })]),
+          el('div', { class: 'inp' }, [(function () {
+            var i = el('input', { type: 'text', inputmode: 'decimal',
+              value: hat ? A.fmt(p.geo.lon, 6) : '', placeholder: '8.045' });
+            i.addEventListener('input', function () {
+              p.geo.lon = U.parseZahl(i.value); p.geo.bezeichnung = 'von Hand';
+              A.markDirty();
+            });
+            return i;
+          })()])
+        ]),
+        el('button', { class: 'schreibend', text: 'Koordinaten suchen', onclick: suchen }),
+        hat ? el('button', { class: 'ghost sm', text: 'Standort löschen', onclick: function () {
+          p.geo = { lat: 0, lon: 0, bezeichnung: '', gesucht: '' };
+          A.markDirty(); A.render();
+        } }) : null,
+        el('span', { class: 'tag ' + (hat ? 'pos' : ''),
+          text: hat ? 'auf der Karte' : 'nicht auf der Karte' })
+      ]));
+      if (p.geo.bezeichnung) {
+        koerper.appendChild(el('div', { class: 'muted', style: 'font-size:11.5px;margin-top:6px',
+          text: 'Gefunden als: ' + p.geo.bezeichnung }));
+      }
+      koerper.appendChild(treffer);
+      koerper.appendChild(el('div', { class: 'hilfe', style: 'margin-top:8px',
+        text: 'Gesucht wird über Ort und Kanton bei Nominatim (OpenStreetMap) — für ' +
+              'Schweizer und deutsche Adressen. Die Suche läuft nur auf Knopfdruck; das ' +
+              'Ergebnis bleibt im Projekt gespeichert.' }));
+    }
+
+    function suchen() {
+      var text = A.karte.suchtext(p);
+      if (!text) {
+        A.meldung('warn', 'Für die Suche braucht es einen Ort — Feld «Ort / Adresse».');
+        return;
+      }
+      U.leeren(treffer).appendChild(el('div', { class: 'muted', text: 'sucht «' + text + '» …' }));
+      A.karte.suchen(text).then(function (liste) {
+        U.leeren(treffer);
+        if (!liste.length) {
+          treffer.appendChild(U.hinweis('info', 'Keine Adresse gefunden. Versuchen Sie es mit ' +
+            'Strasse und Ort im Feld «Ort / Adresse», oder tragen Sie die Koordinaten von Hand ein.'));
+          return;
+        }
+        treffer.appendChild(el('div', { class: 'muted', style: 'font-size:11.5px;margin-bottom:5px',
+          text: liste.length + ' Treffer — bitte auswählen:' }));
+        liste.forEach(function (t) {
+          treffer.appendChild(el('button', { class: 'sm', style: 'display:block;text-align:left;' +
+            'margin-bottom:4px;max-width:100%;white-space:normal', text: t.bezeichnung,
+            onclick: function () {
+              p.geo = { lat: t.lat, lon: t.lon, bezeichnung: t.bezeichnung, gesucht: text };
+              A.markDirty(); A.render();
+              A.meldung('ok', 'Standort übernommen — das Projekt erscheint jetzt auf der Karte.');
+            } }));
+        });
+      }).catch(function (f) {
+        U.leeren(treffer).appendChild(U.hinweis('warn', 'Adresssuche fehlgeschlagen: ' + f.message));
+      });
+    }
+
+    stand();
+    return koerper;
+  }
 
   function phasenBalken(r) {
     var Z = r.zeit, W = 900, H = 74, px = function (t) { return 8 + t / Z.t_ende * (W - 16); };

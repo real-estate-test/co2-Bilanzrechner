@@ -6,7 +6,7 @@ window.APP = window.APP || {};
 (function (A) {
   'use strict';
 
-  A.SCHEMA = 12;
+  A.SCHEMA = 13;
 
   /* ---------------------------------------------------------------
      Stammlisten
@@ -414,6 +414,10 @@ window.APP = window.APP || {};
       name: 'Neues Projekt',
       ort: '',
       parzelle: '',                      // Parzellennummer, frei erfasst
+      /* Standort für die Karte im Portfolio. Wird über die Adresssuche
+         gefüllt und ist von Hand überschreibbar; einmal ermittelt,
+         fragt nie wieder jemand nach. */
+      geo: { lat: 0, lon: 0, bezeichnung: '', gesucht: '' },
       firma: '',                         // Immobiliengefäss — Liste in der Verwaltung
       kanton: 'ZH',
       bearbeiter: '',
@@ -1033,6 +1037,12 @@ window.APP = window.APP || {};
       }
     }
 
+    /* --- Schema 12 -> 13: Standort für die Karte. Ohne Koordinaten
+       erscheint das Projekt schlicht nicht auf ihr. ------------------- */
+    if (version < 13 && (!p.geo || typeof p.geo !== 'object')) {
+      p.geo = { lat: 0, lon: 0, bezeichnung: '', gesucht: '' };
+    }
+
     /* Startdatum aus einem vorhandenen Startjahr ableiten */
     if (!p.startdatum && p.startjahr) p.startdatum = p.startjahr + '-01-01';
     if (p.startdatum) p.startjahr = parseInt(String(p.startdatum).slice(0, 4), 10) || p.startjahr;
@@ -1135,6 +1145,14 @@ window.APP = window.APP || {};
     var s = Math.abs(n).toFixed(dez), parts = s.split('.');
     parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '’');
     return (n < 0 ? '−' : '') + parts.join('.');
+  };
+
+  /* Text für die Ausgabe in HTML entschärfen. Projektnamen sind freie
+     Eingabe und landen etwa in den Kartenkarten im Markup. */
+  A.escape = function (t) {
+    return String(t === null || t === undefined ? '' : t)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   };
 
   A.fmtMio = function (n) {

@@ -74,6 +74,17 @@ werden gespeichert und wandern über den Server zu allen Mitarbeitenden. Eine un
 Eingabe wie `2500*` lässt den bisherigen Wert stehen und markiert das Feld, statt auf null
 zu fallen. Verweise auf andere Felder gibt es bewusst nicht.
 
+**Standortkarte** Das Portfolio zeigt die Projekte auf einer Karte, zwischen «Gefässe im
+Überblick» und «Projekte». Kacheln von OpenStreetMap, Bibliothek Leaflet — beide im Repo
+unter `vendor/`, kein Schlüssel, kein Konto, kein Build-Schritt. Die Koordinaten kommen aus
+der Adresssuche Nominatim: Knopf «Koordinaten suchen» unter Projekt & Phasen, Auswahl aus
+der Trefferliste, danach im Projekt eingefroren und von Hand überschreibbar. Marker nach
+Projektstatus — hellblau Idee/Prüfung, dunkelblau Akquisition bis Entwicklung, orange ab
+Baubewilligung, grau verworfen. Beim Hovern erscheinen Gefäss, Anlagekosten, Erlöse, Gewinn
+und Marge; ein Klick öffnet das Projekt. Status- und Gefässfilter gelten mit. Im Bericht
+steht dieselbe Karte mit festem Ausschnitt über alle Projekte. Kachelquelle und Adresssuche
+sind in `app/config.js` einstellbar, falls die Nutzung einen bezahlten Anbieter verlangt.
+
 **Zahlungsmodalitäten** Der Zahlungsplan beim Verkauf von Stockwerkeigentum lässt sich in
 der Verwaltung firmenweit vorgeben. Die Fälligkeiten unterscheiden drei Arten: **Vertragstermine je Einheit** (bei Beurkundung,
 3 Tage nach Tagebucheintrag, bei Übergabe), **Bautermine aus dem Modell** (Baustart, Rohbau

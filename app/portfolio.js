@@ -388,6 +388,25 @@ window.APP = window.APP || {};
       ]));
     }
 
+    /* Standortkarte. Sie folgt der Auswahl der Seite — Gefäss und
+       Status gelten mit, damit sie dasselbe zeigt wie die Tabellen. */
+    var mitOrt = berechnet.filter(function (x) { return A.karte.hatStandort(x.p); });
+    var ohneOrt = berechnet.length - mitOrt.length;
+    out.appendChild(U.panel('Standorte',
+      mitOrt.length + ' von ' + berechnet.length + ' Projekten verortet' +
+      (ohneOrt ? ' · ' + ohneOrt + ' ohne Koordinaten' : ''), [
+      A.karte.bauen(berechnet, { hoehe: 440 }),
+      el('div', { class: 'panelbody' }, [
+        A.karte.legende(),
+        ohneOrt
+          ? el('div', { class: 'muted', style: 'font-size:11.5px;margin-top:8px',
+              text: ohneOrt + ' Projekt(e) fehlen auf der Karte, weil keine Koordinaten ' +
+                    'erfasst sind. Sie stehen im Projekt unter «Projekt & Phasen» — ' +
+                    'Knopf «Koordinaten suchen».' })
+          : null
+      ])
+    ]));
+
     /* Projektliste */
     var zeilen = berechnet.map(function (x) {
       var k = x.r.kpi, aktiv = x.p.id === A.state.p.id;

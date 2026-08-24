@@ -29,6 +29,8 @@
 
 <script src="../app/model.js"></script>
 <script src="../app/engine.js"></script>
+<script src="../app/ui.js"></script>
+<script src="../app/karte.js"></script>
 <script>
 (function () {
   var A = window.APP, E = A.engine, tb = document.getElementById('tb');
@@ -738,6 +740,41 @@
   pruefe('Migration: Startdatum aus Startjahr', 2024, parseInt(mig.startdatum.slice(0, 4), 10));
   pruefe('Migration: Umgebungsfläche festgeschrieben', 1500, mig.grundstueck.umgebung_manuell);
   pruefe('Migration: Projekt rechnet weiterhin', 1, E.compute(mig).kpi.anlagekosten > 0 ? 1 : 0);
+
+  /* ---- Standorte und Markerfarben --------------------------------- */
+  var kp = A.defaultProject();
+  pruefe('Neues Projekt hat noch keinen Standort',
+    0, A.karte.hatStandort(kp) ? 1 : 0);
+  kp.geo = { lat: 47.39, lon: 8.05, bezeichnung: 'Aarau', gesucht: 'Aarau' };
+  pruefe('Mit Koordinaten ist es verortet', 1, A.karte.hatStandort(kp) ? 1 : 0);
+
+  /* Die Farbregel deckt jeden Status ab — sonst fiele einer still auf Grau. */
+  var abgedeckt = A.STATUS.filter(function (st) {
+    return A.karte.FARBEN.some(function (g) { return g.status.indexOf(st) >= 0; });
+  });
+  pruefe('Jeder Projektstatus hat eine Markerfarbe', A.STATUS.length, abgedeckt.length);
+  pruefe('Idee ist hellblau', 1, A.karte.farbeFuer('Idee') === '#7fb3e8' ? 1 : 0);
+  pruefe('Entwicklung ist dunkelblau', 1, A.karte.farbeFuer('Entwicklung') === '#1f5fd0' ? 1 : 0);
+  pruefe('Baubewilligung ist orange', 1, A.karte.farbeFuer('Baubewilligung') === '#e08327' ? 1 : 0);
+  pruefe('Vermarktung ist ebenfalls orange',
+    1, A.karte.farbeFuer('Vermarktung') === A.karte.farbeFuer('Baubewilligung') ? 1 : 0);
+  pruefe('Unbekannter Status ergibt Grau', 1, A.karte.farbeFuer('Fantasie') === '#9aa3ae' ? 1 : 0);
+
+  /* Der Suchtext ergänzt den Kanton, damit Ortsnamen eindeutiger werden */
+  var sk = A.defaultProject();
+  sk.ort = 'Aarau'; sk.kanton = 'AG';
+  pruefe('Suchtext nennt Ort und Kanton',
+    1, A.karte.suchtext(sk) === 'Aarau, Aargau' ? 1 : 0);
+  sk.kanton = 'XX';
+  pruefe('Ohne Kantonszuordnung bleibt der Ort allein',
+    1, A.karte.suchtext(sk) === 'Aarau' ? 1 : 0);
+  sk.ort = 'Lörrach, Deutschland'; sk.kanton = 'AG';
+  pruefe('Bei einer Auslandadresse bleibt der Kanton draussen',
+    1, A.karte.suchtext(sk) === 'Lörrach, Deutschland' ? 1 : 0);
+
+  /* Projektnamen landen im Markup der Kartenkarte */
+  pruefe('Freitext wird für HTML entschärft',
+    1, A.escape('<img src=x onerror=1>') === '&lt;img src=x onerror=1&gt;' ? 1 : 0);
 
   /* ---- Zusammenfassung -------------------------------------------- */
   var box = document.getElementById('summe');

@@ -711,6 +711,27 @@ window.APP = window.APP || {};
       ]);
     });
 
+    /* Standortkarte im Bericht: fester Ausschnitt über alle Projekte,
+       nicht der Zoom des Anwenders — das Dokument soll unabhängig davon
+       immer dasselbe zeigen. */
+    if (A.karte && A.karte.verfuegbar()) {
+      var alleP = [];
+      try {
+        alleP = A.store.alle(false).map(function (q) {
+          var rr = null;
+          try { rr = A.engine.compute(q); } catch (e) { rr = null; }
+          return { p: q, r: rr };
+        }).filter(function (x) { return A.karte.hatStandort(x.p); });
+      } catch (e) { alleP = []; }
+      if (alleP.length) {
+        out.appendChild(U.panel('Standorte der Projekte',
+          alleP.length + ' Projekte', [
+          A.karte.bauen(alleP, { hoehe: 380, fest: true }),
+          el('div', { class: 'panelbody' }, [A.karte.legende()])
+        ]));
+      }
+    }
+
     var vkPanelB = verkaufteEinheiten(p);
     if (vkPanelB) out.appendChild(vkPanelB);
 

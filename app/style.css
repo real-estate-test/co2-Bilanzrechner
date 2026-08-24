@@ -157,6 +157,23 @@ main { min-width: 0; display: flex; flex-direction: column; }
 .inp input:focus, .inp select:focus { outline: none; }
 .inp .unit { display: flex; align-items: center; padding: 0 8px; font-size: 11px; color: var(--muted); background: var(--panel2); border-left: 1px solid var(--line); white-space: nowrap; }
 .inp.bad { border-color: var(--warn); background: var(--warnbg); }
+/* --- Standortkarte ------------------------------------------------ */
+.kartenrahmen { border-top: 1px solid var(--line); }
+.kartenrahmen .leaflet-container { font: inherit; background: var(--panel2); }
+/* Die Karte darf die Panelbreite nicht sprengen und muss unter den
+   festen Kopfleisten der Anwendung bleiben. */
+.kartenrahmen .leaflet-pane, .kartenrahmen .leaflet-control { z-index: 1; }
+.kartenrahmen .leaflet-top, .kartenrahmen .leaflet-bottom { z-index: 2; }
+.leaflet-tooltip.kartenkarte {
+  background: #fff; border: 1px solid var(--line2); border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(16,21,28,.14); padding: 8px 10px;
+  font-size: 12px; color: var(--ink); white-space: nowrap;
+}
+.leaflet-tooltip.kartenkarte::before { border-top-color: var(--line2); }
+@media print {
+  .kartenrahmen .leaflet-control-zoom, .kartenrahmen .leaflet-control-attribution { display: none; }
+}
+
 /* Gerechnetes Feld: die Ecke markiert eine hinterlegte Formel. Beim
    Hineinklicken erscheint die Formel, beim Verlassen das Ergebnis.
    Das Dreieck liegt über dem Einheitenfeld — dieses darf deshalb nicht

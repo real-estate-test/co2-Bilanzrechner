@@ -24,5 +24,21 @@ window.APP_CONFIG = {
 
   /* Verzögerung in Millisekunden, bevor Änderungen zum Server gehen.
      Die Eingabe selbst bleibt davon unberührt und immer sofort. */
-  speicherverzug: 2500
+  speicherverzug: 2500,
+
+  /* Kartenkacheln für die Standortkarte im Portfolio.
+     Vorgabe: OpenStreetMap — kostenlos, kein Schlüssel, deckt die
+     Schweiz und Deutschland gleich gut ab. Die Kachelserver von OSM
+     sind für kleine Nutzung gedacht; wächst die Zahl der Anwender,
+     lässt sich hier ohne Programmänderung auf einen bezahlten Anbieter
+     umstellen (z. B. MapTiler oder Stadia Maps, dann mit Schlüssel in
+     der Adresse). Die Namensnennung ist Pflicht und wird angezeigt. */
+  kacheln: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+  kachelnHinweis: '© OpenStreetMap-Mitwirkende',
+
+  /* Adresssuche für die Koordinaten. Nominatim ist der Geocoder von
+     OpenStreetMap: kostenlos, ohne Schlüssel, für Schweizer und
+     deutsche Adressen. Gesucht wird nur auf Knopfdruck und einmal je
+     Projekt — die Nutzungsregeln erlauben keine Massenabfragen. */
+  adresssuche: 'https://nominatim.openstreetmap.org/search'
 };

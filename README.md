@@ -280,6 +280,15 @@ nicht auf eine Privatperson.
 **2 · Schema einspielen.** Den Inhalt von `db/schema.sql` im SQL-Editor einfügen
 und ausführen. Das legt Tabellen, Rechteregeln, Auslöser und das Protokoll an.
 
+> **Läuft die Datenbank schon?** Dann fehlen ihr die später hinzugekommenen
+> Tabellen. Die Nachträge in `db/` nachziehen — jeder ist wiederholbar, ein
+> zweiter Lauf ändert nichts:
+>
+> | Datei | was fehlt ohne sie |
+> |---|---|
+> | `db/update-01.sql` | schliesst eine Sicherheitslücke (Ansicht `portfolio_sicht`) |
+> | `db/update-02.sql` | Tabelle `sitzungen` — ohne sie bleibt die Seite **Protokolle** leer, dazu Adressbuch und Sitzungsreihen |
+
 **3 · Verbinden.** Aus *Project Settings › API* die beiden Werte in `app/config.js`
 eintragen:
 
@@ -389,9 +398,11 @@ app/ui.js             Feldbausteine, Datenherkunft, Plausibilität
 app/views.js          Eingabeseiten
 app/results.js        Ergebnis, Analyse, Bericht
 app/portfolio.js      Portfolio, Tracking, Archivieren, Import und Export
-app/admin.js          Verwaltung, Protokoll, Anmerkungen
+app/protokoll.js      Sitzungsprotokolle, Pendenzen, Versand
+app/admin.js          Verwaltung, Änderungsverlauf, Anmerkungen
 app/main.js           Zustand, Navigation, Kennzahlenleiste, Rollen
 db/schema.sql         Tabellen, Rechteregeln, Auslöser
+db/update-*.sql       Nachträge für bereits laufende Datenbanken
 tests/engine.html     Selbsttest des Rechenkerns
 ```
 

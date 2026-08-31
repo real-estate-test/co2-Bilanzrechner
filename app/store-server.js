@@ -189,6 +189,64 @@ window.APP = window.APP || {};
     },
 
     /* ---------------------------------------------------------------
+       Sitzungsprotokolle
+
+       Eigene Tabelle statt Projekt-JSON: ein Protokoll wird geschrieben,
+       während jemand anders am selben Projekt rechnet — beide Stände
+       würden sich sonst gegenseitig verwerfen. Die Punkte liegen als
+       JSON in der Zeile; sie gehören zum Protokoll und werden immer
+       zusammen gespeichert.
+       --------------------------------------------------------------- */
+
+    sitzungen: function (projektId) {
+      return API.holen('sitzungen',
+        'projekt_id=eq.' + encodeURIComponent(projektId) +
+        '&select=*&order=datum.desc,nummer.desc')
+        .then(function (zeilen) {
+          return (zeilen || []).map(A.sitzungLesen).filter(Boolean);
+        });
+    },
+
+    /* Speichert mit optimistischem Sperren, wie bei den Projekten: Wer
+       eine ältere Fassung in der Hand hat, überschreibt nichts. */
+    sitzungSpeichern: function (s) {
+      var zeile = {
+        id: s.id, projekt_id: s.projekt_id, reihe: s.reihe, nummer: s.nummer,
+        datum: s.datum || null, zeit_von: s.zeit_von || null, zeit_bis: s.zeit_bis || null,
+        ort: s.ort || null, verfasser: s.verfasser || null,
+        status: s.status || 'entwurf',
+        versendet_am: s.versendet_am || null,
+        teilnehmer: s.teilnehmer || [], entschuldigt: s.entschuldigt || [],
+        verteiler: s.verteiler || [], punkte: s.punkte || []
+      };
+      if (!s.version) {
+        return API.einfuegen('sitzungen', zeile).then(function (r) {
+          return { ok: true, sitzung: A.sitzungLesen((r && r[0]) || zeile) };
+        });
+      }
+      return API.aktualisieren('sitzungen',
+        'id=eq.' + encodeURIComponent(s.id) + '&version=eq.' + s.version, zeile
+      ).then(function (r) {
+        if (!r || !r.length) {
+          return API.holen('sitzungen', 'id=eq.' + encodeURIComponent(s.id) + '&select=*')
+            .then(function (aktuell) {
+              var a = aktuell && aktuell[0];
+              if (a && a.version !== s.version) {
+                return { ok: false, konflikt: true, fremd: A.sitzungLesen(a) };
+              }
+              return { ok: false, konflikt: false };
+            });
+        }
+        return { ok: true, sitzung: A.sitzungLesen(r[0]) };
+      });
+    },
+
+    sitzungLoeschen: function (id) {
+      return API.entfernen('sitzungen', 'id=eq.' + encodeURIComponent(id))
+        .then(function () { return { ok: true }; });
+    },
+
+    /* ---------------------------------------------------------------
        Benutzer und Einstellungen
        --------------------------------------------------------------- */
 

@@ -226,6 +226,195 @@ window.APP = window.APP || {};
     return ((p && p.beteiligte) || []).map(A.beteiligter).filter(Boolean);
   };
 
+  /* ---------------------------------------------------------------
+     Protokolle und Termine
+
+     Gliederung eines Protokolls: Phase → Beteiligter → Punkte. Die
+     Nummern (2.1.3) werden daraus abgeleitet und nicht von Hand
+     gepflegt — verschiebt sich ein Punkt in eine andere Phase, stimmt
+     die Nummer trotzdem. Der Terminplan zeigt später dieselbe
+     Gliederung, wahlweise nach Fristen sortiert.
+     --------------------------------------------------------------- */
+
+  /* Phasen nach SIA 102. «rechen» ordnet jede Phase einer der vier
+     Rechenphasen zu — die Kalkulation kennt nur diese vier. */
+  A.SIA_PHASEN = [
+    { id: 'allgemein',   label: 'Allgemeines / Organisation', sia: '',   rechen: 'entwicklung' },
+    { id: 'strategie',   label: 'Strategische Planung',       sia: '1',  rechen: 'entwicklung' },
+    { id: 'vorstudien',  label: 'Vorstudien',                 sia: '2',  rechen: 'entwicklung' },
+    { id: 'vorprojekt',  label: 'Vorprojekt',                 sia: '31', rechen: 'entwicklung' },
+    { id: 'bauprojekt',  label: 'Bauprojekt',                 sia: '32', rechen: 'entwicklung' },
+    { id: 'baubewilligung', label: 'Bewilligungsverfahren',   sia: '33', rechen: 'bewilligung' },
+    { id: 'ausschreibung',  label: 'Ausschreibung',           sia: '41', rechen: 'vorbereitung' },
+    { id: 'ausfuehrungsplanung', label: 'Ausführungsplanung',  sia: '51', rechen: 'vorbereitung' },
+    { id: 'ausfuehrung', label: 'Ausführung',                 sia: '52', rechen: 'bau' },
+    { id: 'abschluss',   label: 'Inbetriebnahme / Abschluss', sia: '53', rechen: 'bau' }
+  ];
+
+  A.phaseLabel = function (id) {
+    var ph = A.SIA_PHASEN.find(function (x) { return x.id === id; });
+    if (!ph) return 'ohne Phase';
+    return ph.sia ? ph.label + ' (SIA ' + ph.sia + ')' : ph.label;
+  };
+
+  /* Was ein Protokollpunkt sein kann. Nur Aufgaben tragen einen Termin
+     in den Plan; Entscheide sind Meilensteine, Infos bleiben Text. */
+  A.PUNKT_TYPEN = [
+    { id: 'aufgabe',   label: 'Aufgabe',  kurz: 'A', farbe: '#1f5fd0' },
+    { id: 'entscheid', label: 'Entscheid', kurz: 'E', farbe: '#0d7a45' },
+    { id: 'info',      label: 'Info',     kurz: 'I', farbe: '#6b7484' }
+  ];
+
+  A.PUNKT_STATUS = [
+    { id: 'offen',      label: 'offen' },
+    { id: 'erledigt',   label: 'erledigt' },
+    { id: 'verschoben', label: 'verschoben' }
+  ];
+
+  /* Sitzungsreihen. Vorgabe wie bei den Firmen firmenweit pflegbar —
+     jede Reihe zählt ihre Sitzungen für sich. */
+  A.SITZUNGSREIHEN_STANDARD = [
+    { id: 'bauherren',     kuerzel: 'BHS', label: 'Bauherrensitzung' },
+    { id: 'planer',        kuerzel: 'PS',  label: 'Planersitzung' },
+    { id: 'baukommission', kuerzel: 'BK',  label: 'Baukommission' }
+  ];
+  A.SITZUNGSREIHEN_LOKAL = 'projektrechner.sitzungsreihen';
+
+  A.sitzungsreihen = null;   // firmenweite Liste, im Serverbetrieb geladen
+
+  A.reihenListe = function () {
+    var liste = Array.isArray(A.sitzungsreihen) ? A.sitzungsreihen : null;
+    if (!liste) {
+      try { liste = JSON.parse(localStorage.getItem(A.SITZUNGSREIHEN_LOKAL) || 'null'); }
+      catch (e) { liste = null; }
+    }
+    if (!Array.isArray(liste) || !liste.length) liste = A.SITZUNGSREIHEN_STANDARD;
+    return liste.map(function (r) {
+      return { id: r.id || A.uid(), kuerzel: r.kuerzel || '', label: r.label || 'Sitzung' };
+    });
+  };
+
+  A.reihenSetzen = function (liste) {
+    liste = (liste || []).filter(function (r) { return r && r.label; })
+      .map(function (r) {
+        return { id: r.id || A.uid(), kuerzel: String(r.kuerzel || '').trim(),
+                 label: String(r.label || '').trim() };
+      });
+    A.sitzungsreihen = liste;
+    try { localStorage.setItem(A.SITZUNGSREIHEN_LOKAL, JSON.stringify(liste)); } catch (e) {}
+    return liste;
+  };
+
+  A.reihe = function (id) {
+    return A.reihenListe().find(function (r) { return r.id === id; }) || null;
+  };
+
+  A.defPunkt = function (vorgabe) {
+    var pt = {
+      id: A.uid(),
+      phase: 'allgemein',
+      beteiligter: '',       // Id aus p.beteiligte — die zweite Gliederungsebene
+      typ: 'info',
+      text: '',
+      termin: '',
+      start: '',             // leer = Sitzungsdatum
+      status: 'offen',
+      erledigt_am: '',
+      erledigt_in: '',       // Id der Sitzung, in der er geschlossen wurde
+      bemerkung: ''
+    };
+    Object.keys(vorgabe || {}).forEach(function (k) { pt[k] = vorgabe[k]; });
+    return pt;
+  };
+
+  A.defSitzung = function (projektId, reiheId) {
+    return {
+      id: A.uid(),
+      projekt_id: projektId,
+      reihe: reiheId || (A.reihenListe()[0] || {}).id || 'bauherren',
+      nummer: 1,
+      datum: A.heute(),
+      zeit_von: '', zeit_bis: '',
+      ort: '',
+      verfasser: '',
+      status: 'entwurf',      // entwurf | versendet
+      versendet_am: '',
+      teilnehmer: [], entschuldigt: [], verteiler: [],
+      punkte: [],
+      /* 0 heisst: noch nie gespeichert. Der Speicherweg entscheidet
+         daran zwischen Anlegen und Ändern. */
+      version: 0
+    };
+  };
+
+  /* Eine Sitzung robust einlesen — fremde oder alte Datensätze dürfen
+     die Oberfläche nicht zerlegen. */
+  A.sitzungLesen = function (s) {
+    if (!s || typeof s !== 'object') return null;
+    var d = A.defSitzung(s.projekt_id, s.reihe);
+    Object.keys(d).forEach(function (k) {
+      if (s[k] !== undefined && s[k] !== null) d[k] = s[k];
+    });
+    ['teilnehmer', 'entschuldigt', 'verteiler'].forEach(function (k) {
+      if (!Array.isArray(d[k])) d[k] = [];
+    });
+    d.punkte = (Array.isArray(s.punkte) ? s.punkte : []).map(function (pt) {
+      return A.defPunkt(pt);
+    });
+    return d;
+  };
+
+  /* Punkte einer Sitzung in die Gliederung bringen und nummerieren.
+     Phasen folgen dem SIA-Katalog, Beteiligte der Reihenfolge in der
+     Adressliste — so bleibt die Nummer eines Punktes stabil, solange
+     sich an Phase und Zuständigkeit nichts ändert. */
+  A.gliederung = function (p, sitzung) {
+    var beteiligte = A.beteiligteListe(p);
+    var reihenfolge = {};
+    beteiligte.forEach(function (b, i) { reihenfolge[b.id] = i; });
+
+    var gruppen = [];
+    A.SIA_PHASEN.forEach(function (ph) {
+      var drin = (sitzung.punkte || []).filter(function (pt) { return pt.phase === ph.id; });
+      if (!drin.length) return;
+
+      var planer = [];
+      drin.forEach(function (pt) {
+        var key = pt.beteiligter || '';
+        var g = planer.find(function (x) { return x.id === key; });
+        if (!g) {
+          var b = beteiligte.find(function (x) { return x.id === key; });
+          g = { id: key, person: b || null,
+                label: b ? [b.rolle, b.name].filter(Boolean).join(' · ') : 'ohne Zuständigkeit',
+                sort: b ? reihenfolge[b.id] : 9999, punkte: [] };
+          planer.push(g);
+        }
+        g.punkte.push(pt);
+      });
+      planer.sort(function (a, b) { return a.sort - b.sort; });
+      gruppen.push({ phase: ph, planer: planer });
+    });
+
+    /* Nummern vergeben: Phase.Planer.Punkt */
+    gruppen.forEach(function (g, i) {
+      g.nr = String(i + 1);
+      g.planer.forEach(function (pl, j) {
+        pl.nr = g.nr + '.' + (j + 1);
+        pl.punkte.forEach(function (pt, k) { pt._nr = pl.nr + '.' + (k + 1); });
+      });
+    });
+    return gruppen;
+  };
+
+  /* Nächste Nummer einer Reihe innerhalb eines Projekts */
+  A.naechsteSitzungsnummer = function (liste, reiheId) {
+    var n = 0;
+    (liste || []).forEach(function (s) {
+      if (s.reihe === reiheId && s.nummer > n) n = s.nummer;
+    });
+    return n + 1;
+  };
+
   A.BKP_KATALOG = [
     { id: 'b1_abbruch',   bkp: '1',     label: 'Abbruch / Rückbau Bestand',
       hilfe: 'Nur relevant, wenn der Bestand zurückgebaut wird. Menge = Gebäudevolumen Bestand.' },
@@ -1221,8 +1410,45 @@ window.APP = window.APP || {};
     },
     protokoll: function () { return Promise.resolve([]); },
     kommentare: function () { return Promise.resolve([]); },
-    kommentieren: function () { return Promise.resolve(null); }
+    kommentieren: function () { return Promise.resolve(null); },
+
+    /* --- Sitzungsprotokolle ------------------------------------------
+       Eigener Speicherplatz, nicht im Projekt: ein Protokoll wird
+       geschrieben, während jemand anders an den Zahlen rechnet. Im
+       lokalen Modus gibt es zwar niemand anderen, aber dieselbe
+       Schnittstelle wie auf dem Server. */
+    sitzungen: function (projektId) {
+      var liste = leseSitzungen().filter(function (s) { return s.projekt_id === projektId; });
+      return Promise.resolve(liste.map(A.sitzungLesen).filter(Boolean));
+    },
+    sitzungSpeichern: function (s) {
+      var alle = leseSitzungen();
+      var i = alle.findIndex(function (x) { return x.id === s.id; });
+      s.version = (s.version || 0) + 1;
+      s.geaendert_am = new Date().toISOString();
+      if (i >= 0) alle[i] = s; else alle.push(s);
+      schreibeSitzungen(alle);
+      return Promise.resolve({ ok: true, sitzung: s });
+    },
+    sitzungLoeschen: function (id) {
+      schreibeSitzungen(leseSitzungen().filter(function (x) { return x.id !== id; }));
+      return Promise.resolve({ ok: true });
+    }
   };
+
+  var SITZUNGEN_KEY = 'projektrechner.sitzungen';
+
+  function leseSitzungen() {
+    try {
+      var l = JSON.parse(localStorage.getItem(SITZUNGEN_KEY) || '[]');
+      return Array.isArray(l) ? l : [];
+    } catch (e) { return []; }
+  }
+
+  function schreibeSitzungen(liste) {
+    try { localStorage.setItem(SITZUNGEN_KEY, JSON.stringify(liste)); return true; }
+    catch (e) { return false; }
+  }
 
   A.store = A.storeLokal;   // wird beim Start ggf. auf den Server umgestellt
 

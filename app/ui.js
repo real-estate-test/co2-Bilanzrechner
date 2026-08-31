@@ -546,7 +546,8 @@ window.APP = window.APP || {};
   U.tabelle = function (spalten, zeilen, opts) {
     opts = opts || {};
     var thead = el('thead', {}, [el('tr', {}, spalten.map(function (s) {
-      return el('th', { class: s.n ? 'n' : '', style: s.w ? 'width:' + s.w : null, text: s.label });
+      return el('th', { class: [s.n ? 'n' : '', s.klasse || ''].filter(Boolean).join(' '),
+        style: s.w ? 'width:' + s.w : null, text: s.label });
     }))]);
     var tbody = el('tbody', {}, zeilen.filter(Boolean));
     return el('div', { class: 'tw' }, [el('table', { class: opts.class || '' }, [thead, tbody])]);

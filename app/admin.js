@@ -448,6 +448,68 @@ window.APP = window.APP || {};
     out.appendChild(U.panel('Adressbuch', 'Personen, die an Projekten mitwirken',
       [adrBody, adrFuss]));
 
+    /* --- Sitzungsreihen ---------------------------------------------- */
+    var reihenBody = el('div', { class: 'panelbody' });
+    var reihenFuss = el('div', { class: 'panelbody' });
+
+    function reihenZeichnen(liste) {
+      U.leeren(reihenBody);
+      var zeilen = liste.map(function (r, i) {
+        return el('tr', {}, [
+          el('td', { style: 'width:90px' }, [U.zelleTxt(r, 'kuerzel', { platzhalter: 'BHS' })]),
+          el('td', {}, [U.zelleTxt(r, 'label', { platzhalter: 'Bauherrensitzung' })]),
+          el('td', { class: 'w1' }, [el('button', { class: 'ghost sm', text: '×',
+            title: 'Reihe entfernen', onclick: function () {
+              liste.splice(i, 1); reihenZeichnen(liste);
+            } })])
+        ]);
+      });
+      if (!zeilen.length) {
+        zeilen.push(el('tr', {}, [el('td', { colspan: 3, class: 'muted',
+          text: 'Keine Reihe erfasst — die Standardreihen gelten.' })]));
+      }
+      reihenBody.appendChild(U.tabelle([
+        { label: 'Kürzel' }, { label: 'Bezeichnung' }, { label: '' }
+      ], zeilen));
+
+      U.leeren(reihenFuss);
+      reihenFuss.appendChild(el('div', { style: 'display:flex;gap:10px;flex-wrap:wrap' }, [
+        el('button', { text: '+ Reihe', onclick: function () {
+          liste.push({ id: A.uid(), kuerzel: '', label: '' });
+          reihenZeichnen(liste);
+        } }),
+        el('button', { class: 'primary', text: 'Reihen speichern', onclick: function () {
+          var neu = A.reihenSetzen(liste);
+          var fertig = function () {
+            A.meldung('ok', 'Sitzungsreihen gespeichert.');
+            A.render();
+          };
+          if (A.store.modus === 'server') {
+            A.store.einstellungSetzen('sitzungsreihen', neu).then(fertig)
+              .catch(function (f) { A.meldung('warn', f.message); });
+          } else { fertig(); }
+        } })
+      ]));
+      reihenFuss.appendChild(el('div', { class: 'hilfe', style: 'margin-top:10px',
+        text: 'Jede Reihe zählt ihre Sitzungen je Projekt für sich — Bauherrensitzung 5 und ' +
+              'Planersitzung 5 stehen nebeneinander. Pendenzen werden innerhalb einer Reihe ' +
+              'fortgeschrieben. Eine Reihe, an der Protokolle hängen, sollte nicht entfernt ' +
+              'werden; die Protokolle blieben sonst ohne Bezeichnung stehen.' }));
+    }
+
+    if (A.store.modus === 'server') {
+      reihenBody.appendChild(el('div', { class: 'muted', text: 'wird geladen …' }));
+      A.store.einstellung('sitzungsreihen').then(function (liste) {
+        if (Array.isArray(liste) && liste.length) A.sitzungsreihen = liste;
+        reihenZeichnen(A.reihenListe());
+      }).catch(function () { reihenZeichnen(A.reihenListe()); });
+    } else {
+      reihenZeichnen(A.reihenListe());
+    }
+
+    out.appendChild(U.panel('Sitzungsreihen', 'Arten von Sitzungen für die Protokolle',
+      [reihenBody, reihenFuss]));
+
     /* --- Kennwerte-Hinweis ----------------------------------------- */
     out.appendChild(U.panel('Kennwerte', 'Baukosten, Zinssätze und Sätze', [
       el('div', { class: 'panelbody' }, [

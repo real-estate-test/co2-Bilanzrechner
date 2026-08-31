@@ -346,4 +346,37 @@ textarea:focus { outline: none; border-color: var(--accent); }
   #kpibar { position: static; box-shadow: none; }
   thead th { position: static; }
   .druckseite { break-after: page; }
+
+  /* Eingabefelder sind auf Papier keine Eingabefelder. Ohne diese Regel
+     steht jeder Wert in einem Kästchen und das Blatt wirkt wie ein
+     Formular statt wie ein Dokument. */
+  input, select, textarea {
+    border: 0 !important; background: transparent !important;
+    padding: 1px 0 !important; color: var(--ink); resize: none;
+    -webkit-appearance: none; appearance: none;
+  }
+  .inp { border: 0; border-bottom: 1px solid #e6e6e6; border-radius: 0; }
+  textarea { overflow: visible; height: auto; }
+  input[type="checkbox"] { -webkit-appearance: checkbox; appearance: checkbox; }
+
+  /* Kalenderfelder zeigen je nach Browsersprache 05/12/2026. Auf Papier
+     steht stattdessen die ausgeschriebene Fassung. */
+  .nichtdrucken { display: none !important; }
+  .nurdruck { display: inline !important; }
+  div.nurdruck { display: block !important; }
+
+  /* Ein Protokoll geht nach aussen. Kennzahlen des Projekts und
+     Projektwarnungen haben darauf nichts verloren. */
+  body.seite-protokolle #kpibar,
+  body.seite-protokolle #warnbar,
+  body.seite-protokolle #meldungen,
+  body.seite-protokolle .seitenkopf,
+  /* Der Druckkopf trägt Sitzung, Datum und Ort bereits — das
+     Eingabepanel darunter wäre eine Wiederholung. */
+  body.seite-protokolle .panel.sitzungskopf { display: none !important; }
+  body.seite-protokolle .panel { border-color: #d8dde4; }
+  body.seite-protokolle textarea { resize: none !important; }
 }
+
+/* Am Bildschirm gilt das Umgekehrte */
+.nurdruck { display: none; }

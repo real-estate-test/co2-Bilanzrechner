@@ -19,7 +19,8 @@ window.APP = window.APP || {};
     { id: 'portfolio',    ix: '0',  label: 'Portfolio' },
     { id: 'projekt',      ix: '1',  label: 'Projekt' },
     { id: 'adressen',     ix: '1a', label: 'Adressliste' },
-    { id: 'termine',      ix: '1b', label: 'Phasen & Termine' },
+    { id: 'protokolle',   ix: '1b', label: 'Protokolle' },
+    { id: 'termine',      ix: '1c', label: 'Phasen & Termine' },
     { id: 'erwerb',       ix: '2',  label: 'Grundstück & Erwerbskosten' },
     { id: 'flaechen',     ix: '3',  label: 'Flächen & Volumen' },
     { id: 'bestand',      ix: '4',  label: 'Bestand' },
@@ -273,6 +274,11 @@ window.APP = window.APP || {};
   A.render = function () {
     U.derived = [];
     document.body.classList.toggle('nurlesen', !A.darfBearbeiten());
+    /* Seitenkennung am body — der Druck braucht sie: auf einem
+       Protokoll haben Kennzahlenleiste und Projektwarnungen nichts
+       verloren. */
+    document.body.className = document.body.className
+      .replace(/\bseite-[\w]+/g, '').trim() + ' seite-' + A.state.seite;
     navigation();
     stufenwahl();
     kontoLeiste();
@@ -441,7 +447,8 @@ window.APP = window.APP || {};
             A.store.einstellung('firmen').catch(function () { return null; }),
             A.store.einstellung('zahlungsplan').catch(function () { return null; }),
             A.store.einstellung('zahlungsfristen').catch(function () { return null; }),
-            A.store.einstellung('adressen').catch(function () { return null; })
+            A.store.einstellung('adressen').catch(function () { return null; }),
+            A.store.einstellung('sitzungsreihen').catch(function () { return null; })
           ]);
         })
         .then(function (geladen) {
@@ -458,6 +465,9 @@ window.APP = window.APP || {};
             A.zahlungsfristen = geladen[3];
           }
           if (geladen && Array.isArray(geladen[4])) A.adressen = geladen[4];
+          if (geladen && Array.isArray(geladen[5]) && geladen[5].length) {
+            A.sitzungsreihen = geladen[5];
+          }
           /* Zentralen Verkaufsstand übernehmen, falls er neuer ist als der
              lokale — geladen wird er nur von Hand. */
           return A.verkauf.zentralLaden().then(function () { weiter(serverModus); });

@@ -453,6 +453,32 @@ window.APP = window.APP || {};
     return inp;
   };
 
+  /* Eine Vorschlagsliste, die mehrere Felder teilen. Sie lebt am
+     Dokument, nicht in der Tabelle — ein <input> darf kein Kind haben,
+     und je Zelle eine eigene Liste wäre Ballast. */
+  U.datalist = function (id, werte) {
+    var dl = document.getElementById(id);
+    if (!dl) { dl = el('datalist', { id: id }); document.body.appendChild(dl); }
+    U.leeren(dl);
+    (werte || []).forEach(function (w) { dl.appendChild(el('option', { value: w })); });
+    return id;
+  };
+
+  /* Textzelle für Tabellen. opts.liste = Id einer Vorschlagsliste — sie
+     schlägt vor, ohne den Anwender auf die Auswahl festzunageln. */
+  U.zelleTxt = function (obj, key, opts) {
+    opts = opts || {};
+    var inp = el('input', { type: opts.typ || 'text', value: obj[key] || '',
+      placeholder: opts.platzhalter || '' });
+    if (opts.liste) inp.setAttribute('list', opts.liste);
+    inp.addEventListener('input', function () {
+      obj[key] = inp.value;
+      A.markDirty();
+      if (opts.onchange) opts.onchange(inp.value);
+    });
+    return inp;
+  };
+
   U.zelleSel = function (obj, key, optionen, opts) {
     opts = opts || {};
     var s = el('select');

@@ -401,7 +401,7 @@ window.APP = window.APP || {};
         ohneOrt
           ? el('div', { class: 'muted', style: 'font-size:11.5px;margin-top:8px',
               text: ohneOrt + ' Projekt(e) fehlen auf der Karte, weil keine Koordinaten ' +
-                    'erfasst sind. Sie stehen im Projekt unter «Projekt & Phasen» — ' +
+                    'erfasst sind. Sie stehen im Projekt unter «Phasen & Termine» — ' +
                     'Knopf «Koordinaten suchen».' })
           : null
       ])

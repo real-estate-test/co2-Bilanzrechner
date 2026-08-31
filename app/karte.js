@@ -114,7 +114,7 @@ window.APP = window.APP || {};
     if (!mitStandort.length) {
       return el('div', { class: 'panelbody' }, [
         A.ui.hinweis('info', 'Noch kein Projekt hat einen Standort. Auf der Seite ' +
-          '<b>Projekt &amp; Phasen</b> mit <b>Koordinaten suchen</b> die Adresse auflösen — ' +
+          '<b>Projekt</b> mit <b>Koordinaten suchen</b> die Adresse auflösen — ' +
           'danach erscheint das Projekt hier.')
       ]);
     }

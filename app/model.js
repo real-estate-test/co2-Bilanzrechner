@@ -6,7 +6,7 @@ window.APP = window.APP || {};
 (function (A) {
   'use strict';
 
-  A.SCHEMA = 13;
+  A.SCHEMA = 14;
 
   /* ---------------------------------------------------------------
      Stammlisten
@@ -150,6 +150,80 @@ window.APP = window.APP || {};
     A.firmen = liste;
     try { localStorage.setItem(A.FIRMEN_LOKAL, JSON.stringify(liste)); } catch (e) {}
     return liste;
+  };
+
+  /* ---------------------------------------------------------------
+     Adressen — Personen, die an Projekten mitwirken
+
+     Die Liste wird einmal firmenweit gepflegt (Verwaltung); das Projekt
+     hält nur, WER beteiligt ist und in welcher Rolle. So bleibt eine
+     Mailadresse an einer Stelle aktuell, statt in zwanzig Projekten
+     zu veralten. Fällt ein Eintrag später aus der zentralen Liste,
+     rettet die Kopie im Projekt Name und Firma — die Beteiligung geht
+     also nie verloren.
+     --------------------------------------------------------------- */
+
+  A.ADRESSEN_LOKAL = 'projektrechner.adressen';
+
+  /* Häufige Rollen als Vorschlag. Frei überschreibbar — jedes Projekt
+     hat Beteiligte, die in keine Liste passen. */
+  A.PROJEKTROLLEN = [
+    'Bauherrschaft', 'Projektentwicklung', 'Gesamtleitung', 'Architektur',
+    'Bauleitung', 'Bauingenieur', 'HLKS-Planung', 'Elektroplanung',
+    'Sanitärplanung', 'Brandschutz', 'Bauphysik / Akustik', 'Geometer',
+    'Baurecht / Jurist', 'Totalunternehmer', 'Behörde', 'Vermarktung'
+  ];
+
+  A.adressenListe = function () {
+    var liste = Array.isArray(A.adressen) ? A.adressen : null;
+    if (!liste) {
+      try { liste = JSON.parse(localStorage.getItem(A.ADRESSEN_LOKAL) || '[]'); }
+      catch (e) { liste = []; }
+      if (!Array.isArray(liste)) liste = [];
+    }
+    return liste.filter(function (a) { return a && (a.name || a.firma); })
+                .map(function (a) {
+                  return { id: a.id || A.uid(), kuerzel: a.kuerzel || '', name: a.name || '',
+                           firma: a.firma || '', rolle: a.rolle || '',
+                           mail: a.mail || '', telefon: a.telefon || '' };
+                });
+  };
+
+  A.adressenSetzen = function (liste) {
+    liste = (liste || []).filter(function (a) { return a && (a.name || a.firma); })
+      .map(function (a) {
+        return { id: a.id || A.uid(),
+                 kuerzel: String(a.kuerzel || '').trim(), name: String(a.name || '').trim(),
+                 firma: String(a.firma || '').trim(), rolle: String(a.rolle || '').trim(),
+                 mail: String(a.mail || '').trim(), telefon: String(a.telefon || '').trim() };
+      });
+    A.adressen = liste;
+    try { localStorage.setItem(A.ADRESSEN_LOKAL, JSON.stringify(liste)); } catch (e) {}
+    return liste;
+  };
+
+  /* Ein Beteiligter, angereichert um die zentralen Stammdaten. Die
+     Rolle gehört immer dem Projekt — dieselbe Person kann hier die
+     Bauleitung und dort die Gesamtleitung führen. */
+  A.beteiligter = function (b) {
+    if (!b) return null;
+    var z = b.adresse
+      ? A.adressenListe().find(function (a) { return a.id === b.adresse; })
+      : null;
+    return {
+      id: b.id, adresse: b.adresse || '', zentral: !!z,
+      kuerzel: b.kuerzel || (z ? z.kuerzel : ''),
+      name:    z ? z.name    : (b.name || ''),
+      firma:   z ? z.firma   : (b.firma || ''),
+      mail:    z ? z.mail    : (b.mail || ''),
+      telefon: z ? z.telefon : (b.telefon || ''),
+      rolle:   b.rolle || (z ? z.rolle : ''),
+      verteiler: b.verteiler !== false
+    };
+  };
+
+  A.beteiligteListe = function (p) {
+    return ((p && p.beteiligte) || []).map(A.beteiligter).filter(Boolean);
   };
 
   A.BKP_KATALOG = [
@@ -324,6 +398,14 @@ window.APP = window.APP || {};
 
   A.heute = function () { return new Date().toISOString().slice(0, 10); };
 
+  /* ISO-Datum in Schweizer Schreibweise. Leere und unlesbare Werte
+     geben einen Strich zurück statt «Invalid Date». */
+  A.datum = function (iso) {
+    var t = String(iso || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(t)) return '—';
+    return t.slice(8, 10) + '.' + t.slice(5, 7) + '.' + t.slice(0, 4);
+  };
+
   /* Beschriftung eines Projektjahres im Kalender. */
   A.jahrLabel = function (p, j) {
     var start = p && p.startjahr ? parseInt(p.startjahr, 10) : new Date().getFullYear();
@@ -433,6 +515,10 @@ window.APP = window.APP || {};
       formeln: {},                       // Formeltext je Feldpfad; der Wert
                                          // selbst steht im Feld — der
                                          // Rechenkern sieht nur Zahlen
+
+      /* Beteiligte dieses Projekts. Verweist auf die firmenweite
+         Adressliste; Rolle und Verteilerhaken gehören dem Projekt. */
+      beteiligte: [],
 
       grundstueck: {
         flaeche: 2500,
@@ -1042,6 +1128,11 @@ window.APP = window.APP || {};
     if (version < 13 && (!p.geo || typeof p.geo !== 'object')) {
       p.geo = { lat: 0, lon: 0, bezeichnung: '', gesucht: '' };
     }
+
+    /* --- Schema 13 -> 14: Beteiligte je Projekt. Ohne Liste gibt es
+       keine Empfänger für Protokolle und keine Zuständigen für
+       Aufgaben. ------------------------------------------------------- */
+    if (version < 14 && !Array.isArray(p.beteiligte)) p.beteiligte = [];
 
     /* Startdatum aus einem vorhandenen Startjahr ableiten */
     if (!p.startdatum && p.startjahr) p.startdatum = p.startjahr + '-01-01';

@@ -359,7 +359,7 @@ window.APP = window.APP || {};
         } })
       ]));
       firmenBody.appendChild(el('div', { class: 'hilfe', style: 'margin-top:10px',
-        text: 'Ein Projekt wird unter «Projekt & Phasen» einer Firma zugeordnet. Im Portfolio ' +
+        text: 'Ein Projekt wird unter «Projekt» einer Firma zugeordnet. Im Portfolio ' +
               'lässt sich danach filtern; die Gesamtsicht über alle Gefässe bleibt bestehen. ' +
               'Eine Firma, die an einem Projekt hängt, bleibt dort wählbar, auch wenn sie hier ' +
               'entfernt wird — die Zuordnung geht also nie verloren.' }));
@@ -377,6 +377,77 @@ window.APP = window.APP || {};
 
     out.appendChild(U.panel('Immobiliengefässe', 'Firmen, denen Projekte zugeordnet werden', [firmenBody]));
 
+    /* --- Adressbuch -------------------------------------------------- */
+    var adrBody = el('div', { class: 'panelbody' });
+    var adrFuss = el('div', { class: 'panelbody' });
+
+    function adressenZeichnen(liste) {
+      U.leeren(adrBody);
+      var rollen = U.datalist('dl-rollen-verwaltung', A.PROJEKTROLLEN);
+
+      var zeilen = liste.map(function (a, i) {
+        return el('tr', {}, [
+          el('td', { style: 'width:74px' }, [U.zelleTxt(a, 'kuerzel', { platzhalter: 'AB' })]),
+          el('td', {}, [U.zelleTxt(a, 'name', { platzhalter: 'Vorname Name' })]),
+          el('td', {}, [U.zelleTxt(a, 'firma', { platzhalter: 'Firma' })]),
+          el('td', { style: 'width:170px' }, [U.zelleTxt(a, 'rolle',
+            { liste: rollen, platzhalter: 'übliche Rolle' })]),
+          el('td', {}, [U.zelleTxt(a, 'mail', { typ: 'email', platzhalter: 'name@firma.ch' })]),
+          el('td', { style: 'width:140px' }, [U.zelleTxt(a, 'telefon', { platzhalter: '+41 …' })]),
+          el('td', { class: 'w1' }, [el('button', { class: 'ghost sm', text: '×',
+            title: 'Eintrag entfernen', onclick: function () {
+              liste.splice(i, 1); adressenZeichnen(liste);
+            } })])
+        ]);
+      });
+      if (!zeilen.length) {
+        zeilen.push(el('tr', {}, [el('td', { colspan: 7, class: 'muted',
+          text: 'Noch keine Adresse erfasst.' })]));
+      }
+
+      adrBody.appendChild(U.tabelle([
+        { label: 'Kürzel' }, { label: 'Name' }, { label: 'Firma' },
+        { label: 'übliche Rolle' }, { label: 'E-Mail' }, { label: 'Telefon' }, { label: '' }
+      ], zeilen));
+
+      U.leeren(adrFuss);
+      adrFuss.appendChild(el('div', { style: 'display:flex;gap:10px;flex-wrap:wrap' }, [
+        el('button', { text: '+ Person', onclick: function () {
+          liste.push({ id: A.uid(), kuerzel: '', name: '', firma: '', rolle: '', mail: '', telefon: '' });
+          adressenZeichnen(liste);
+        } }),
+        el('button', { class: 'primary', text: 'Adressbuch speichern', onclick: function () {
+          var neu = A.adressenSetzen(liste);
+          var fertig = function () {
+            A.meldung('ok', neu.length + ' Adressen gespeichert — sie stehen in jedem Projekt ' +
+              'zur Auswahl.');
+            A.render();
+          };
+          if (A.store.modus === 'server') {
+            A.store.einstellungSetzen('adressen', neu).then(fertig)
+              .catch(function (f) { A.meldung('warn', f.message); });
+          } else { fertig(); }
+        } })
+      ]));
+      adrFuss.appendChild(el('div', { class: 'hilfe', style: 'margin-top:10px',
+        text: 'Im Projekt wird unter «Adressliste» ausgewählt, wer beteiligt ist; die Rolle ' +
+              'wird dort projektbezogen gesetzt. Wird eine Person hier entfernt, bleibt sie in ' +
+              'den Projekten stehen, in denen sie hängt — mit Name und Firma aus dem Projekt.' }));
+    }
+
+    if (A.store.modus === 'server') {
+      adrBody.appendChild(el('div', { class: 'muted', text: 'wird geladen …' }));
+      A.store.einstellung('adressen').then(function (liste) {
+        if (Array.isArray(liste)) A.adressen = liste;
+        adressenZeichnen(A.adressenListe());
+      }).catch(function () { adressenZeichnen(A.adressenListe()); });
+    } else {
+      adressenZeichnen(A.adressenListe());
+    }
+
+    out.appendChild(U.panel('Adressbuch', 'Personen, die an Projekten mitwirken',
+      [adrBody, adrFuss]));
+
     /* --- Kennwerte-Hinweis ----------------------------------------- */
     out.appendChild(U.panel('Kennwerte', 'Baukosten, Zinssätze und Sätze', [
       el('div', { class: 'panelbody' }, [
@@ -393,11 +464,14 @@ window.APP = window.APP || {};
   };
 
   /* ===================================================================
-     Seite: Protokoll
+     Seite: Änderungsverlauf
+
+     Nicht zu verwechseln mit den Sitzungsprotokollen: hier steht, wer
+     wann welche Zahl geändert hat.
      =================================================================== */
 
-  V.protokoll = function (p) {
-    var out = el('div', {}, [U.kopf('Protokoll',
+  V.verlauf = function (p) {
+    var out = el('div', {}, [U.kopf('Änderungsverlauf',
       'Lückenlose Aufzeichnung aller Änderungen. Einträge lassen sich nachträglich von niemandem ' +
       'ändern oder entfernen — auch nicht von Verwaltern.')]);
 

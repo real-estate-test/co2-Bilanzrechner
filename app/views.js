@@ -26,14 +26,14 @@ window.APP = window.APP || {};
   }
 
   /* ===================================================================
-     1 · Projekt, Szenario, Phasen
+     1 · Projekt und Szenario
      =================================================================== */
 
   V.projekt = function (p) {
     init();
-    var out = el('div', {}, [U.kopf('Projekt & Phasen',
-      'Rahmendaten, Szenario und Zeitachse. Phasendauern werden in Monaten erfasst und ' +
-      'bauen auf dem Startdatum auf.')]);
+    var out = el('div', {}, [U.kopf('Projekt',
+      'Rahmendaten und Szenario. Die Zeitachse steht unter «Phasen & Termine», ' +
+      'die Beteiligten unter «Adressliste».')]);
 
     /* Stammdaten */
     out.appendChild(U.panel('Stammdaten', null, [
@@ -119,6 +119,191 @@ window.APP = window.APP || {};
       ], 'c3')
     ]));
 
+    return out;
+  };
+
+  /* ===================================================================
+     1a · Adressliste
+
+     Wer wirkt an diesem Projekt mit? Die Personen stehen firmenweit in
+     der Verwaltung; hier wird ausgewählt, wer dabei ist und in welcher
+     Rolle. Freie Einträge sind möglich — nicht jeder Beteiligte einer
+     Sitzung gehört ins Adressbuch.
+     =================================================================== */
+
+  V.adressen = function (p) {
+    init();
+    if (!Array.isArray(p.beteiligte)) p.beteiligte = [];
+    var out = el('div', {}, [U.kopf('Adressliste',
+      'Beteiligte dieses Projekts. Sie sind die Empfänger der Protokolle und die ' +
+      'Zuständigen für Aufgaben im Terminplan.')]);
+
+    var buch = A.adressenListe();
+    var rollenListe = U.datalist('dl-rollen', A.PROJEKTROLLEN);
+
+    var zeilen = p.beteiligte.map(function (b, i) {
+      var d = A.beteiligter(b);
+      var tr = el('tr', {});
+
+      tr.appendChild(el('td', { style: 'width:74px' }, [U.zelleTxt(b, 'kuerzel',
+        { platzhalter: d.name ? kuerzelVorschlag(d.name) : 'AB' })]));
+
+      /* Verknüpfte Einträge zeigen die zentralen Daten nur an — geändert
+         werden sie in der Verwaltung, sonst driften sie auseinander. */
+      if (d.zentral) {
+        tr.appendChild(el('td', { text: d.name }));
+        tr.appendChild(el('td', { class: 'muted', text: d.firma || '—' }));
+      } else {
+        tr.appendChild(el('td', {}, [U.zelleTxt(b, 'name', { platzhalter: 'Name' })]));
+        tr.appendChild(el('td', {}, [U.zelleTxt(b, 'firma', { platzhalter: 'Firma' })]));
+      }
+
+      tr.appendChild(el('td', { style: 'width:160px' }, [
+        U.zelleTxt(b, 'rolle', { liste: rollenListe, platzhalter: 'Rolle im Projekt' })]));
+
+      if (d.zentral) {
+        tr.appendChild(el('td', { class: 'muted' }, [mailLink(d.mail)]));
+        tr.appendChild(el('td', { class: 'muted', style: 'white-space:nowrap',
+          text: d.telefon || '—' }));
+      } else {
+        tr.appendChild(el('td', {}, [U.zelleTxt(b, 'mail', { typ: 'email', platzhalter: 'name@firma.ch' })]));
+        tr.appendChild(el('td', { style: 'width:130px' }, [U.zelleTxt(b, 'telefon', { platzhalter: '+41 …' })]));
+      }
+
+      tr.appendChild(el('td', { style: 'width:70px' }, [(function () {
+        var c = el('input', { type: 'checkbox', checked: b.verteiler !== false ? '' : null,
+          style: 'width:auto' });
+        c.addEventListener('change', function () { b.verteiler = c.checked; A.markDirty(); A.render(); });
+        return c;
+      })()]));
+
+      tr.appendChild(el('td', { style: 'width:86px' }, [
+        el('span', { class: 'tag' + (d.zentral ? '' : ' warn'),
+          title: d.zentral ? 'Stammdaten kommen aus der Verwaltung'
+                           : 'Nur in diesem Projekt erfasst',
+          text: d.zentral ? 'Adressbuch' : 'nur hier' })]));
+
+      tr.appendChild(el('td', { class: 'w1' }, [el('button', { class: 'ghost sm schreibend', text: '×',
+        title: 'Beteiligung entfernen',
+        onclick: function () { p.beteiligte.splice(i, 1); A.markDirty(); A.render(); } })]));
+      return tr;
+    });
+
+    if (!zeilen.length) {
+      zeilen.push(el('tr', {}, [el('td', { colspan: 9, class: 'muted',
+        text: 'Noch niemand erfasst.' })]));
+    }
+
+    var koerper = [el('div', { class: 'panelbody' }, [U.tabelle([
+      { label: 'Kürzel' }, { label: 'Name' }, { label: 'Firma' },
+      { label: 'Rolle im Projekt' }, { label: 'E-Mail' }, { label: 'Telefon' },
+      { label: 'Verteiler' }, { label: 'Herkunft' }, { label: '' }
+    ], zeilen)])];
+
+    /* Hinzufügen: aus dem Adressbuch, oder frei für diesen einen Fall */
+    var offen = buch.filter(function (a) {
+      return !p.beteiligte.some(function (b) { return b.adresse === a.id; });
+    });
+    var wahl = el('select', { style: 'max-width:280px' });
+    wahl.appendChild(el('option', { value: '', text: offen.length
+      ? '— aus dem Adressbuch wählen —' : '— Adressbuch ist leer —' }));
+    offen.forEach(function (a) {
+      wahl.appendChild(el('option', { value: a.id,
+        text: [a.name, a.firma].filter(Boolean).join(' · ') }));
+    });
+
+    koerper.push(el('div', { class: 'panelbody',
+      style: 'display:flex;gap:10px;align-items:center;flex-wrap:wrap' }, [
+      wahl,
+      el('button', { class: 'schreibend', text: '+ übernehmen', onclick: function () {
+        var a = buch.find(function (x) { return x.id === wahl.value; });
+        if (!a) { A.meldung('warn', 'Bitte zuerst eine Person auswählen.'); return; }
+        p.beteiligte.push({ id: A.uid(), adresse: a.id, kuerzel: a.kuerzel || kuerzelVorschlag(a.name),
+          rolle: a.rolle || '', verteiler: true });
+        A.markDirty(); A.render();
+      } }),
+      el('span', { class: 'muted', text: '·' }),
+      el('button', { class: 'schreibend', text: '+ freier Eintrag', onclick: function () {
+        p.beteiligte.push({ id: A.uid(), adresse: '', kuerzel: '', name: '', firma: '',
+          rolle: '', mail: '', telefon: '', verteiler: true });
+        A.markDirty(); A.render();
+      } })
+    ]));
+
+    koerper.push(el('div', { class: 'panelbody' }, [
+      U.hinweis('info', 'Das <b>Adressbuch</b> wird unter <b>Verwaltung</b> gepflegt — eine ' +
+        'Mailadresse ändert sich dort einmal und gilt in allen Projekten. Ein <b>freier ' +
+        'Eintrag</b> bleibt in diesem Projekt. Der <b>Verteiler</b> bestimmt, wer das ' +
+        'Protokoll bekommt; wer nur zuständig ist, aber keine Post will, wird hier ausgehakt.')
+    ]));
+
+    out.appendChild(U.panel('Beteiligte', p.beteiligte.length
+      ? p.beteiligte.length + ' Personen · ' +
+        A.beteiligteListe(p).filter(function (d) { return d.verteiler && d.mail; }).length +
+        ' im Verteiler'
+      : 'noch niemand erfasst', koerper));
+
+    /* Verteiler als Sammeladresse — der kurze Weg zur Mail, solange der
+       Versand aus der Anwendung noch nicht steht. */
+    var mails = A.beteiligteListe(p)
+      .filter(function (d) { return d.verteiler && d.mail; })
+      .map(function (d) { return d.mail; });
+
+    out.appendChild(U.panel('Verteiler', mails.length + ' Adressen', [
+      el('div', { class: 'panelbody' }, [
+        mails.length
+          ? el('input', { type: 'text', readonly: '', value: mails.join('; '),
+              title: 'zum Kopieren markieren',
+              style: 'width:100%;padding:7px 9px;border:1px solid var(--line2);border-radius:5px;' +
+                     'font-family:inherit;font-size:12.5px;background:var(--panel2)' })
+          : el('div', { class: 'muted', text: 'Niemand mit Mailadresse im Verteiler.' })
+      ]),
+      mails.length ? el('div', { class: 'panelbody',
+        style: 'display:flex;gap:10px;flex-wrap:wrap' }, [
+        el('button', { text: 'Adressen kopieren', onclick: function () {
+          var t = mails.join('; ');
+          if (navigator.clipboard) {
+            navigator.clipboard.writeText(t)
+              .then(function () { A.meldung('ok', mails.length + ' Adressen kopiert.'); })
+              .catch(function () { A.meldung('warn', 'Kopieren nicht möglich — bitte von Hand markieren.'); });
+          } else { A.meldung('warn', 'Kopieren nicht möglich — bitte von Hand markieren.'); }
+        } }),
+        el('button', { text: 'Mail an den Verteiler', onclick: function () {
+          /* bcc, damit die Empfänger nicht die Adressen aller anderen sehen */
+          window.location.href = 'mailto:?bcc=' + encodeURIComponent(mails.join(',')) +
+            '&subject=' + encodeURIComponent(p.name || 'Projekt');
+        } })
+      ]) : null
+    ]));
+
+    return out;
+  };
+
+  function kuerzelVorschlag(name) {
+    return String(name || '').split(/\s+/).filter(Boolean)
+      .map(function (t) { return t[0]; }).join('').slice(0, 3).toUpperCase();
+  }
+
+  function mailLink(mail) {
+    return mail
+      ? el('a', { href: 'mailto:' + mail, text: mail })
+      : el('span', { class: 'muted', text: '—' });
+  }
+
+  /* ===================================================================
+     1b · Phasen & Termine
+
+     Die Rechnung kennt nur Dauern in Monaten ab dem Startdatum — daran
+     hängen Kapitalbedarf, Bauzinsen und Zahlungsplan. Der Terminplan
+     mit Kalenderdaten kommt hier dazu, ohne die Rechnung anzufassen.
+     =================================================================== */
+
+  V.termine = function (p) {
+    init();
+    var out = el('div', {}, [U.kopf('Phasen & Termine',
+      'Phasendauern werden in Monaten erfasst und bauen auf dem Startdatum auf. ' +
+      'Sie steuern Kapitalbedarf, Bauzinsen und Zahlungsplan.')]);
+
     /* Zeitachse */
     var zeitBody = U.body([
       U.num(p, 'zeit.dauer_entwicklung', 'Erwerb → Baueingabe', { unit: 'Monate', dez: 0 }),
@@ -133,7 +318,16 @@ window.APP = window.APP || {};
 
     var achse = el('div', { class: 'panelbody' });
     U.derived.push(function () { U.leeren(achse).appendChild(phasenBalken(A.state.r)); });
-    out.appendChild(U.panel('Zeitachse', 'Jahresraster · Zinsen auf dem mittleren Kapitalsaldo', [zeitBody, achse]));
+
+    /* Der Nullpunkt steht auf der Projektseite. Hier nur zur Kontrolle —
+       zwei Eingabestellen für dasselbe Datum wären eine Fehlerquelle. */
+    var start = el('div', { class: 'panelbody' }, [
+      el('div', { class: 'muted', style: 'font-size:11.5px',
+        text: 'Nullpunkt: ' + (p.startdatum ? A.datum(p.startdatum) : 'kein Startdatum erfasst') +
+              ' (Erwerb) — änderbar auf der Seite «Projekt».' })
+    ]);
+    out.appendChild(U.panel('Zeitachse', 'Jahresraster · Zinsen auf dem mittleren Kapitalsaldo',
+      [start, zeitBody, achse]));
 
     /* Verteilung des Kapitalbedarfs. Der Mittelabfluss folgt selten einer
        Kurve — deshalb wahlweise feste Prozentwerte je Phase. */
@@ -657,7 +851,7 @@ window.APP = window.APP || {};
 
     if (p.szenario === 'neubau') {
       out.appendChild(U.hinweis('info', 'Das gewählte Szenario <b>Grüne Wiese · Neubau</b> kennt keinen Bestand. ' +
-        'Wechseln Sie das Szenario auf der Seite <b>Projekt &amp; Phasen</b>, wenn ein Gebäude vorhanden ist.'));
+        'Wechseln Sie das Szenario auf der Seite <b>Projekt</b>, wenn ein Gebäude vorhanden ist.'));
       return out;
     }
 

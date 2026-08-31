@@ -11,12 +11,15 @@ window.APP = window.APP || {};
   A.state = { p: null, r: null, seite: 'projekt', dirty: false, konflikt: null };
   A.ziele = null;          // firmenweite Zielwerte (nur im Serverbetrieb)
   A.firmen = null;         // Liste der Immobiliengefässe (nur im Serverbetrieb)
+  A.adressen = null;       // firmenweites Adressbuch (nur im Serverbetrieb)
   A.zahlungsplan = null;   // firmenweite Zahlungsmodalitäten (nur im Serverbetrieb)
   A.zahlungsfristen = null;// firmenweite Fristen rund um die Beurkundung
 
   A.SEITEN = [
     { id: 'portfolio',    ix: '0',  label: 'Portfolio' },
-    { id: 'projekt',      ix: '1',  label: 'Projekt & Phasen' },
+    { id: 'projekt',      ix: '1',  label: 'Projekt' },
+    { id: 'adressen',     ix: '1a', label: 'Adressliste' },
+    { id: 'termine',      ix: '1b', label: 'Phasen & Termine' },
     { id: 'erwerb',       ix: '2',  label: 'Grundstück & Erwerbskosten' },
     { id: 'flaechen',     ix: '3',  label: 'Flächen & Volumen' },
     { id: 'bestand',      ix: '4',  label: 'Bestand' },
@@ -29,7 +32,7 @@ window.APP = window.APP || {};
     { id: 'analyse',      ix: '→',  label: 'Analyse' },
     { id: 'tracking',     ix: '→',  label: 'Tracking' },
     { id: 'bericht',      ix: '→',  label: 'Bericht' },
-    { id: 'protokoll',    ix: '·',  label: 'Protokoll', gruppe: 'verwaltung', nurServer: true },
+    { id: 'verlauf',      ix: '·',  label: 'Änderungsverlauf', gruppe: 'verwaltung', nurServer: true },
     { id: 'verwaltung',   ix: '·',  label: 'Verwaltung', nurVerwalter: true }
   ];
 
@@ -437,7 +440,8 @@ window.APP = window.APP || {};
             A.store.einstellung('ziele').catch(function () { return null; }),
             A.store.einstellung('firmen').catch(function () { return null; }),
             A.store.einstellung('zahlungsplan').catch(function () { return null; }),
-            A.store.einstellung('zahlungsfristen').catch(function () { return null; })
+            A.store.einstellung('zahlungsfristen').catch(function () { return null; }),
+            A.store.einstellung('adressen').catch(function () { return null; })
           ]);
         })
         .then(function (geladen) {
@@ -453,6 +457,7 @@ window.APP = window.APP || {};
           if (geladen && geladen[3] && typeof geladen[3] === 'object') {
             A.zahlungsfristen = geladen[3];
           }
+          if (geladen && Array.isArray(geladen[4])) A.adressen = geladen[4];
           /* Zentralen Verkaufsstand übernehmen, falls er neuer ist als der
              lokale — geladen wird er nur von Hand. */
           return A.verkauf.zentralLaden().then(function () { weiter(serverModus); });

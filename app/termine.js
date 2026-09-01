@@ -370,8 +370,11 @@ window.APP = window.APP || {};
       A.protokolle.laden(p.id);
     }
     if (ps && ps.fehler) {
-      box.appendChild(U.hinweis('warn', 'Die Protokolle konnten nicht geladen werden — ' +
-        'Aufgaben fehlen deshalb im Plan: ' + A.escape(ps.fehler)));
+      /* Derselbe Hinweis wie auf der Protokollseite — samt Knopf zum
+         Nachprüfen. Ohne Protokolle fehlen dem Plan die Aufgaben, die
+         Phasen und eigenen Termine stehen aber. */
+      box.appendChild(U.panel('Aufgaben aus Protokollen fehlen',
+        'der Rest des Terminplans steht trotzdem', [A.protokolle.fehlerhinweis()]));
     }
 
     var alle = T.balken(p);

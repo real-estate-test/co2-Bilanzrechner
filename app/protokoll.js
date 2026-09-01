@@ -44,7 +44,7 @@ window.APP = window.APP || {};
     /* Nach einem Fehlschlag nicht von selbst wieder versuchen — sonst
        dreht sich Laden → Zeichnen → Laden im Kreis. */
     if (S.fehler && S.projekt === projektId && !erzwingen) return Promise.resolve();
-    S.laedt = true; S.fehler = null;
+    S.laedt = true; S.fehler = null; S.tabelleFehlt = false; S.fehlerStatus = 0;
     return Promise.resolve(A.store.sitzungen(projektId))
       .then(function (liste) {
         S.liste = liste || [];
@@ -61,6 +61,13 @@ window.APP = window.APP || {};
       .catch(function (f) {
         S.laedt = false; S.projekt = projektId;
         S.fehler = f.message || String(f);
+        /* Fehlt die Tabelle, ist das kein Ausfall, sondern ein noch
+           nicht eingespielter Nachtrag — das muss die Meldung sagen. */
+        S.fehlerStatus = f.status || 0;
+        S.tabelleFehlt = f.status === 404 ||
+          (f.daten && f.daten.code === 'PGRST205') ||
+          /could not find the table|does not exist|relation .* does not exist/i
+            .test(String(f.message || ''));
         A.render();
       });
   };
@@ -100,19 +107,57 @@ window.APP = window.APP || {};
         '<b>Adressliste</b> an — sie sind Teilnehmer, Zuständige und Empfänger.'));
     }
 
-    if (S.projekt !== p.id) { S.offen = null; S.geladen = false; S.liste = []; }
+    if (S.projekt !== p.id) {
+      S.offen = null; S.geladen = false; S.liste = [];
+      S.fehler = null; S.tabelleFehlt = false;
+    }
+
+    /* Der Fehlerfall zuerst: Sonst stünde hier für immer «wird
+       geladen», weil der Ladeversuch nach einem Fehlschlag bewusst
+       nicht wiederholt wird. */
+    if (S.fehler) {
+      out.appendChild(P.fehlerhinweis());
+      return out;
+    }
     if (!S.geladen && !S.laedt) {
       P.laden(p.id);
       out.appendChild(el('div', { class: 'panelbody muted', text: 'Protokolle werden geladen …' }));
       return out;
     }
-    if (S.fehler) {
-      out.appendChild(U.hinweis('warn', 'Protokolle nicht ladbar: ' + A.escape(S.fehler)));
+    if (S.laedt) {
+      out.appendChild(el('div', { class: 'panelbody muted', text: 'Protokolle werden geladen …' }));
       return out;
     }
 
     out.appendChild(S.offen ? editor(p, S.offen) : uebersicht(p));
     return out;
+  };
+
+  /* Ein Hinweis, der sagt, was zu tun ist — und ein Knopf, der es
+     nach dem Einspielen sofort nachprüft, ohne Neuladen der Seite.
+     Wird auch vom Terminplan verwendet. */
+  P.fehlerhinweis = function () {
+    var box = el('div', {});
+    if (S.tabelleFehlt) {
+      box.appendChild(U.hinweis('warn',
+        'Die Tabelle <code>sitzungen</code> fehlt in der Datenbank. Sie kam mit den ' +
+        'Protokollen dazu und wird einmalig nachgetragen: Im Supabase-SQL-Editor den ' +
+        'Inhalt von <code>db/update-02.sql</code> ausführen — das Skript ist wiederholbar ' +
+        'und ändert an bestehenden Daten nichts. Danach hier auf ' +
+        '<b>Erneut versuchen</b> klicken.'));
+    } else {
+      box.appendChild(U.hinweis('warn',
+        'Die Protokolle konnten nicht geladen werden: ' + A.escape(S.fehler || '')));
+    }
+    box.appendChild(el('div', { class: 'panelbody noprint' }, [
+      el('button', { class: 'primary', text: 'Erneut versuchen', onclick: function () {
+        var id = A.state.p.id;
+        S.fehler = null; S.tabelleFehlt = false;
+        P.laden(id, true);
+        A.render();
+      } })
+    ]));
+    return box;
   };
 
   /* ---------------------------------------------------------------

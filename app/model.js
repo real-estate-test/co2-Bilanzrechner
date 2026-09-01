@@ -6,7 +6,7 @@ window.APP = window.APP || {};
 (function (A) {
   'use strict';
 
-  A.SCHEMA = 14;
+  A.SCHEMA = 15;
 
   /* ---------------------------------------------------------------
      Stammlisten
@@ -238,17 +238,22 @@ window.APP = window.APP || {};
 
   /* Phasen nach SIA 102. «rechen» ordnet jede Phase einer der vier
      Rechenphasen zu — die Kalkulation kennt nur diese vier. */
+  /* «gewicht» steuert nur den Terminvorschlag: Innerhalb einer
+     Rechenphase teilen sich die SIA-Phasen den Zeitraum in diesem
+     Verhältnis. Ein Vorprojekt dauert länger als eine strategische
+     Planung — gleichmässige Drittel wären als Vorschlag wertlos.
+     gewicht 0 heisst: keine eigene Zeitspanne (Sammelrubrik). */
   A.SIA_PHASEN = [
-    { id: 'allgemein',   label: 'Allgemeines / Organisation', sia: '',   rechen: 'entwicklung' },
-    { id: 'strategie',   label: 'Strategische Planung',       sia: '1',  rechen: 'entwicklung' },
-    { id: 'vorstudien',  label: 'Vorstudien',                 sia: '2',  rechen: 'entwicklung' },
-    { id: 'vorprojekt',  label: 'Vorprojekt',                 sia: '31', rechen: 'entwicklung' },
-    { id: 'bauprojekt',  label: 'Bauprojekt',                 sia: '32', rechen: 'entwicklung' },
-    { id: 'baubewilligung', label: 'Bewilligungsverfahren',   sia: '33', rechen: 'bewilligung' },
-    { id: 'ausschreibung',  label: 'Ausschreibung',           sia: '41', rechen: 'vorbereitung' },
-    { id: 'ausfuehrungsplanung', label: 'Ausführungsplanung',  sia: '51', rechen: 'vorbereitung' },
-    { id: 'ausfuehrung', label: 'Ausführung',                 sia: '52', rechen: 'bau' },
-    { id: 'abschluss',   label: 'Inbetriebnahme / Abschluss', sia: '53', rechen: 'bau' }
+    { id: 'allgemein',   label: 'Allgemeines / Organisation', sia: '',   rechen: 'entwicklung', gewicht: 0 },
+    { id: 'strategie',   label: 'Strategische Planung',       sia: '1',  rechen: 'entwicklung', gewicht: 0.5 },
+    { id: 'vorstudien',  label: 'Vorstudien',                 sia: '2',  rechen: 'entwicklung', gewicht: 1 },
+    { id: 'vorprojekt',  label: 'Vorprojekt',                 sia: '31', rechen: 'entwicklung', gewicht: 1.5 },
+    { id: 'bauprojekt',  label: 'Bauprojekt',                 sia: '32', rechen: 'entwicklung', gewicht: 2 },
+    { id: 'baubewilligung', label: 'Bewilligungsverfahren',   sia: '33', rechen: 'bewilligung', gewicht: 1 },
+    { id: 'ausschreibung',  label: 'Ausschreibung',           sia: '41', rechen: 'vorbereitung', gewicht: 1.5 },
+    { id: 'ausfuehrungsplanung', label: 'Ausführungsplanung',  sia: '51', rechen: 'vorbereitung', gewicht: 1 },
+    { id: 'ausfuehrung', label: 'Ausführung',                 sia: '52', rechen: 'bau', gewicht: 9 },
+    { id: 'abschluss',   label: 'Inbetriebnahme / Abschluss', sia: '53', rechen: 'bau', gewicht: 1 }
   ];
 
   A.phaseLabel = function (id) {
@@ -595,6 +600,34 @@ window.APP = window.APP || {};
     return t.slice(8, 10) + '.' + t.slice(5, 7) + '.' + t.slice(0, 4);
   };
 
+  /* Datumsrechnung für den Terminplan. Der Rechenkern arbeitet in
+     Jahresbruchteilen ab Startdatum, der Terminplan in Kalenderdaten —
+     hier laufen die beiden Welten zusammen. */
+  A.datumPlusTage = function (iso, tage) {
+    var d = Date.parse(String(iso || '').slice(0, 10));
+    if (!isFinite(d)) return '';
+    return new Date(d + Math.round(tage) * 86400000).toISOString().slice(0, 10);
+  };
+
+  A.datumPlusJahre = function (iso, jahre) {
+    return A.datumPlusTage(iso, (jahre || 0) * 365.25);
+  };
+
+  /* Jahresbruchteil zwischen zwei Daten — die Umkehrung von oben. */
+  A.jahreZwischen = function (von, bis) {
+    var a = Date.parse(String(von || '').slice(0, 10));
+    var b = Date.parse(String(bis || '').slice(0, 10));
+    if (!isFinite(a) || !isFinite(b)) return null;
+    return (b - a) / 31557600000;
+  };
+
+  A.tageZwischen = function (von, bis) {
+    var a = Date.parse(String(von || '').slice(0, 10));
+    var b = Date.parse(String(bis || '').slice(0, 10));
+    if (!isFinite(a) || !isFinite(b)) return null;
+    return Math.round((b - a) / 86400000);
+  };
+
   /* Beschriftung eines Projektjahres im Kalender. */
   A.jahrLabel = function (p, j) {
     var start = p && p.startjahr ? parseInt(p.startjahr, 10) : new Date().getFullYear();
@@ -708,6 +741,14 @@ window.APP = window.APP || {};
       /* Beteiligte dieses Projekts. Verweist auf die firmenweite
          Adressliste; Rolle und Verteilerhaken gehören dem Projekt. */
       beteiligte: [],
+
+      /* Terminplan. Zweite Zeitebene neben den Rechendauern: hier
+         stehen Kalenderdaten, dort Monate. Beide bleiben getrennt —
+         ein verschobener Sitzungstermin darf die Marge nicht still
+         verändern. Die Übernahme geschieht auf Knopfdruck.
+           phasen = SIA-Phasen mit Von/Bis, dashboard = im Portfolio zeigen
+           eigene = frei erfasste Termine und Meilensteine */
+      termine: { phasen: [], eigene: [] },
 
       grundstueck: {
         flaeche: 2500,
@@ -1322,6 +1363,13 @@ window.APP = window.APP || {};
        keine Empfänger für Protokolle und keine Zuständigen für
        Aufgaben. ------------------------------------------------------- */
     if (version < 14 && !Array.isArray(p.beteiligte)) p.beteiligte = [];
+
+    /* --- Schema 14 -> 15: Terminplan je Projekt. -------------------- */
+    if (version < 15 || !p.termine || typeof p.termine !== 'object') {
+      p.termine = p.termine && typeof p.termine === 'object' ? p.termine : {};
+    }
+    if (!Array.isArray(p.termine.phasen)) p.termine.phasen = [];
+    if (!Array.isArray(p.termine.eigene)) p.termine.eigene = [];
 
     /* Startdatum aus einem vorhandenen Startjahr ableiten */
     if (!p.startdatum && p.startjahr) p.startdatum = p.startjahr + '-01-01';

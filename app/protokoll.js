@@ -41,6 +41,9 @@ window.APP = window.APP || {};
   P.laden = function (projektId, erzwingen) {
     if (S.laedt) return Promise.resolve();
     if (S.geladen && S.projekt === projektId && !erzwingen) return Promise.resolve();
+    /* Nach einem Fehlschlag nicht von selbst wieder versuchen — sonst
+       dreht sich Laden → Zeichnen → Laden im Kreis. */
+    if (S.fehler && S.projekt === projektId && !erzwingen) return Promise.resolve();
     S.laedt = true; S.fehler = null;
     return Promise.resolve(A.store.sitzungen(projektId))
       .then(function (liste) {
@@ -56,7 +59,8 @@ window.APP = window.APP || {};
         A.render();
       })
       .catch(function (f) {
-        S.laedt = false; S.fehler = f.message || String(f);
+        S.laedt = false; S.projekt = projektId;
+        S.fehler = f.message || String(f);
         A.render();
       });
   };

@@ -386,6 +386,10 @@ window.APP = window.APP || {};
 
     out.appendChild(U.panel('Kapitalbedarf', 'wann die Baukosten zahlungswirksam werden', vertKoerper));
 
+    /* Der Terminplan lebt in einem eigenen Modul — er hängt an den
+       Protokollen und nicht an der Rechnung. */
+    if (A.terminplan) out.appendChild(A.terminplan.panels(p));
+
     return out;
   };
 

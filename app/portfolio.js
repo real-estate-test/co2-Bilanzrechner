@@ -401,7 +401,7 @@ window.APP = window.APP || {};
         ohneOrt
           ? el('div', { class: 'muted', style: 'font-size:11.5px;margin-top:8px',
               text: ohneOrt + ' Projekt(e) fehlen auf der Karte, weil keine Koordinaten ' +
-                    'erfasst sind. Sie stehen im Projekt unter «Phasen & Termine» — ' +
+                    'erfasst sind. Sie stehen im Projekt unter «Projekt» — ' +
                     'Knopf «Koordinaten suchen».' })
           : null
       ])
@@ -473,6 +473,9 @@ window.APP = window.APP || {};
     /* ---------------------------------------------------------------
        Terminplan: eine Zeile je Projekt auf gemeinsamer Kalenderachse
        --------------------------------------------------------------- */
+    /* Markierte Termine heben sich bewusst von den Grobphasen ab —
+       sie kommen aus dem Detailplan des Projekts. */
+    var MARKENFARBE = '#5b3fa8';
     var PHASENFARBEN = [
       { key: 'entwicklung', label: 'Entwicklung',  f: '#7c93b3' },
       { key: 'bewilligung', label: 'Bewilligung',  f: '#b0871f' },
@@ -480,6 +483,39 @@ window.APP = window.APP || {};
       { key: 'bau',         label: 'Bau',          f: '#1f5fd0' },
       { key: 'vermarktung', label: 'Vermarktung',  f: '#0d7a45' }
     ];
+
+    /* Ein Kalenderdatum als Dezimaljahr — die Achse rechnet in Jahren,
+       der Terminplan des Projekts in Daten. */
+    function jahrDez(iso) {
+      var d = new Date(String(iso || '').slice(0, 10));
+      if (isNaN(d)) return null;
+      return d.getFullYear() + (d.getMonth() + d.getDate() / 30.4) / 12;
+    }
+
+    /* Was im Projekt unter «Phasen & Termine» fürs Portfolio markiert
+       wurde. Die groben Phasen bleiben, wie sie sind — das hier kommt
+       als eigene Zeile dazu. */
+    function marken(p) {
+      var raus = [];
+      ((p.termine && p.termine.phasen) || []).forEach(function (e) {
+        if (!e.dashboard || !e.von || !e.bis) return;
+        var t0 = jahrDez(e.von), t1 = jahrDez(e.bis);
+        if (t0 === null || t1 === null) return;
+        raus.push({ t0: t0, t1: t1, meilenstein: false,
+          label: A.phaseLabel(e.id) + ' · ' + A.datum(e.von) + ' – ' + A.datum(e.bis) });
+      });
+      ((p.termine && p.termine.eigene) || []).forEach(function (e) {
+        if (!e.dashboard) return;
+        var ende = jahrDez(e.bis || e.von);
+        if (ende === null) return;
+        var anfang = e.meilenstein ? ende : (jahrDez(e.von || e.bis) || ende);
+        raus.push({ t0: anfang, t1: ende, meilenstein: !!e.meilenstein,
+          label: (e.text || 'Termin') + ' · ' +
+                 (e.meilenstein ? A.datum(e.bis || e.von)
+                                : A.datum(e.von) + ' – ' + A.datum(e.bis)) });
+      });
+      return raus;
+    }
 
     var termine = berechnet.map(function (x) {
       var Z = x.r.zeit, start = x.p.startjahr || new Date().getFullYear();
@@ -491,6 +527,7 @@ window.APP = window.APP || {};
       var b = start + startFrac;
       return {
         p: x.p, r: x.r, von: b, bis: b + Z.t_ende,
+        marken: marken(x.p),
         phasen: [
           { key: 'entwicklung',  t0: b,                  t1: b + Z.t_baueingabe },
           { key: 'bewilligung',  t0: b + Z.t_baueingabe, t1: b + Z.t_bb },
@@ -502,10 +539,18 @@ window.APP = window.APP || {};
     });
 
     if (termine.length) {
-      var tVon = Math.floor(Math.min.apply(null, termine.map(function (t) { return t.von; })));
-      var tBis = Math.ceil(Math.max.apply(null, termine.map(function (t) { return t.bis; })));
+      /* Markierte Termine können über die Rechenphasen hinausragen —
+         die Achse muss sie mitnehmen, sonst kleben sie am Rand. */
+      var alleVon = [], alleBis = [];
+      termine.forEach(function (t) {
+        alleVon.push(t.von); alleBis.push(t.bis);
+        t.marken.forEach(function (m) { alleVon.push(m.t0); alleBis.push(m.t1); });
+      });
+      var tVon = Math.floor(Math.min.apply(null, alleVon));
+      var tBis = Math.ceil(Math.max.apply(null, alleBis));
       var jahre = Math.max(1, tBis - tVon);
-      var W = 980, zeileH = 40, links = 190, kopf = 26;
+      var mitMarken = termine.some(function (t) { return t.marken.length; });
+      var W = 980, zeileH = mitMarken ? 54 : 40, links = 190, kopf = 26;
       var fussH = 46;
       var H = kopf + termine.length * zeileH + fussH;
       var px = function (t) { return links + (t - tVon) / jahre * (W - links - 12); };
@@ -538,6 +583,26 @@ window.APP = window.APP || {};
           kinder.push(s('rect', { x: px(ph.t0), y: y0 + (ph.reihe ? 19 : 4), width: breite, height: 14,
             rx: 2.5, fill: farbe.f, opacity: ph.reihe ? .75 : .92 }));
         });
+
+        /* Markierte Phasen und Meilensteine aus dem Projektterminplan */
+        t.marken.forEach(function (m) {
+          var ym = y0 + 36;
+          var form;
+          if (m.meilenstein) {
+            var xm = px(m.t1);
+            form = s('polygon', {
+              points: [xm, ym - 5, xm + 5, ym, xm, ym + 5, xm - 5, ym].join(' '),
+              fill: MARKENFARBE, stroke: '#fff', 'stroke-width': 1 });
+          } else {
+            form = s('rect', { x: px(m.t0), y: ym - 5,
+              width: Math.max(3, px(m.t1) - px(m.t0)), height: 10, rx: 2,
+              fill: MARKENFARBE, opacity: .9 });
+          }
+          /* Der Titel muss im Element hängen, sonst zeigt der Browser
+             keinen Tooltip. */
+          form.appendChild(s('title', {}, m.label));
+          kinder.push(form);
+        });
       });
 
       /* Auslastung: wie viele Projekte sind je Jahr in Ausführung? */
@@ -569,7 +634,10 @@ window.APP = window.APP || {};
           U.svg(W, H, kinder, { h: H }),
           el('div', { class: 'legende' }, PHASENFARBEN.map(function (f) {
             return el('span', {}, [el('i', { style: 'background:' + f.f }), el('span', { text: f.label })]);
-          }))
+          }).concat(mitMarken ? [el('span', {}, [
+            el('i', { style: 'background:' + MARKENFARBE }),
+            el('span', { text: 'markiert im Projektterminplan' })
+          ])] : []))
         ])
       ]));
     }

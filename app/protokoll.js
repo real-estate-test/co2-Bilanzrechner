@@ -296,7 +296,11 @@ window.APP = window.APP || {};
         el('td', { style: 'width:180px' }, [
           U.zelleSel(t, 'phase', A.SIA_PHASEN.map(function (ph) {
             return { id: ph.id, label: ph.sia ? ph.sia + ' · ' + ph.label : ph.label }; }))]),
-        el('td', { style: 'width:180px' }, [
+        el('td', { style: 'width:160px' }, [
+          U.zelleSel(t, 'thema', [{ id: '', label: '— ohne Thema —' }].concat(
+            A.themenListe().map(function (x) {
+              return { id: x.id, label: x.label }; })))]),
+        el('td', { style: 'width:170px' }, [
           U.zelleSel(t, 'reihe', [{ id: '', label: 'alle Reihen' }].concat(
             reihen.map(function (r) { return { id: r.id, label: r.label }; })))]),
         el('td', { class: 'w1' }, [el('button', { class: 'ghost sm schreibend', text: '×',
@@ -306,7 +310,7 @@ window.APP = window.APP || {};
       ]);
     });
     if (!zeilen.length) {
-      zeilen.push(el('tr', {}, [el('td', { colspan: 5, class: 'muted',
+      zeilen.push(el('tr', {}, [el('td', { colspan: 6, class: 'muted',
         text: 'Keine projekteigenen Standardpunkte.' })]));
     }
 
@@ -319,12 +323,12 @@ window.APP = window.APP || {};
       'kommen in jedem neuen Protokoll dazu · firmenweit sind ' + anzahl + ' Punkte gepflegt', [
       el('div', { class: 'panelbody' }, [U.tabelle([
         { label: 'Traktandum' }, { label: 'Typ' }, { label: 'Phase' },
-        { label: 'gilt für' }, { label: '' }
+        { label: 'Thema' }, { label: 'gilt für' }, { label: '' }
       ], zeilen)]),
       el('div', { class: 'panelbody noprint' }, [
         el('button', { class: 'schreibend', text: '+ Standardpunkt', onclick: function () {
           p.standardpunkte.push({ id: A.uid(), text: '', typ: 'info',
-            phase: 'allgemein', reihe: '' });
+            phase: 'allgemein', thema: '', prio: '', reihe: '' });
           A.markDirty(); A.render();
         } }),
         U.hinweis('info', 'Beim Anlegen eines Protokolls werden zuerst die firmenweiten ' +
@@ -382,24 +386,32 @@ window.APP = window.APP || {};
     var zeilen = offen.map(function (o) {
       var b = A.beteiligteListe(p).find(function (x) { return x.id === o.punkt.beteiligter; });
       var r = A.reihe(o.sitzung.reihe);
+      var t = A.thema(o.punkt.thema);
+      var pr = A.prioritaet(o.punkt.prio);
       return el('tr', {}, [
         el('td', { class: 'muted', style: 'width:120px',
           text: (r ? r.kuerzel || r.label : '') + ' ' + o.sitzung.nummer + ' · ' +
                 A.datum(o.sitzung.datum) }),
-        el('td', { class: 'muted', style: 'width:130px', text: A.phaseLabel(o.punkt.phase) }),
+        el('td', { style: 'width:150px' }, t ? [
+          el('span', { class: 'themenpunkt', style: 'background:' + t.farbe }),
+          el('span', { text: ' ' + t.label })
+        ] : [el('span', { class: 'muted', text: '—' })]),
         el('td', { text: o.punkt.text || '—' }),
+        el('td', { style: 'width:74px' }, pr.id
+          ? [el('span', { class: 'tag' + (pr.klasse ? ' ' + pr.klasse : ''), text: pr.label })]
+          : [el('span', { class: 'muted', text: '—' })]),
         el('td', { style: 'width:150px', text: b ? (b.name || b.kuerzel) : 'ohne Zuständigkeit' }),
         terminZelle(o.punkt.termin)
       ]);
     });
     if (!zeilen.length) {
-      zeilen.push(el('tr', {}, [el('td', { colspan: 5, class: 'muted',
+      zeilen.push(el('tr', {}, [el('td', { colspan: 6, class: 'muted',
         text: 'Keine offenen Aufgaben.' })]));
     }
     return U.panel('Offene Aufgaben', 'aus allen Protokollen dieses Projekts', [
       el('div', { class: 'panelbody' }, [U.tabelle([
-        { label: 'Herkunft' }, { label: 'Phase' }, { label: 'Aufgabe' },
-        { label: 'Zuständig' }, { label: 'Termin', n: true }
+        { label: 'Herkunft' }, { label: 'Thema' }, { label: 'Aufgabe' },
+        { label: 'Prio' }, { label: 'Zuständig' }, { label: 'Termin', n: true }
       ], zeilen)])
     ]);
   }
@@ -708,7 +720,7 @@ window.APP = window.APP || {};
         if (!nurOhne) {
           zeilen.push(el('tr', { class: 'sum' }, [
             el('td', { class: 'n muted', text: pl.nr }),
-            el('td', { colspan: 7, text: pl.label })
+            el('td', { colspan: 9, text: pl.label })
           ]));
         }
         pl.punkte.forEach(function (pt) { zeilen.push(punktZeile(p, s, pt, beteiligte)); });
@@ -719,7 +731,8 @@ window.APP = window.APP || {};
           text: g.nr + '  ' + A.phaseLabel(g.phase.id) }),
         U.tabelle([
           { label: 'Nr.', w: '62px' }, { label: 'Typ', w: '104px' },
-          { label: 'Punkt' }, { label: 'Zuständig', w: '150px' },
+          { label: 'Punkt' }, { label: 'Thema', w: '140px' },
+          { label: 'Prio', w: '86px' }, { label: 'Zuständig', w: '150px' },
           { label: 'Termin', w: '128px' }, { label: 'Status', w: '112px' },
           { label: 'Phase', w: '150px', klasse: 'noprint' }, { label: '', klasse: 'noprint' }
         ], zeilen)
@@ -778,6 +791,42 @@ window.APP = window.APP || {};
       setTimeout(mitwachsen, 0);
       ta.addEventListener('input', function () { pt.text = ta.value; mitwachsen(); schmutzig(); });
       return ta;
+    })()]));
+
+    /* Thema — die Ordnung quer zu den Phasen. Der farbige Punkt macht
+       eine lange Liste auf einen Blick lesbar. */
+    tr.appendChild(el('td', {}, [(function () {
+      var themen = A.themenListe();
+      var sel = el('select', { class: 'nichtdrucken' });
+      sel.appendChild(el('option', { value: '', text: '— ohne —' }));
+      themen.forEach(function (t) {
+        sel.appendChild(el('option', { value: t.id, text: t.label,
+          selected: pt.thema === t.id ? '' : null }));
+      });
+      sel.addEventListener('change', function () {
+        pt.thema = sel.value; schmutzig(); A.render();
+      });
+      var t = A.thema(pt.thema);
+      var marke = el('span', { class: 'themenpunkt', style: t
+        ? 'background:' + t.farbe : 'background:transparent;border:1px solid var(--line2)' });
+      var text = el('span', { class: 'nurdruck', text: t ? t.label : '—' });
+      return el('span', { style: 'display:flex;align-items:center;gap:5px' },
+        [marke, sel, text]);
+    })()]));
+
+    tr.appendChild(el('td', {}, [(function () {
+      var sel = el('select', { class: 'nichtdrucken' });
+      A.PRIORITAETEN.forEach(function (x) {
+        sel.appendChild(el('option', { value: x.id, text: x.label,
+          selected: (pt.prio || '') === x.id ? '' : null }));
+      });
+      sel.addEventListener('change', function () {
+        pt.prio = sel.value; schmutzig(); A.render();
+      });
+      var pr = A.prioritaet(pt.prio);
+      var text = el('span', { class: 'nurdruck' + (pr.klasse ? ' tag ' + pr.klasse : ''),
+        text: pr.id ? pr.label : '—' });
+      return el('span', {}, [sel, text]);
     })()]));
 
     tr.appendChild(el('td', {}, [(function () {

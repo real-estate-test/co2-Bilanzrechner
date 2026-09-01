@@ -510,6 +510,72 @@ window.APP = window.APP || {};
     out.appendChild(U.panel('Sitzungsreihen', 'Arten von Sitzungen für die Protokolle',
       [reihenBody, reihenFuss]));
 
+    /* --- Themen ------------------------------------------------------ */
+    var thBody = el('div', { class: 'panelbody' });
+    var thFuss = el('div', { class: 'panelbody' });
+
+    function themenZeichnen(liste) {
+      U.leeren(thBody);
+      var zeilen = liste.map(function (t, i) {
+        return el('tr', {}, [
+          el('td', { style: 'width:56px' }, [(function () {
+            var f = el('input', { type: 'color', value: t.farbe || '#6b7484',
+              style: 'width:38px;height:26px;padding:0;border:1px solid var(--line2);' +
+                     'border-radius:4px;background:#fff' });
+            f.addEventListener('input', function () { t.farbe = f.value; });
+            return f;
+          })()]),
+          el('td', {}, [U.zelleTxt(t, 'label', { platzhalter: 'z. B. Kosten' })]),
+          el('td', { class: 'w1' }, [el('button', { class: 'ghost sm', text: '×',
+            onclick: function () { liste.splice(i, 1); themenZeichnen(liste); } })])
+        ]);
+      });
+      if (!zeilen.length) {
+        zeilen.push(el('tr', {}, [el('td', { colspan: 3, class: 'muted',
+          text: 'Keine Themen — es gelten die Standardthemen.' })]));
+      }
+      thBody.appendChild(U.tabelle([
+        { label: 'Farbe' }, { label: 'Thema' }, { label: '' }
+      ], zeilen));
+
+      U.leeren(thFuss);
+      thFuss.appendChild(el('div', { style: 'display:flex;gap:10px;flex-wrap:wrap' }, [
+        el('button', { text: '+ Thema', onclick: function () {
+          liste.push({ id: A.uid(), label: '', farbe: '#6b7484' });
+          themenZeichnen(liste);
+        } }),
+        el('button', { class: 'primary', text: 'Themen speichern', onclick: function () {
+          var neu = A.themenSetzen(liste);
+          var fertig = function () {
+            A.meldung('ok', neu.length + ' Themen gespeichert.');
+            A.render();
+          };
+          if (A.store.modus === 'server') {
+            A.store.einstellungSetzen('themen', neu).then(fertig)
+              .catch(function (f) { A.meldung('warn', f.message); });
+          } else { fertig(); }
+        } })
+      ]));
+      thFuss.appendChild(el('div', { class: 'hilfe', style: 'margin-top:10px',
+        text: 'Das Thema sagt, WORUM es geht — die Phase sagt, WANN. Jeder Protokollpunkt ' +
+              'bekommt eines; damit lassen sich Entscheide, Aufgaben und Infos später über ' +
+              'alle Protokolle hinweg nach Thema sammeln. Ein Thema, das an Punkten hängt, ' +
+              'sollte nicht entfernt werden — die Punkte stünden sonst ohne Zuordnung da.' }));
+    }
+
+    if (A.store.modus === 'server') {
+      thBody.appendChild(el('div', { class: 'muted', text: 'wird geladen …' }));
+      A.store.einstellung('themen').then(function (liste) {
+        if (Array.isArray(liste) && liste.length) A.themen = liste;
+        themenZeichnen(A.themenListe());
+      }).catch(function () { themenZeichnen(A.themenListe()); });
+    } else {
+      themenZeichnen(A.themenListe());
+    }
+
+    out.appendChild(U.panel('Themen', 'Ordnung der Protokollpunkte quer zu den Phasen',
+      [thBody, thFuss]));
+
     /* --- Standardtraktanden je Sitzungsreihe ------------------------- */
     var trBody = el('div', { class: 'panelbody' });
     var trFuss = el('div', { class: 'panelbody' });
@@ -531,12 +597,16 @@ window.APP = window.APP || {};
             el('td', { style: 'width:190px' }, [
               U.zelleSel(t, 'phase', A.SIA_PHASEN.map(function (ph) {
                 return { id: ph.id, label: ph.sia ? ph.sia + ' · ' + ph.label : ph.label }; }))]),
+            el('td', { style: 'width:170px' }, [
+              U.zelleSel(t, 'thema', [{ id: '', label: '— ohne Thema —' }].concat(
+                A.themenListe().map(function (x) {
+                  return { id: x.id, label: x.label }; })))]),
             el('td', { class: 'w1' }, [el('button', { class: 'ghost sm', text: '×',
               onclick: function () { liste.splice(i, 1); traktandenZeichnen(daten); } })])
           ]);
         });
         if (!zeilen.length) {
-          zeilen.push(el('tr', {}, [el('td', { colspan: 4, class: 'muted',
+          zeilen.push(el('tr', {}, [el('td', { colspan: 5, class: 'muted',
             text: 'Keine Standardpunkte — Protokolle dieser Reihe starten leer.' })]));
         }
 
@@ -544,11 +614,13 @@ window.APP = window.APP || {};
           el('div', { style: 'font-weight:640;color:var(--kopf);margin-bottom:5px',
             text: r.label + (r.kuerzel ? ' (' + r.kuerzel + ')' : '') }),
           U.tabelle([
-            { label: 'Traktandum' }, { label: 'Typ' }, { label: 'Phase' }, { label: '' }
+            { label: 'Traktandum' }, { label: 'Typ' }, { label: 'Phase' },
+            { label: 'Thema' }, { label: '' }
           ], zeilen),
           el('div', { style: 'margin-top:6px' }, [
             el('button', { class: 'sm', text: '+ Punkt', onclick: function () {
-              liste.push({ id: A.uid(), text: '', typ: 'info', phase: 'allgemein' });
+              liste.push({ id: A.uid(), text: '', typ: 'info', phase: 'allgemein',
+                thema: '', prio: '' });
               traktandenZeichnen(daten);
             } })
           ])

@@ -6,7 +6,7 @@ window.APP = window.APP || {};
 (function (A) {
   'use strict';
 
-  A.SCHEMA = 16;
+  A.SCHEMA = 17;
 
   /* ---------------------------------------------------------------
      Stammlisten
@@ -270,6 +270,70 @@ window.APP = window.APP || {};
     { id: 'info',      label: 'Info',     kurz: 'I', farbe: '#6b7484' }
   ];
 
+  /* Dringlichkeit eines Punktes. Ohne Angabe bleibt die Zeile ruhig —
+     wäre alles eingestuft, sagte die Einstufung nichts mehr. */
+  A.PRIORITAETEN = [
+    { id: '',       label: '—',      kurz: '',  klasse: '' },
+    { id: 'hoch',   label: 'hoch',   kurz: 'H', klasse: 'neg' },
+    { id: 'mittel', label: 'mittel', kurz: 'M', klasse: 'warn' },
+    { id: 'tief',   label: 'tief',   kurz: 'T', klasse: '' }
+  ];
+
+  A.prioritaet = function (id) {
+    return A.PRIORITAETEN.find(function (x) { return x.id === (id || ''); }) ||
+           A.PRIORITAETEN[0];
+  };
+
+  /* ---------------------------------------------------------------
+     Themen — die zweite Ordnung neben den Phasen
+
+     Die Phase sagt, WANN ein Punkt hingehört; das Thema, WORUM es
+     geht. Über die Themen lassen sich Entscheide, Aufgaben und Infos
+     später protokollübergreifend sammeln. Die Liste wird firmenweit
+     gepflegt, damit «Kosten» in jedem Projekt dasselbe bedeutet.
+     --------------------------------------------------------------- */
+
+  A.THEMEN_LOKAL = 'projektrechner.themen';
+  A.themen = null;
+
+  A.THEMEN_STANDARD = [
+    { id: 'kosten',       label: 'Kosten',                farbe: '#b0871f' },
+    { id: 'termine',      label: 'Termine',               farbe: '#1f5fd0' },
+    { id: 'qualitaet',    label: 'Qualität / Ausführung', farbe: '#0d7a45' },
+    { id: 'bewilligung',  label: 'Bewilligung / Behörden', farbe: '#7c4dbe' },
+    { id: 'vermarktung',  label: 'Vermarktung / Verkauf', farbe: '#c0568a' },
+    { id: 'organisation', label: 'Organisation',          farbe: '#6b7484' }
+  ];
+
+  A.themenListe = function () {
+    var liste = Array.isArray(A.themen) ? A.themen : null;
+    if (!liste) {
+      try { liste = JSON.parse(localStorage.getItem(A.THEMEN_LOKAL) || 'null'); }
+      catch (e) { liste = null; }
+    }
+    if (!Array.isArray(liste) || !liste.length) liste = A.THEMEN_STANDARD;
+    return liste.map(function (t) {
+      return { id: t.id || A.uid(), label: t.label || 'Thema',
+               farbe: t.farbe || '#6b7484' };
+    });
+  };
+
+  A.themenSetzen = function (liste) {
+    liste = (liste || []).filter(function (t) { return t && t.label; })
+      .map(function (t) {
+        return { id: t.id || A.uid(), label: String(t.label).trim(),
+                 farbe: t.farbe || '#6b7484' };
+      });
+    A.themen = liste;
+    try { localStorage.setItem(A.THEMEN_LOKAL, JSON.stringify(liste)); } catch (e) {}
+    return liste;
+  };
+
+  A.thema = function (id) {
+    if (!id) return null;
+    return A.themenListe().find(function (t) { return t.id === id; }) || null;
+  };
+
   A.PUNKT_STATUS = [
     { id: 'offen',      label: 'offen' },
     { id: 'erledigt',   label: 'erledigt' },
@@ -413,7 +477,8 @@ window.APP = window.APP || {};
       sauber[k] = (t[k] || []).filter(function (x) { return x && x.text; })
         .map(function (x) {
           return { id: x.id || A.uid(), text: String(x.text).trim(),
-                   typ: x.typ || 'info', phase: x.phase || 'allgemein' };
+                   typ: x.typ || 'info', phase: x.phase || 'allgemein',
+                   thema: x.thema || '', prio: x.prio || '' };
         });
     });
     A.standardtraktanden = sauber;
@@ -430,7 +495,8 @@ window.APP = window.APP || {};
     });
     return firmenweit.concat(eigene).map(function (x) {
       return A.defPunkt({ text: x.text, typ: x.typ || 'info',
-                          phase: x.phase || 'allgemein' });
+                          phase: x.phase || 'allgemein',
+                          thema: x.thema || '', prio: x.prio || '' });
     });
   };
 
@@ -439,6 +505,8 @@ window.APP = window.APP || {};
       id: A.uid(),
       phase: 'allgemein',
       beteiligter: '',       // Id aus p.beteiligte — die zweite Gliederungsebene
+      thema: '',             // Id aus der firmenweiten Themenliste
+      prio: '',              // '' | hoch | mittel | tief
       typ: 'info',
       text: '',
       termin: '',
@@ -1503,6 +1571,15 @@ window.APP = window.APP || {};
        Standardtraktanden. ------------------------------------------- */
     if (typeof p.briefkopf !== 'string') p.briefkopf = '';
     if (!Array.isArray(p.standardpunkte)) p.standardpunkte = [];
+
+    /* --- Schema 16 -> 17: Thema und Priorität an den Protokollpunkten.
+       Die Punkte selbst liegen in der Tabelle «sitzungen» und werden
+       beim Lesen ergänzt (A.defPunkt); hier nur die projekteigenen
+       Standardpunkte. ------------------------------------------------ */
+    (p.standardpunkte || []).forEach(function (x) {
+      if (typeof x.thema !== 'string') x.thema = '';
+      if (typeof x.prio !== 'string') x.prio = '';
+    });
 
     /* Startdatum aus einem vorhandenen Startjahr ableiten */
     if (!p.startdatum && p.startjahr) p.startdatum = p.startjahr + '-01-01';

@@ -16,6 +16,7 @@ window.APP = window.APP || {};
   A.zahlungsfristen = null;// firmenweite Fristen rund um die Beurkundung
   A.briefkopf = null;      // Logos und Absenderangaben (nur im Serverbetrieb)
   A.standardtraktanden = null; // feste Traktanden je Sitzungsreihe
+  A.themen = null;         // Themenliste für Protokollpunkte
 
   A.SEITEN = [
     { id: 'portfolio',    ix: '0',  label: 'Portfolio' },
@@ -462,7 +463,8 @@ window.APP = window.APP || {};
             A.store.einstellung('adressen').catch(function () { return null; }),
             A.store.einstellung('sitzungsreihen').catch(function () { return null; }),
             A.store.einstellung('briefkopf').catch(function () { return null; }),
-            A.store.einstellung('standardtraktanden').catch(function () { return null; })
+            A.store.einstellung('standardtraktanden').catch(function () { return null; }),
+            A.store.einstellung('themen').catch(function () { return null; })
           ]);
         })
         .then(function (geladen) {
@@ -486,6 +488,7 @@ window.APP = window.APP || {};
           if (geladen && geladen[7] && typeof geladen[7] === 'object') {
             A.standardtraktanden = geladen[7];
           }
+          if (geladen && Array.isArray(geladen[8]) && geladen[8].length) A.themen = geladen[8];
           /* Zentralen Verkaufsstand übernehmen, falls er neuer ist als der
              lokale — geladen wird er nur von Hand. */
           return A.verkauf.zentralLaden().then(function () { weiter(serverModus); });

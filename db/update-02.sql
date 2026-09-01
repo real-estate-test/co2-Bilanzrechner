@@ -101,6 +101,27 @@ on conflict (schluessel) do nothing;
 -- ---------------------------------------------------------------------
 alter table sitzungen enable row level security;
 
+drop policy if exists sitzungen_lesen on sitzungen;
+create policy sitzungen_lesen on sitzungen
+  for select to authenticated using (true);
+
+drop policy if exists sitzungen_anlegen on sitzungen;
+create policy sitzungen_anlegen on sitzungen
+  for insert to authenticated with check (darf_bearbeiten());
+
+-- Ein versendetes Protokoll ist verschickt und gilt: es lässt sich nur
+-- noch von Verwaltern ändern. Korrekturen gehören ins nächste Protokoll.
+drop policy if exists sitzungen_aendern on sitzungen;
+create policy sitzungen_aendern on sitzungen
+  for update to authenticated
+  using (darf_bearbeiten() and (status <> 'versendet' or ist_verwalter()))
+  with check (darf_bearbeiten());
+
+drop policy if exists sitzungen_loeschen on sitzungen;
+create policy sitzungen_loeschen on sitzungen
+  for delete to authenticated
+  using (ist_verwalter() or (darf_bearbeiten() and status <> 'versendet'));
+
 
 
 -- ---------------------------------------------------------------------

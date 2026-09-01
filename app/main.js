@@ -67,6 +67,16 @@ window.APP = window.APP || {};
      Kurzmeldung
      --------------------------------------------------------------- */
 
+  /* Auffangnetz für Zusagen, die niemand abfängt. Ohne das bleibt ein
+     abgelehnter Serveraufruf unsichtbar: Der Knopf tut scheinbar
+     nichts, und der Fehler steht nur in der Entwicklerkonsole. */
+  window.addEventListener('unhandledrejection', function (e) {
+    var f = e.reason;
+    var text = f && f.message ? f.message : String(f);
+    console.error('Unbehandelter Fehler:', f);
+    A.meldung('warn', 'Ein Vorgang ist fehlgeschlagen: ' + text, 9000);
+  });
+
   A.meldung = function (art, text, dauer) {
     var box = document.getElementById('meldungen');
     if (!box) {

@@ -72,14 +72,22 @@ window.APP = window.APP || {};
       });
   };
 
+  /* Ein abgelehnter Schreibvorgang muss sichtbar werden. Ohne diesen
+     Fang endete ein Serverfehler in einer unbehandelten Zusage — der
+     Knopf tat dann scheinbar gar nichts. */
   P.speichern = function (s) {
-    return Promise.resolve(A.store.sitzungSpeichern(s)).then(function (erg) {
+    return Promise.resolve(A.store.sitzungSpeichern(s)).catch(function (f) {
+      A.meldung('warn', 'Das Protokoll konnte nicht gespeichert werden: ' +
+        (f && f.message ? f.message : String(f)) + rechteHinweis(f));
+      return { ok: false, fehler: f };
+    }).then(function (erg) {
       if (!erg || erg.ok === false) {
         if (erg && erg.konflikt) {
           A.meldung('warn', 'Dieses Protokoll wurde zwischenzeitlich von jemand anderem ' +
             'gespeichert. Bitte neu laden — Ihre Eingaben gehen dabei verloren.');
-        } else {
-          A.meldung('warn', 'Speichern nicht möglich — fehlen Ihnen die Rechte?');
+        } else if (!erg || !erg.fehler) {
+          A.meldung('warn', 'Speichern nicht möglich — fehlen Ihnen die Rechte?' +
+            rechteHinweis(null));
         }
         return false;
       }
@@ -92,6 +100,19 @@ window.APP = window.APP || {};
       return true;
     });
   };
+
+  /* Die häufigste Ursache abgelehnter Schreibvorgänge auf einer frisch
+     angelegten Tabelle: Die Rechteregeln fehlen. Dann darf niemand
+     etwas — auch der Verwalter nicht. */
+  function rechteHinweis(f) {
+    var text = f && f.message ? String(f.message) : '';
+    if (/row-level security|permission denied|violates row/i.test(text) || !f) {
+      return ' — fehlen der Tabelle «sitzungen» die Rechteregeln? ' +
+             'Dann db/update-02.sql noch einmal im SQL-Editor ausführen; ' +
+             'die Kontrollzeile am Ende muss «sitzungen | true | 4» zeigen.';
+    }
+    return '';
+  }
 
   /* ---------------------------------------------------------------
      Seite
@@ -228,8 +249,18 @@ window.APP = window.APP || {};
           .filter(function (b) { return b.verteiler; }).map(function (b) { return b.id; });
         S.liste.push(s);
         /* Sofort sichern: sonst wäre die Nummer vergeben, das Protokoll
-           aber nach einem Seitenwechsel verschwunden. */
-        P.speichern(s).then(function () { oeffnen(S.liste[S.liste.length - 1] || s); });
+           aber nach einem Seitenwechsel verschwunden. Scheitert das
+           Schreiben, verschwindet der Eintrag wieder — sonst stünde ein
+           Protokoll in der Liste, das es nirgends gibt. */
+        P.speichern(s).then(function (ok) {
+          if (!ok) {
+            S.liste = S.liste.filter(function (x) { return x.id !== s.id; });
+            A.render();
+            return;
+          }
+          var gesichert = S.liste.find(function (x) { return x.id === s.id; }) || s;
+          oeffnen(gesichert);
+        });
       } }),
       el('span', { class: 'muted', style: 'font-size:11.5px',
         text: 'Die Reihen werden unter Verwaltung gepflegt.' })

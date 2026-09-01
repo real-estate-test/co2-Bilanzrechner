@@ -19,7 +19,7 @@ window.APP = window.APP || {};
     { id: 'portfolio',    ix: '0',  label: 'Portfolio' },
     { id: 'projekt',      ix: '1',  label: 'Projekt' },
     { id: 'adressen',     ix: '1a', label: 'Adressliste' },
-    { id: 'protokolle',   ix: '1b', label: 'Protokolle' },
+    { id: 'protokolle',   ix: '1b', label: 'Protokolle/Aufgaben' },
     { id: 'termine',      ix: '1c', label: 'Phasen & Termine' },
     { id: 'erwerb',       ix: '2',  label: 'Grundstück & Erwerbskosten' },
     { id: 'flaechen',     ix: '3',  label: 'Flächen & Volumen' },

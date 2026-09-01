@@ -14,6 +14,8 @@ window.APP = window.APP || {};
   A.adressen = null;       // firmenweites Adressbuch (nur im Serverbetrieb)
   A.zahlungsplan = null;   // firmenweite Zahlungsmodalitäten (nur im Serverbetrieb)
   A.zahlungsfristen = null;// firmenweite Fristen rund um die Beurkundung
+  A.briefkopf = null;      // Logos und Absenderangaben (nur im Serverbetrieb)
+  A.standardtraktanden = null; // feste Traktanden je Sitzungsreihe
 
   A.SEITEN = [
     { id: 'portfolio',    ix: '0',  label: 'Portfolio' },
@@ -458,7 +460,9 @@ window.APP = window.APP || {};
             A.store.einstellung('zahlungsplan').catch(function () { return null; }),
             A.store.einstellung('zahlungsfristen').catch(function () { return null; }),
             A.store.einstellung('adressen').catch(function () { return null; }),
-            A.store.einstellung('sitzungsreihen').catch(function () { return null; })
+            A.store.einstellung('sitzungsreihen').catch(function () { return null; }),
+            A.store.einstellung('briefkopf').catch(function () { return null; }),
+            A.store.einstellung('standardtraktanden').catch(function () { return null; })
           ]);
         })
         .then(function (geladen) {
@@ -477,6 +481,10 @@ window.APP = window.APP || {};
           if (geladen && Array.isArray(geladen[4])) A.adressen = geladen[4];
           if (geladen && Array.isArray(geladen[5]) && geladen[5].length) {
             A.sitzungsreihen = geladen[5];
+          }
+          if (geladen && geladen[6] && typeof geladen[6] === 'object') A.briefkopf = geladen[6];
+          if (geladen && geladen[7] && typeof geladen[7] === 'object') {
+            A.standardtraktanden = geladen[7];
           }
           /* Zentralen Verkaufsstand übernehmen, falls er neuer ist als der
              lokale — geladen wird er nur von Hand. */

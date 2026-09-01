@@ -510,6 +510,203 @@ window.APP = window.APP || {};
     out.appendChild(U.panel('Sitzungsreihen', 'Arten von Sitzungen für die Protokolle',
       [reihenBody, reihenFuss]));
 
+    /* --- Standardtraktanden je Sitzungsreihe ------------------------- */
+    var trBody = el('div', { class: 'panelbody' });
+    var trFuss = el('div', { class: 'panelbody' });
+
+    function traktandenZeichnen(daten) {
+      U.leeren(trBody);
+      var reihen = A.reihenListe();
+
+      reihen.forEach(function (r) {
+        if (!Array.isArray(daten[r.id])) daten[r.id] = [];
+        var liste = daten[r.id];
+
+        var zeilen = liste.map(function (t, i) {
+          return el('tr', {}, [
+            el('td', {}, [U.zelleTxt(t, 'text', { platzhalter: 'z. B. Genehmigung Vorprotokoll' })]),
+            el('td', { style: 'width:130px' }, [
+              U.zelleSel(t, 'typ', A.PUNKT_TYPEN.map(function (x) {
+                return { id: x.id, label: x.label }; }))]),
+            el('td', { style: 'width:190px' }, [
+              U.zelleSel(t, 'phase', A.SIA_PHASEN.map(function (ph) {
+                return { id: ph.id, label: ph.sia ? ph.sia + ' · ' + ph.label : ph.label }; }))]),
+            el('td', { class: 'w1' }, [el('button', { class: 'ghost sm', text: '×',
+              onclick: function () { liste.splice(i, 1); traktandenZeichnen(daten); } })])
+          ]);
+        });
+        if (!zeilen.length) {
+          zeilen.push(el('tr', {}, [el('td', { colspan: 4, class: 'muted',
+            text: 'Keine Standardpunkte — Protokolle dieser Reihe starten leer.' })]));
+        }
+
+        trBody.appendChild(el('div', { style: 'margin-bottom:14px' }, [
+          el('div', { style: 'font-weight:640;color:var(--kopf);margin-bottom:5px',
+            text: r.label + (r.kuerzel ? ' (' + r.kuerzel + ')' : '') }),
+          U.tabelle([
+            { label: 'Traktandum' }, { label: 'Typ' }, { label: 'Phase' }, { label: '' }
+          ], zeilen),
+          el('div', { style: 'margin-top:6px' }, [
+            el('button', { class: 'sm', text: '+ Punkt', onclick: function () {
+              liste.push({ id: A.uid(), text: '', typ: 'info', phase: 'allgemein' });
+              traktandenZeichnen(daten);
+            } })
+          ])
+        ]));
+      });
+
+      U.leeren(trFuss);
+      trFuss.appendChild(el('button', { class: 'primary', text: 'Traktanden speichern',
+        onclick: function () {
+          var neu = A.traktandenSetzen(daten);
+          var fertig = function () {
+            A.meldung('ok', 'Standardtraktanden gespeichert.');
+            A.render();
+          };
+          if (A.store.modus === 'server') {
+            A.store.einstellungSetzen('standardtraktanden', neu).then(fertig)
+              .catch(function (f) { A.meldung('warn', f.message); });
+          } else { fertig(); }
+        } }));
+      trFuss.appendChild(el('div', { class: 'hilfe', style: 'margin-top:10px',
+        text: 'Diese Punkte stehen in jedem neuen Protokoll der jeweiligen Reihe. Sie sind dort ' +
+              'ganz normale Punkte — änderbar und löschbar. Was nur in einem bestimmten Projekt ' +
+              'immer vorkommt, wird dort unter «Protokolle/Aufgaben» ergänzt.' }));
+    }
+
+    if (A.store.modus === 'server') {
+      trBody.appendChild(el('div', { class: 'muted', text: 'wird geladen …' }));
+      A.store.einstellung('standardtraktanden').then(function (d) {
+        if (d && typeof d === 'object') A.standardtraktanden = d;
+        traktandenZeichnen(JSON.parse(JSON.stringify(A.traktandenLesen())));
+      }).catch(function () {
+        traktandenZeichnen(JSON.parse(JSON.stringify(A.traktandenLesen())));
+      });
+    } else {
+      traktandenZeichnen(JSON.parse(JSON.stringify(A.traktandenLesen())));
+    }
+
+    out.appendChild(U.panel('Standardtraktanden', 'feste Punkte je Sitzungsreihe',
+      [trBody, trFuss]));
+
+    /* --- Briefkopf: Logos und Absenderangaben ------------------------ */
+    var bkBody = el('div', { class: 'panelbody' });
+    var bkFuss = el('div', { class: 'panelbody' });
+
+    function briefkopfZeichnen(bk) {
+      U.leeren(bkBody);
+
+      var zeilen = bk.logos.map(function (l, i) {
+        return el('tr', {}, [
+          el('td', { style: 'width:190px' }, [
+            l.bild
+              ? el('img', { src: l.bild, alt: l.label,
+                  style: 'max-height:34px;max-width:170px;object-fit:contain' })
+              : el('span', { class: 'muted', text: 'kein Bild' })
+          ]),
+          el('td', { style: 'width:170px' }, [
+            U.zelleTxt(l, 'label', { platzhalter: 'z. B. Corpora' })]),
+          el('td', {}, [U.zelleTxt(l, 'firma', { platzhalter: 'Firma für diesen Briefkopf' })]),
+          el('td', {}, [U.zelleTxt(l, 'adresse', { platzhalter: 'Strasse, PLZ Ort' })]),
+          el('td', { style: 'width:110px' }, [(function () {
+            var c = el('input', { type: 'radio', name: 'logostandard', style: 'width:auto',
+              checked: l.standard ? '' : null });
+            c.addEventListener('change', function () {
+              bk.logos.forEach(function (x) { x.standard = false; });
+              l.standard = true;
+              briefkopfZeichnen(bk);
+            });
+            return c;
+          })()]),
+          el('td', { class: 'muted n', style: 'width:100px',
+            text: l.bild
+              ? (l.bild.length < 1024 ? '< 1 KB'
+                 : A.fmt(Math.round(l.bild.length / 1024)) + ' KB')
+              : '—' }),
+          el('td', { class: 'w1' }, [el('button', { class: 'ghost sm', text: '×',
+            onclick: function () { bk.logos.splice(i, 1); briefkopfZeichnen(bk); } })])
+        ]);
+      });
+      if (!zeilen.length) {
+        zeilen.push(el('tr', {}, [el('td', { colspan: 7, class: 'muted',
+          text: 'Noch kein Logo hinterlegt.' })]));
+      }
+
+      bkBody.appendChild(U.tabelle([
+        { label: 'Logo' }, { label: 'Bezeichnung' }, { label: 'Firma' }, { label: 'Adresse' },
+        { label: 'Standard' }, { label: 'Grösse', n: true }, { label: '' }
+      ], zeilen));
+
+      /* Datei einlesen und im Browser verkleinern — ein Logo aus der
+         Kamera hätte sonst Megabyte und bläht jede Einstellung auf. */
+      var datei = el('input', { type: 'file', accept: 'image/png,image/jpeg,image/svg+xml',
+        style: 'font-size:12px' });
+      datei.addEventListener('change', function () {
+        var f = datei.files && datei.files[0];
+        if (!f) return;
+        logoLesen(f).then(function (bild) {
+          bk.logos.push({ id: A.uid(), label: f.name.replace(/\.[^.]+$/, ''),
+            bild: bild, standard: !bk.logos.length, firma: '', adresse: '' });
+          briefkopfZeichnen(bk);
+          A.meldung('ok', 'Logo übernommen — noch speichern.');
+        }).catch(function (e) {
+          A.meldung('warn', 'Bild nicht lesbar: ' + e.message);
+        });
+      });
+
+      bkBody.appendChild(el('div', { style: 'margin-top:10px' }, [
+        el('div', { class: 'k', style: 'font-size:11px;color:var(--muted);margin-bottom:4px',
+          text: 'Logo hinzufügen (PNG, JPEG oder SVG)' }),
+        datei
+      ]));
+
+      bkBody.appendChild(el('div', { class: 'cols c2', style: 'margin-top:14px' }, [
+        feld('Firma — gilt, wo beim Logo nichts steht', bk, 'firma', 'z. B. Corpora AG'),
+        feld('Adresse — dito', bk, 'adresse', 'Strasse, PLZ Ort'),
+        feld('Fusszeile auf dem Protokoll', bk, 'fusszeile', '')
+      ]));
+
+      U.leeren(bkFuss);
+      bkFuss.appendChild(el('button', { class: 'primary', text: 'Briefkopf speichern',
+        onclick: function () {
+          var neu = A.briefkopfSetzen(bk);
+          var fertig = function () {
+            A.meldung('ok', 'Briefkopf gespeichert.');
+            A.render();
+          };
+          if (A.store.modus === 'server') {
+            A.store.einstellungSetzen('briefkopf', neu).then(fertig)
+              .catch(function (f) { A.meldung('warn', f.message); });
+          } else { fertig(); }
+        } }));
+      bkFuss.appendChild(el('div', { class: 'hilfe', style: 'margin-top:10px',
+        text: 'Das Logo steht auf dem gedruckten Protokoll. Welches gilt, wird im Projekt ' +
+              'gewählt — ohne Wahl das hier als Standard markierte. Bilder werden vor dem ' +
+              'Speichern auf 600 Pixel Breite verkleinert; ein SVG bleibt, wie es ist.' }));
+    }
+
+    function feld(label, obj, key, platzhalter) {
+      var i = el('input', { type: 'text', value: obj[key] || '', placeholder: platzhalter || '' });
+      i.addEventListener('input', function () { obj[key] = i.value; });
+      return el('div', { class: 'f' }, [
+        el('label', {}, [el('span', { text: label })]),
+        el('div', { class: 'inp' }, [i])
+      ]);
+    }
+
+    if (A.store.modus === 'server') {
+      bkBody.appendChild(el('div', { class: 'muted', text: 'wird geladen …' }));
+      A.store.einstellung('briefkopf').then(function (d) {
+        if (d && typeof d === 'object') A.briefkopf = d;
+        briefkopfZeichnen(A.briefkopfLesen());
+      }).catch(function () { briefkopfZeichnen(A.briefkopfLesen()); });
+    } else {
+      briefkopfZeichnen(A.briefkopfLesen());
+    }
+
+    out.appendChild(U.panel('Briefkopf', 'Logo und Absenderangaben für Protokolle',
+      [bkBody, bkFuss]));
+
     /* --- Kennwerte-Hinweis ----------------------------------------- */
     out.appendChild(U.panel('Kennwerte', 'Baukosten, Zinssätze und Sätze', [
       el('div', { class: 'panelbody' }, [
@@ -524,6 +721,58 @@ window.APP = window.APP || {};
 
     return out;
   };
+
+  /* Bilddatei als Bilddaten einlesen. Rastergrafiken werden über ein
+     Zeichenblatt auf 600 Pixel Breite gebracht — ein Logo aus dem
+     Corporate-Design-Ordner hat schnell 3000 Pixel und läge sonst in
+     voller Grösse in jeder Einstellung. SVG bleibt unverändert: Es ist
+     klein und skaliert von selbst. */
+  function logoLesen(datei) {
+    var MAXBREITE = 600, GRENZE = 400 * 1024;
+
+    return new Promise(function (fertig, fehler) {
+      if (datei.size > 4 * 1024 * 1024) {
+        fehler(new Error('Die Datei ist grösser als 4 MB.'));
+        return;
+      }
+      var leser = new FileReader();
+      leser.onerror = function () { fehler(new Error('Die Datei liess sich nicht lesen.')); };
+      leser.onload = function () {
+        var daten = String(leser.result || '');
+
+        if (/^data:image\/svg/i.test(daten)) {
+          if (daten.length > GRENZE) {
+            fehler(new Error('Das SVG ist zu gross (über 400 KB).'));
+            return;
+          }
+          fertig(daten);
+          return;
+        }
+
+        var bild = new Image();
+        bild.onerror = function () { fehler(new Error('Das Bildformat wird nicht unterstützt.')); };
+        bild.onload = function () {
+          var faktor = Math.min(1, MAXBREITE / (bild.width || MAXBREITE));
+          var c = document.createElement('canvas');
+          c.width = Math.max(1, Math.round(bild.width * faktor));
+          c.height = Math.max(1, Math.round(bild.height * faktor));
+          var ctx = c.getContext('2d');
+          ctx.drawImage(bild, 0, 0, c.width, c.height);
+          /* PNG behält den durchsichtigen Hintergrund — bei einem Logo
+             ist das der Unterschied zwischen sauber und weissem Kasten. */
+          var raus = c.toDataURL('image/png');
+          if (raus.length > GRENZE) raus = c.toDataURL('image/jpeg', 0.85);
+          if (raus.length > GRENZE) {
+            fehler(new Error('Das Bild bleibt auch verkleinert zu gross.'));
+            return;
+          }
+          fertig(raus);
+        };
+        bild.src = daten;
+      };
+      leser.readAsDataURL(datei);
+    });
+  }
 
   /* ===================================================================
      Seite: Änderungsverlauf

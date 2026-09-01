@@ -70,7 +70,18 @@ window.APP = window.APP || {};
           ]);
         })(),
         U.sel(p, 'status', A.STATUS.map(function (s) { return { id: s, label: s }; }), 'Projektstatus', { ohneBadge: true, stufe: 'standard' }),
-        U.txt(p, 'notiz', 'Kurznotiz', { stufe: 'standard', platzhalter: 'z. B. Variante gemäss Studie Meier 03/26' })
+        U.txt(p, 'notiz', 'Kurznotiz', { stufe: 'standard', platzhalter: 'z. B. Variante gemäss Studie Meier 03/26' }),
+        /* Welcher Briefkopf auf Protokolle und Berichte kommt. Die
+           Logos werden in der Verwaltung gepflegt. */
+        (function () {
+          var logos = A.briefkopfLesen().logos;
+          if (!logos.length) return null;
+          return U.sel(p, 'briefkopf',
+            [{ id: '', label: '— Standard —' }].concat(logos.map(function (l) {
+              return { id: l.id, label: l.label };
+            })), 'Briefkopf / Logo', { ohneBadge: true, stufe: 'standard',
+              hilfe: 'Erscheint auf dem gedruckten Protokoll. Gepflegt unter Verwaltung.' });
+        })()
       ], 'c3'),
       standortBlock(p)
     ]));

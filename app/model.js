@@ -6,7 +6,7 @@ window.APP = window.APP || {};
 (function (A) {
   'use strict';
 
-  A.SCHEMA = 15;
+  A.SCHEMA = 16;
 
   /* ---------------------------------------------------------------
      Stammlisten
@@ -312,6 +312,126 @@ window.APP = window.APP || {};
 
   A.reihe = function (id) {
     return A.reihenListe().find(function (r) { return r.id === id; }) || null;
+  };
+
+  /* ---------------------------------------------------------------
+     Briefkopf — Logo und Absenderangaben für Protokolle und Berichte
+
+     Die Logos liegen als Bilddaten in den firmenweiten Einstellungen.
+     Das ist bewusst so: Es gibt keinen Dateispeicher, und ein Logo ist
+     ein paar Dutzend Kilobyte. Vor dem Ablegen wird es im Browser auf
+     eine vernünftige Breite verkleinert.
+     --------------------------------------------------------------- */
+
+  A.BRIEFKOPF_LOKAL = 'projektrechner.briefkopf';
+  A.briefkopf = null;        // firmenweit, im Serverbetrieb geladen
+
+  A.briefkopfLesen = function () {
+    var b = A.briefkopf;
+    if (!b) {
+      try { b = JSON.parse(localStorage.getItem(A.BRIEFKOPF_LOKAL) || 'null'); }
+      catch (e) { b = null; }
+    }
+    b = b && typeof b === 'object' ? b : {};
+    return {
+      logos: Array.isArray(b.logos) ? b.logos : [],
+      firma: b.firma || '',
+      adresse: b.adresse || '',
+      fusszeile: b.fusszeile ||
+        'Einwände gegen dieses Protokoll bitte innert zehn Tagen; danach gilt es als genehmigt.'
+    };
+  };
+
+  A.briefkopfSetzen = function (b) {
+    A.briefkopf = {
+      logos: (b.logos || []).map(function (l) {
+        return { id: l.id || A.uid(), label: String(l.label || '').trim() || 'Logo',
+                 bild: l.bild || '', standard: !!l.standard,
+                 /* Zwei Marken heissen zwei Absender — sonst stünde
+                    unter dem einen Logo die Adresse des anderen. */
+                 firma: String(l.firma || '').trim(),
+                 adresse: String(l.adresse || '').trim() };
+      }),
+      firma: String(b.firma || '').trim(),
+      adresse: String(b.adresse || '').trim(),
+      fusszeile: String(b.fusszeile || '').trim()
+    };
+    try { localStorage.setItem(A.BRIEFKOPF_LOKAL, JSON.stringify(A.briefkopf)); } catch (e) {}
+    return A.briefkopf;
+  };
+
+  /* Welches Logo gilt für dieses Projekt? Die Wahl steht im Projekt;
+     ohne Wahl gilt das als Standard markierte. */
+  A.logoFuer = function (p) {
+    var bk = A.briefkopfLesen();
+    if (!bk.logos.length) return null;
+    var gewaehlt = p && p.briefkopf
+      ? bk.logos.find(function (l) { return l.id === p.briefkopf; })
+      : null;
+    return gewaehlt ||
+      bk.logos.find(function (l) { return l.standard; }) ||
+      bk.logos[0];
+  };
+
+  /* Absenderangaben für dieses Projekt: was am gewählten Logo hängt,
+     sonst die allgemeine Angabe. */
+  A.absender = function (p) {
+    var bk = A.briefkopfLesen();
+    var l = A.logoFuer(p);
+    return {
+      firma: (l && l.firma) || bk.firma || '',
+      adresse: (l && l.adresse) || bk.adresse || '',
+      fusszeile: bk.fusszeile || ''
+    };
+  };
+
+  /* ---------------------------------------------------------------
+     Standardtraktanden — je Sitzungsreihe, firmenweit und je Projekt
+
+     Firmenweit steht, was in jeder Sitzung dieser Art vorkommt
+     («Genehmigung Vorprotokoll», «Termine», «Kosten», «Diverses»).
+     Das Projekt ergänzt, was nur hier gilt. Beim Anlegen eines
+     Protokolls werden beide eingesetzt und sind danach ganz normale
+     Punkte — änderbar und löschbar.
+     --------------------------------------------------------------- */
+
+  A.TRAKTANDEN_LOKAL = 'projektrechner.standardtraktanden';
+  A.standardtraktanden = null;   // { reiheId: [ {id,text,typ,phase} ] }
+
+  A.traktandenLesen = function () {
+    var t = A.standardtraktanden;
+    if (!t) {
+      try { t = JSON.parse(localStorage.getItem(A.TRAKTANDEN_LOKAL) || 'null'); }
+      catch (e) { t = null; }
+    }
+    return t && typeof t === 'object' ? t : {};
+  };
+
+  A.traktandenSetzen = function (t) {
+    var sauber = {};
+    Object.keys(t || {}).forEach(function (k) {
+      sauber[k] = (t[k] || []).filter(function (x) { return x && x.text; })
+        .map(function (x) {
+          return { id: x.id || A.uid(), text: String(x.text).trim(),
+                   typ: x.typ || 'info', phase: x.phase || 'allgemein' };
+        });
+    });
+    A.standardtraktanden = sauber;
+    try { localStorage.setItem(A.TRAKTANDEN_LOKAL, JSON.stringify(sauber)); } catch (e) {}
+    return sauber;
+  };
+
+  /* Standardpunkte für eine neue Sitzung: firmenweite Vorgabe der
+     Reihe, danach die Ergänzungen des Projekts. */
+  A.standardpunkte = function (p, reiheId) {
+    var firmenweit = (A.traktandenLesen()[reiheId] || []);
+    var eigene = ((p && p.standardpunkte) || []).filter(function (x) {
+      return !x.reihe || x.reihe === reiheId;
+    });
+    return firmenweit.concat(eigene).map(function (x) {
+      return A.defPunkt({ text: x.text, typ: x.typ || 'info',
+                          phase: x.phase || 'allgemein' });
+    });
   };
 
   A.defPunkt = function (vorgabe) {
@@ -741,6 +861,14 @@ window.APP = window.APP || {};
       /* Beteiligte dieses Projekts. Verweist auf die firmenweite
          Adressliste; Rolle und Verteilerhaken gehören dem Projekt. */
       beteiligte: [],
+
+      /* Welches Logo auf Protokoll und Bericht steht. Leer = das in
+         der Verwaltung als Standard markierte. */
+      briefkopf: '',
+
+      /* Traktanden, die nur in diesem Projekt in jeder Sitzung
+         vorkommen. Ergänzen die firmenweite Vorgabe der Reihe. */
+      standardpunkte: [],
 
       /* Terminplan. Zweite Zeitebene neben den Rechendauern: hier
          stehen Kalenderdaten, dort Monate. Beide bleiben getrennt —
@@ -1370,6 +1498,11 @@ window.APP = window.APP || {};
     }
     if (!Array.isArray(p.termine.phasen)) p.termine.phasen = [];
     if (!Array.isArray(p.termine.eigene)) p.termine.eigene = [];
+
+    /* --- Schema 15 -> 16: Briefkopfwahl und projekteigene
+       Standardtraktanden. ------------------------------------------- */
+    if (typeof p.briefkopf !== 'string') p.briefkopf = '';
+    if (!Array.isArray(p.standardpunkte)) p.standardpunkte = [];
 
     /* Startdatum aus einem vorhandenen Startjahr ableiten */
     if (!p.startdatum && p.startjahr) p.startdatum = p.startjahr + '-01-01';

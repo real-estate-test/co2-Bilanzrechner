@@ -247,6 +247,9 @@ window.APP = window.APP || {};
         s.teilnehmer = A.beteiligteListe(A.state.p).map(function (b) { return b.id; });
         s.verteiler = A.beteiligteListe(A.state.p)
           .filter(function (b) { return b.verteiler; }).map(function (b) { return b.id; });
+        /* Die Standardtraktanden der Reihe plus die des Projekts. Sie
+           sind danach ganz normale Punkte. */
+        s.punkte = A.standardpunkte(A.state.p, wahl.value);
         S.liste.push(s);
         /* Sofort sichern: sonst wäre die Nummer vergeben, das Protokoll
            aber nach einem Seitenwechsel verschwunden. Scheitert das
@@ -274,7 +277,62 @@ window.APP = window.APP || {};
 
     /* Alle offenen Aufgaben des Projekts, quer über die Reihen */
     box.appendChild(pendenzenPanel(p));
+    box.appendChild(standardpunktePanel(p));
     return box;
+  }
+
+  /* Was in diesem Projekt in jeder Sitzung vorkommt — zusätzlich zu
+     den firmenweiten Traktanden der Reihe. */
+  function standardpunktePanel(p) {
+    if (!Array.isArray(p.standardpunkte)) p.standardpunkte = [];
+    var reihen = A.reihenListe();
+
+    var zeilen = p.standardpunkte.map(function (t, i) {
+      return el('tr', {}, [
+        el('td', {}, [U.zelleTxt(t, 'text', { platzhalter: 'z. B. Stand Baugesuch Kanton' })]),
+        el('td', { style: 'width:120px' }, [
+          U.zelleSel(t, 'typ', A.PUNKT_TYPEN.map(function (x) {
+            return { id: x.id, label: x.label }; }))]),
+        el('td', { style: 'width:180px' }, [
+          U.zelleSel(t, 'phase', A.SIA_PHASEN.map(function (ph) {
+            return { id: ph.id, label: ph.sia ? ph.sia + ' · ' + ph.label : ph.label }; }))]),
+        el('td', { style: 'width:180px' }, [
+          U.zelleSel(t, 'reihe', [{ id: '', label: 'alle Reihen' }].concat(
+            reihen.map(function (r) { return { id: r.id, label: r.label }; })))]),
+        el('td', { class: 'w1' }, [el('button', { class: 'ghost sm schreibend', text: '×',
+          onclick: function () {
+            p.standardpunkte.splice(i, 1); A.markDirty(); A.render();
+          } })])
+      ]);
+    });
+    if (!zeilen.length) {
+      zeilen.push(el('tr', {}, [el('td', { colspan: 5, class: 'muted',
+        text: 'Keine projekteigenen Standardpunkte.' })]));
+    }
+
+    var firmenweit = A.traktandenLesen();
+    var anzahl = reihen.reduce(function (n, r) {
+      return n + ((firmenweit[r.id] || []).length);
+    }, 0);
+
+    return U.panel('Standardpunkte dieses Projekts',
+      'kommen in jedem neuen Protokoll dazu · firmenweit sind ' + anzahl + ' Punkte gepflegt', [
+      el('div', { class: 'panelbody' }, [U.tabelle([
+        { label: 'Traktandum' }, { label: 'Typ' }, { label: 'Phase' },
+        { label: 'gilt für' }, { label: '' }
+      ], zeilen)]),
+      el('div', { class: 'panelbody noprint' }, [
+        el('button', { class: 'schreibend', text: '+ Standardpunkt', onclick: function () {
+          p.standardpunkte.push({ id: A.uid(), text: '', typ: 'info',
+            phase: 'allgemein', reihe: '' });
+          A.markDirty(); A.render();
+        } }),
+        U.hinweis('info', 'Beim Anlegen eines Protokolls werden zuerst die firmenweiten ' +
+          'Traktanden der gewählten Reihe eingesetzt (Verwaltung), danach diese hier. ' +
+          'Anschliessend sind es gewöhnliche Punkte — was in einer Sitzung nicht vorkommt, ' +
+          'wird dort gelöscht.')
+      ])
+    ]);
   }
 
   function oeffnen(s) { S.offen = s; S.schmutzig = false; A.render(); window.scrollTo(0, 0); }
@@ -416,20 +474,10 @@ window.APP = window.APP || {};
       ])
     ]));
 
-    /* Kopf für das Papier. Die Bildschirmzeile darüber trägt die
-       Knöpfe und wird nicht gedruckt — ohne diesen Block stünde das
-       Protokoll ohne Titel auf dem Blatt. */
-    box.appendChild(el('div', { class: 'nurdruck', style: 'margin-bottom:10px' }, [
-      el('div', { style: 'font-size:16px;font-weight:680', text: p.name || 'Projekt' }),
-      el('div', { style: 'font-size:13px;margin-top:2px',
-        text: (r ? r.label : s.reihe) + ' Nr. ' + s.nummer + ' vom ' + A.datum(s.datum) +
-              (s.ort ? ' · ' + s.ort : '') +
-              (s.zeit_von ? ' · ' + s.zeit_von + (s.zeit_bis ? '–' + s.zeit_bis : '') : '') }),
-      el('div', { style: 'font-size:11px;color:#6b7484;margin-top:2px',
-        text: [p.ort, s.verfasser ? 'Protokoll: ' + s.verfasser : '',
-               versendet ? 'versendet am ' + A.datum(s.versendet_am) : 'Entwurf']
-          .filter(Boolean).join(' · ') })
-    ]));
+    /* Kopf für das Papier: Logo, Absender, Sitzung. Die Bildschirmzeile
+       darüber trägt die Knöpfe und wird nicht gedruckt — ohne diesen
+       Block stünde das Protokoll ohne Titel auf dem Blatt. */
+    box.appendChild(druckkopf(p, s, r, versendet));
 
     if (versendet) {
       box.appendChild(U.hinweis('info', 'Dieses Protokoll ist <b>versendet</b>. Änderungen daran ' +
@@ -463,7 +511,55 @@ window.APP = window.APP || {};
     /* --- Traktanden ---------------------------------------------- */
     box.appendChild(punktePanel(p, s, beteiligte));
 
+    var fuss = druckfuss(p);
+    if (fuss) box.appendChild(fuss);
+
     return box;
+  }
+
+  /* Der Briefkopf des gedruckten Protokolls. Logo links, Absender
+     rechts, darunter Projekt und Sitzung — die Form, die man von einem
+     Bausitzungsprotokoll erwartet. */
+  function druckkopf(p, s, r, versendet) {
+    var bk = A.absender(p);
+    var logo = A.logoFuer(p);
+
+    var kopfzeile = el('div', {
+      style: 'display:flex;align-items:flex-start;gap:18px;' +
+             'border-bottom:1.5px solid #232c39;padding-bottom:7px;margin-bottom:9px' }, [
+      logo && logo.bild
+        ? el('img', { src: logo.bild, alt: logo.label,
+            style: 'max-height:42px;max-width:210px;object-fit:contain' })
+        : el('div', { style: 'font-size:15px;font-weight:700', text: bk.firma || '' }),
+      el('div', { style: 'margin-left:auto;text-align:right;font-size:10px;color:#3c4553;' +
+                         'line-height:1.5' }, [
+        el('div', { style: 'font-weight:640', text: logo && logo.bild ? bk.firma : '' }),
+        el('div', { text: bk.adresse || '' })
+      ])
+    ]);
+
+    var titel = el('div', {}, [
+      el('div', { style: 'font-size:15px;font-weight:680',
+        text: (r ? r.label : s.reihe) + ' Nr. ' + s.nummer }),
+      el('div', { style: 'font-size:13px;margin-top:1px', text: p.name || 'Projekt' }),
+      el('div', { style: 'font-size:11px;color:#6b7484;margin-top:3px',
+        text: [A.datum(s.datum),
+               s.zeit_von ? s.zeit_von + (s.zeit_bis ? '–' + s.zeit_bis : '') + ' Uhr' : '',
+               s.ort, p.ort && p.ort !== s.ort ? 'Projekt ' + p.ort : '',
+               s.verfasser ? 'Protokoll: ' + s.verfasser : '',
+               versendet ? 'versendet am ' + A.datum(s.versendet_am) : 'Entwurf']
+          .filter(Boolean).join(' · ') })
+    ]);
+
+    return el('div', { class: 'nurdruck protokollkopf' }, [kopfzeile, titel]);
+  }
+
+  function druckfuss(p) {
+    var bk = A.absender(p);
+    if (!bk.fusszeile) return null;
+    return el('div', { class: 'nurdruck',
+      style: 'margin-top:12px;padding-top:6px;border-top:1px solid #cfd6df;' +
+             'font-size:10px;color:#6b7484', text: bk.fusszeile });
   }
 
   /* Teilnehmer, Entschuldigte und Verteiler — drei Haken je Person */
@@ -605,11 +701,16 @@ window.APP = window.APP || {};
        Protokoll auf dem Papier zerreissen. */
     gruppen.forEach(function (g) {
       var zeilen = [];
+      /* Eine einzige Gruppe ohne Zuständigkeit braucht keine
+         Zwischenzeile — sie sagt nichts und zerreisst die Tabelle. */
+      var nurOhne = g.planer.length === 1 && !g.planer[0].id;
       g.planer.forEach(function (pl) {
-        zeilen.push(el('tr', { class: 'sum' }, [
-          el('td', { class: 'n muted', text: pl.nr }),
-          el('td', { colspan: 7, text: pl.label })
-        ]));
+        if (!nurOhne) {
+          zeilen.push(el('tr', { class: 'sum' }, [
+            el('td', { class: 'n muted', text: pl.nr }),
+            el('td', { colspan: 7, text: pl.label })
+          ]));
+        }
         pl.punkte.forEach(function (pt) { zeilen.push(punktZeile(p, s, pt, beteiligte)); });
       });
 
@@ -680,7 +781,7 @@ window.APP = window.APP || {};
     })()]));
 
     tr.appendChild(el('td', {}, [(function () {
-      var sel = el('select');
+      var sel = el('select', { class: 'nichtdrucken' });
       sel.appendChild(el('option', { value: '', text: '— ohne —' }));
       beteiligte.forEach(function (b) {
         sel.appendChild(el('option', { value: b.id,
@@ -690,7 +791,11 @@ window.APP = window.APP || {};
       sel.addEventListener('change', function () {
         pt.beteiligter = sel.value; schmutzig(); A.render();
       });
-      return sel;
+      /* Auf Papier steht der Name, nicht der Auswahltext «— ohne —». */
+      var wer = beteiligte.find(function (b) { return b.id === pt.beteiligter; });
+      var text = el('span', { class: 'nurdruck',
+        text: wer ? (wer.name || wer.kuerzel) : '—' });
+      return el('span', {}, [sel, text]);
     })()]));
 
     tr.appendChild(el('td', {}, [

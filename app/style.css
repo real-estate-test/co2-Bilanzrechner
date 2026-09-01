@@ -376,6 +376,12 @@ textarea:focus { outline: none; border-color: var(--accent); }
   body.seite-protokolle .panel.sitzungskopf { display: none !important; }
   body.seite-protokolle .panel { border-color: #d8dde4; }
   body.seite-protokolle textarea { resize: none !important; }
+
+  /* Der Briefkopf gehört auf jede Seite des Protokolls, nicht nur auf
+     die erste — sonst weiss man auf Blatt drei nicht mehr, wozu die
+     Punkte gehören. */
+  .protokollkopf { break-after: avoid; page-break-after: avoid; }
+  .protokollkopf img { max-height: 42px; }
 }
 
 /* Am Bildschirm gilt das Umgekehrte */

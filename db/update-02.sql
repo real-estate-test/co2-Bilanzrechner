@@ -97,6 +97,50 @@ insert into einstellungen (schluessel, wert) values
 on conflict (schluessel) do nothing;
 
 -- ---------------------------------------------------------------------
+--  Rollentyp. Steht in schema.sql, wird hier nur sicherheitshalber
+--  angelegt — meine_rolle() gibt ihn zurück und liesse sich sonst
+--  nicht erzeugen.
+-- ---------------------------------------------------------------------
+do $$ begin
+  create type rolle as enum ('betrachter', 'bearbeiter', 'verwalter');
+exception when duplicate_object then null; end $$;
+
+-- ---------------------------------------------------------------------
+--  Hilfsfunktionen der Rechteregeln
+--
+--  Sie stammen aus schema.sql und stehen hier noch einmal: Fehlt eine
+--  davon, bricht Postgres den ganzen Block ab und rollt ihn zurück —
+--  die Tabelle hätte dann aktive Rechteregeln, aber keine einzige
+--  Regel, und niemand dürfte etwas. «create or replace» ändert nichts,
+--  wo die Funktionen bereits stimmen.
+-- ---------------------------------------------------------------------
+create or replace function meine_rolle()
+returns rolle
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select rolle from profil where id = auth.uid() and aktiv;
+$$;
+
+create or replace function darf_bearbeiten()
+returns boolean
+language sql
+stable
+as $$
+  select meine_rolle() in ('bearbeiter', 'verwalter');
+$$;
+
+create or replace function ist_verwalter()
+returns boolean
+language sql
+stable
+as $$
+  select meine_rolle() = 'verwalter';
+$$;
+
+-- ---------------------------------------------------------------------
 --  Rechteregeln
 -- ---------------------------------------------------------------------
 alter table sitzungen enable row level security;
@@ -125,14 +169,36 @@ create policy sitzungen_loeschen on sitzungen
 
 
 -- ---------------------------------------------------------------------
---  Kontrolle. Erwartet wird:
---    sitzungen | true | 4      (Rechteregeln aktiv, vier Regeln)
+--  Kontrolle. Der SQL-Editor zeigt nur das Ergebnis der letzten
+--  Anweisung, deshalb steht hier alles in einer Abfrage.
+--
+--  Jede Zeile muss «ok» zeigen. Steht irgendwo «FEHLT», ist das Skript
+--  nicht vollständig durchgelaufen — dann die Fehlermeldung des
+--  Editors beachten und erneut ausführen.
 -- ---------------------------------------------------------------------
-select
-  c.relname                                        as tabelle,
-  c.relrowsecurity                                 as rechteregeln_aktiv,
-  (select count(*) from pg_policies p
-     where p.schemaname = 'public' and p.tablename = c.relname) as regeln
-from pg_class c
-join pg_namespace n on n.oid = c.relnamespace
-where n.nspname = 'public' and c.relname = 'sitzungen';
+select 'Tabelle sitzungen'::text as pruefpunkt,
+       (case when to_regclass('public.sitzungen') is null then 'FEHLT' else 'ok' end)::text as befund
+union all
+select 'Rechteregeln aktiv'::text,
+       (coalesce((select case when relrowsecurity then 'ok' else 'AUS' end
+                   from pg_class where oid = to_regclass('public.sitzungen')), 'FEHLT'))::text
+union all
+select ('Regel ' || r)::text,
+       (case when exists (select 1 from pg_policies
+                           where schemaname = 'public' and tablename = 'sitzungen'
+                             and policyname = r)
+             then 'ok' else 'FEHLT' end)::text
+from unnest(array['sitzungen_lesen', 'sitzungen_anlegen',
+                  'sitzungen_aendern', 'sitzungen_loeschen']) as r
+union all
+select ('Funktion ' || fn)::text,
+       (case when exists (select 1 from pg_proc pr
+                           join pg_namespace n on n.oid = pr.pronamespace
+                          where n.nspname = 'public' and pr.proname = fn)
+             then 'ok' else 'FEHLT' end)::text
+from unnest(array['meine_rolle', 'darf_bearbeiten', 'ist_verwalter']) as fn
+union all
+select ('Einstellung ' || k)::text,
+       (case when exists (select 1 from einstellungen where schluessel = k)
+             then 'ok' else 'FEHLT' end)::text
+from unnest(array['adressen', 'sitzungsreihen']) as k;

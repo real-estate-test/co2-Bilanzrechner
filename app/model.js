@@ -227,6 +227,45 @@ window.APP = window.APP || {};
   };
 
   /* ---------------------------------------------------------------
+     Mailentwurf im Mailprogramm öffnen
+
+     Outlook trennt Empfänger mit Semikolon; eine kommagetrennte Liste
+     landet dort als eine einzige, unbrauchbare Adresse. Semikolon
+     verstehen auch Thunderbird und Apple Mail, also gilt es überall.
+     --------------------------------------------------------------- */
+
+  A.MAIL_TRENNER = '; ';
+
+  A.mailListe = function (adressen) {
+    return (adressen || []).filter(Boolean).join(A.MAIL_TRENNER);
+  };
+
+  /* Adressen gehören unkodiert in die Adresszeile: encodeURIComponent
+     macht aus dem @ ein %40, und ältere Mailprogramme zeigen das
+     wörtlich an. Mailadressen bestehen ohnehin aus URL-sicheren
+     Zeichen; nur Leerraum wird entfernt. Betreff und Text werden
+     kodiert, dort steht beliebiger Text. */
+  function adressteil(adressen) {
+    return (adressen || [])
+      .map(function (a) { return String(a || '').trim(); })
+      .filter(Boolean)
+      .join(';');
+  }
+
+  A.mailOeffnen = function (opts) {
+    opts = opts || {};
+    var teile = [];
+    if (opts.betreff) teile.push('subject=' + encodeURIComponent(opts.betreff));
+    if (opts.text) teile.push('body=' + encodeURIComponent(opts.text));
+    if (opts.kopie && opts.kopie.length) teile.push('cc=' + adressteil(opts.kopie));
+
+    var url = 'mailto:' + adressteil(opts.an) +
+      (teile.length ? '?' + teile.join('&') : '');
+    window.location.href = url;
+    return url;
+  };
+
+  /* ---------------------------------------------------------------
      Protokolle und Termine
 
      Gliederung eines Protokolls: Phase → Beteiligter → Punkte. Die

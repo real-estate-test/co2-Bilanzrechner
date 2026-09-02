@@ -1011,10 +1011,11 @@ window.APP = window.APP || {};
         }
         var ta = document.getElementById('versandtext');
         var koerpertext = ta ? ta.value : text;
-        window.location.href = 'mailto:' +
-          encodeURIComponent(empfaenger.map(function (b) { return b.mail; }).join(',')) +
-          '?subject=' + encodeURIComponent(betreff) +
-          '&body=' + encodeURIComponent(koerpertext);
+        A.mailOeffnen({
+          an: empfaenger.map(function (b) { return b.mail; }),
+          betreff: betreff,
+          text: koerpertext
+        });
 
         if (s.status !== 'versendet') {
           s.status = 'versendet';

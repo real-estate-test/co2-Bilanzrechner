@@ -263,7 +263,7 @@ window.APP = window.APP || {};
     out.appendChild(U.panel('Verteiler', mails.length + ' Adressen', [
       el('div', { class: 'panelbody' }, [
         mails.length
-          ? el('input', { type: 'text', readonly: '', value: mails.join('; '),
+          ? el('input', { type: 'text', readonly: '', value: A.mailListe(mails),
               title: 'zum Kopieren markieren',
               style: 'width:100%;padding:7px 9px;border:1px solid var(--line2);border-radius:5px;' +
                      'font-family:inherit;font-size:12.5px;background:var(--panel2)' })
@@ -272,7 +272,7 @@ window.APP = window.APP || {};
       mails.length ? el('div', { class: 'panelbody',
         style: 'display:flex;gap:10px;flex-wrap:wrap' }, [
         el('button', { text: 'Adressen kopieren', onclick: function () {
-          var t = mails.join('; ');
+          var t = A.mailListe(mails);
           if (navigator.clipboard) {
             navigator.clipboard.writeText(t)
               .then(function () { A.meldung('ok', mails.length + ' Adressen kopiert.'); })
@@ -280,9 +280,7 @@ window.APP = window.APP || {};
           } else { A.meldung('warn', 'Kopieren nicht möglich — bitte von Hand markieren.'); }
         } }),
         el('button', { text: 'Mail an den Verteiler', onclick: function () {
-          /* bcc, damit die Empfänger nicht die Adressen aller anderen sehen */
-          window.location.href = 'mailto:?bcc=' + encodeURIComponent(mails.join(',')) +
-            '&subject=' + encodeURIComponent(p.name || 'Projekt');
+          A.mailOeffnen({ an: mails, betreff: p.name || 'Projekt' });
         } })
       ]) : null
     ]));

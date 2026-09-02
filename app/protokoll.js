@@ -189,9 +189,12 @@ window.APP = window.APP || {};
     var box = el('div', {});
     var reihen = A.reihenListe();
 
-    var zeilen = S.liste.slice().sort(function (a, b) {
-      return String(b.datum || '').localeCompare(String(a.datum || ''));
-    }).map(function (s) {
+    /* Die Sammelsitzung der manuellen Aufgaben ist kein Protokoll und
+       gehört nicht in diese Liste — ihre Aufgaben stehen unten. */
+    var zeilen = S.liste.filter(function (s) { return !A.istManuell(s); })
+      .sort(function (a, b) {
+        return String(b.datum || '').localeCompare(String(a.datum || ''));
+      }).map(function (s) {
       var r = A.reihe(s.reihe);
       var offen = zaehleOffen(s);
       return el('tr', {}, [
@@ -269,14 +272,15 @@ window.APP = window.APP || {};
         text: 'Die Reihen werden unter Verwaltung gepflegt.' })
     ]));
 
-    var nOffen = gesamtOffen();
-    box.appendChild(U.panel('Protokolle', S.liste.length
-      ? S.liste.length + (S.liste.length === 1 ? ' Protokoll' : ' Protokolle') + ' · ' +
-        nOffen + (nOffen === 1 ? ' offene Aufgabe' : ' offene Aufgaben')
+    /* Gezählt werden echte Protokolle — die Sammelsitzung der manuell
+       erfassten Aufgaben ist keines. */
+    var anzahl = S.liste.filter(function (x) { return !A.istManuell(x); }).length;
+    box.appendChild(U.panel('Protokolle', anzahl
+      ? anzahl + (anzahl === 1 ? ' Protokoll' : ' Protokolle')
       : 'noch keines erfasst', koerper));
 
-    /* Alle offenen Aufgaben des Projekts, quer über die Reihen */
-    box.appendChild(pendenzenPanel(p));
+    /* Alle Aufgaben des Projekts, quer über die Reihen */
+    box.appendChild(aufgabenPanel(p));
     box.appendChild(standardpunktePanel(p));
     return box;
   }
@@ -355,7 +359,7 @@ window.APP = window.APP || {};
 
   function zaehleOffen(s) {
     return (s.punkte || []).filter(function (pt) {
-      return pt.typ === 'aufgabe' && pt.status === 'offen';
+      return pt.typ === 'aufgabe' && A.statusOffen(pt.status);
     }).length;
   }
 
@@ -369,7 +373,7 @@ window.APP = window.APP || {};
     S.liste.forEach(function (s) {
       if (ausser && s.id === ausser.id) return;
       (s.punkte || []).forEach(function (pt) {
-        if (pt.typ === 'aufgabe' && pt.status === 'offen') {
+        if (pt.typ === 'aufgabe' && A.statusOffen(pt.status)) {
           raus.push({ sitzung: s, punkt: pt });
         }
       });
@@ -381,7 +385,95 @@ window.APP = window.APP || {};
     return raus;
   };
 
-  function pendenzenPanel(p) {
+  /* Alle Punkte des Projekts, mit ihrer Herkunft und der Sitzung, in
+     der sie stehen — die gemeinsame Grundlage von Liste, Kanban und
+     Themenbild. Der Verweis auf die Sitzung ist nötig, weil ein
+     geänderter Punkt dort gespeichert wird, wo er lebt. */
+  P.allePunkte = function (nurTyp) {
+    var raus = [];
+    S.liste.forEach(function (s) {
+      var manuell = A.istManuell(s);
+      var r = A.reihe(s.reihe);
+      (s.punkte || []).forEach(function (pt) {
+        if (nurTyp && pt.typ !== nurTyp) return;
+        raus.push({
+          punkt: pt, sitzung: s, manuell: manuell,
+          herkunft: manuell ? 'manuell erfasst'
+            : (r ? (r.kuerzel || r.label) : s.reihe) + ' ' + s.nummer +
+              ' · ' + A.datum(s.datum)
+        });
+      });
+    });
+    return raus;
+  };
+
+  /* Die Sammelsitzung dieses Projekts, bei Bedarf angelegt. */
+  function manuelleSitzung(p, anlegen) {
+    var vorhanden = S.liste.find(A.istManuell);
+    if (vorhanden || !anlegen) return vorhanden || null;
+    var s = A.defSitzung(p.id, A.MANUELL_REIHE);
+    s.nummer = 1;
+    s.datum = A.heute();
+    S.liste.push(s);
+    return s;
+  }
+
+  P.manuelleSitzung = manuelleSitzung;
+
+  /* Welche der drei Ansichten gerade gilt. Bewusst ausserhalb des
+     Projekts: Das ist eine Vorliebe des Betrachters, keine Eigenschaft
+     des Projekts. */
+  S.ansicht = 'liste';
+
+  function aufgabenPanel(p) {
+    var umschalter = el('div', { class: 'seg noprint', style: 'display:flex;gap:0' });
+    [{ id: 'liste', label: 'Liste' },
+     { id: 'kanban', label: 'Kanban' },
+     { id: 'themen', label: 'Themenbild' }].forEach(function (a) {
+      var b = el('button', { class: S.ansicht === a.id ? 'primary' : '', text: a.label });
+      b.addEventListener('click', function () { S.ansicht = a.id; A.render(); });
+      umschalter.appendChild(b);
+    });
+
+    var aufgaben = P.allePunkte('aufgabe');
+    var offeneZahl = aufgaben.filter(function (o) {
+      return A.statusOffen(o.punkt.status);
+    }).length;
+
+    var inhalt;
+    if (S.ansicht === 'kanban') inhalt = kanban(p, aufgaben);
+    else if (S.ansicht === 'themen') inhalt = themenbild(p);
+    else inhalt = pendenzenListe(p);
+
+    return U.panel('Aufgaben',
+      offeneZahl + (offeneZahl === 1 ? ' offene Aufgabe' : ' offene Aufgaben') +
+      ' · aus Protokollen und manuell erfasst', [
+      el('div', { class: 'panelbody noprint',
+        style: 'display:flex;gap:14px;align-items:center;flex-wrap:wrap' }, [
+        umschalter,
+        el('button', { class: 'schreibend', style: 'margin-left:auto',
+          text: '+ Aufgabe ohne Protokoll', onclick: function () { neueAufgabe(p); } })
+      ]),
+      inhalt
+    ]);
+  }
+
+  /* Eine Aufgabe, die nicht aus einer Sitzung kommt. Sie landet in der
+     Sammelsitzung des Projekts und verhält sich sonst wie jede andere. */
+  function neueAufgabe(p) {
+    var s = manuelleSitzung(p, true);
+    var beteiligte = A.beteiligteListe(p);
+    s.punkte.push(A.defPunkt({
+      typ: 'aufgabe', text: '', phase: 'allgemein',
+      beteiligter: beteiligte.length ? beteiligte[0].id : '',
+      termin: '', status: 'offen'
+    }));
+    P.speichern(s).then(function (ok) {
+      if (ok) { S.ansicht = S.ansicht === 'themen' ? 'liste' : S.ansicht; A.render(); }
+    });
+  }
+
+  function pendenzenListe(p) {
     var offen = P.offenePunkte(null);
     var zeilen = offen.map(function (o) {
       var b = A.beteiligteListe(p).find(function (x) { return x.id === o.punkt.beteiligter; });
@@ -401,19 +493,403 @@ window.APP = window.APP || {};
           ? [el('span', { class: 'tag' + (pr.klasse ? ' ' + pr.klasse : ''), text: pr.label })]
           : [el('span', { class: 'muted', text: '—' })]),
         el('td', { style: 'width:150px', text: b ? (b.name || b.kuerzel) : 'ohne Zuständigkeit' }),
-        terminZelle(o.punkt.termin)
+        terminZelle(o.punkt.termin),
+        el('td', { style: 'width:180px' }, [statuswahl(o.punkt, o.sitzung)])
       ]);
     });
     if (!zeilen.length) {
-      zeilen.push(el('tr', {}, [el('td', { colspan: 6, class: 'muted',
+      zeilen.push(el('tr', {}, [el('td', { colspan: 7, class: 'muted',
         text: 'Keine offenen Aufgaben.' })]));
     }
-    return U.panel('Offene Aufgaben', 'aus allen Protokollen dieses Projekts', [
-      el('div', { class: 'panelbody' }, [U.tabelle([
-        { label: 'Herkunft' }, { label: 'Thema' }, { label: 'Aufgabe' },
-        { label: 'Prio' }, { label: 'Zuständig' }, { label: 'Termin', n: true }
-      ], zeilen)])
+    return el('div', { class: 'panelbody' }, [U.tabelle([
+      { label: 'Herkunft' }, { label: 'Thema' }, { label: 'Aufgabe' },
+      { label: 'Prio' }, { label: 'Zuständig' }, { label: 'Termin', n: true },
+      { label: 'Status' }
+    ], zeilen)]);
+  }
+
+  /* ---------------------------------------------------------------
+     Kanban — drei Spalten, eine je Zustand
+
+     Die Karten lassen sich zwischen den Spalten ziehen; auf Geräten
+     ohne Maus schieben zwei Knöpfe die Karte eine Spalte weiter.
+     Farbe kommt vom Thema, damit man Zusammengehöriges sieht, ohne
+     zu lesen.
+     --------------------------------------------------------------- */
+
+  function kanban(p, aufgaben) {
+    var beteiligte = A.beteiligteListe(p);
+    var spalten = A.PUNKT_STATUS.map(function (st) {
+      return { id: st.id, label: st.label, karten: [] };
+    });
+
+    aufgaben.forEach(function (o) {
+      var st = o.punkt.status || 'offen';
+      /* Übernommene Aufgaben sind abgeschlossen — sie stehen bei den
+         erledigten, mit eigenem Vermerk auf der Karte. */
+      if (st === A.STATUS_UEBERNOMMEN) st = 'erledigt';
+      var sp = spalten.find(function (x) { return x.id === st; }) || spalten[0];
+      sp.karten.push(o);
+    });
+
+    /* Innerhalb der Spalte: überfällige zuerst, dann nach Termin */
+    spalten.forEach(function (sp) {
+      sp.karten.sort(function (a, b) {
+        return String(a.punkt.termin || '9999').localeCompare(String(b.punkt.termin || '9999'));
+      });
+    });
+
+    var tafel = el('div', { class: 'kanban' });
+
+    spalten.forEach(function (sp) {
+      var spalte = el('div', { class: 'kanban-spalte' });
+      spalte.appendChild(el('div', { class: 'kanban-kopf' }, [
+        el('span', { text: sp.label }),
+        el('span', { class: 'zahl', text: String(sp.karten.length) })
+      ]));
+
+      var feld = el('div', { class: 'kanban-feld' });
+      sp.karten.forEach(function (o) { feld.appendChild(karte(p, o, beteiligte, spalten, sp)); });
+      if (!sp.karten.length) {
+        feld.appendChild(el('div', { class: 'kanban-leer', text: 'nichts hier' }));
+      }
+
+      /* Ablagefläche: Die ganze Spalte nimmt eine gezogene Karte auf. */
+      feld.addEventListener('dragover', function (e) {
+        e.preventDefault();
+        feld.classList.add('ueber');
+      });
+      feld.addEventListener('dragleave', function () { feld.classList.remove('ueber'); });
+      feld.addEventListener('drop', function (e) {
+        e.preventDefault();
+        feld.classList.remove('ueber');
+        var id = e.dataTransfer.getData('text/plain');
+        var o = aufgaben.find(function (x) { return x.punkt.id === id; });
+        if (!o) return;
+        var jetzt = o.punkt.status === A.STATUS_UEBERNOMMEN ? 'erledigt' : (o.punkt.status || 'offen');
+        if (jetzt === sp.id) return;
+        statusSetzen(o.punkt, o.sitzung, sp.id);
+      });
+
+      spalte.appendChild(feld);
+      tafel.appendChild(spalte);
+    });
+
+    return el('div', { class: 'panelbody' }, [
+      tafel,
+      el('div', { class: 'hilfe', style: 'margin-top:10px',
+        text: 'Karten lassen sich zwischen den Spalten ziehen; die Pfeile auf der Karte tun ' +
+              'dasselbe. Der Farbstreifen links zeigt das Thema, die Marken darunter Thema ' +
+              'und Priorität im Klartext. Überfällige Karten sind rot hinterlegt. Eine ' +
+              'Änderung wird sofort gespeichert — dort, wo die Aufgabe steht.' })
     ]);
+  }
+
+  function karte(p, o, beteiligte, spalten, aktuell) {
+    var pt = o.punkt;
+    var t = A.thema(pt.thema);
+    var pr = A.prioritaet(pt.prio);
+    var b = beteiligte.find(function (x) { return x.id === pt.beteiligter; });
+    var ueberfaellig = pt.termin && pt.termin < A.heute() && A.statusOffen(pt.status);
+
+    var k = el('div', { class: 'kanban-karte' + (ueberfaellig ? ' spaet' : ''),
+      draggable: 'true' });
+    k.style.borderLeftColor = t ? t.farbe : 'var(--line2)';
+
+    k.addEventListener('dragstart', function (e) {
+      e.dataTransfer.setData('text/plain', pt.id);
+      e.dataTransfer.effectAllowed = 'move';
+      k.classList.add('zieht');
+    });
+    k.addEventListener('dragend', function () { k.classList.remove('zieht'); });
+
+    k.appendChild(el('div', { class: 'ktext', text: pt.text || '(ohne Text)' }));
+
+    var marken = el('div', { class: 'kmarken' });
+    if (t) {
+      marken.appendChild(el('span', { class: 'tag', style: 'border-color:' + t.farbe,
+        text: t.label }));
+    }
+    if (pr.id) {
+      marken.appendChild(el('span', { class: 'tag' + (pr.klasse ? ' ' + pr.klasse : ''),
+        text: pr.label }));
+    }
+    if (pt.status === A.STATUS_UEBERNOMMEN) {
+      marken.appendChild(el('span', { class: 'tag', text: 'übernommen' }));
+    }
+    if (marken.childNodes.length) k.appendChild(marken);
+
+    k.appendChild(el('div', { class: 'kfuss' }, [
+      el('span', { text: b ? (b.kuerzel || b.name) : 'ohne Zuständigkeit' }),
+      el('span', { class: pt.termin && ueberfaellig ? 'spaet' : '',
+        text: pt.termin ? A.datum(pt.termin) : 'ohne Termin' })
+    ]));
+
+    k.appendChild(el('div', { class: 'kherkunft', text: o.herkunft }));
+
+    /* Rückfallebene ohne Maus: eine Spalte zurück oder weiter */
+    var ix = spalten.findIndex(function (x) { return x.id === aktuell.id; });
+    var knoepfe = el('div', { class: 'kknoepfe noprint' });
+    if (ix > 0) {
+      knoepfe.appendChild(el('button', { class: 'ghost sm schreibend', text: '‹',
+        title: 'nach ' + spalten[ix - 1].label,
+        onclick: function () { statusSetzen(pt, o.sitzung, spalten[ix - 1].id); } }));
+    }
+    if (ix < spalten.length - 1) {
+      knoepfe.appendChild(el('button', { class: 'ghost sm schreibend', text: '›',
+        title: 'nach ' + spalten[ix + 1].label,
+        onclick: function () { statusSetzen(pt, o.sitzung, spalten[ix + 1].id); } }));
+    }
+    if (knoepfe.childNodes.length) k.appendChild(knoepfe);
+
+    return k;
+  }
+
+  /* Statuswahl, die den Punkt dort speichert, wo er lebt — in seinem
+     Protokoll oder in der Sammelsitzung. */
+  function statuswahl(pt, sitzung) {
+    var sel = el('select', { class: 'schreibend' });
+    A.PUNKT_STATUS.forEach(function (st) {
+      sel.appendChild(el('option', { value: st.id, text: st.label,
+        selected: (pt.status || 'offen') === st.id ? '' : null }));
+    });
+    if (pt.status === A.STATUS_UEBERNOMMEN) {
+      sel.appendChild(el('option', { value: A.STATUS_UEBERNOMMEN,
+        text: 'übernommen', selected: '' }));
+    }
+    sel.addEventListener('change', function () {
+      statusSetzen(pt, sitzung, sel.value);
+    });
+    return sel;
+  }
+
+  function statusSetzen(pt, sitzung, wert) {
+    pt.status = wert;
+    if (wert === 'erledigt') {
+      pt.erledigt_am = pt.erledigt_am || A.heute();
+    } else if (wert !== A.STATUS_UEBERNOMMEN) {
+      pt.erledigt_am = ''; pt.erledigt_in = '';
+    }
+    P.speichern(sitzung).then(function (ok) {
+      if (ok) A.render();
+    });
+  }
+
+  /* ---------------------------------------------------------------
+     Themenbild — alle Punkte nach Themen, radial
+
+     In der Mitte das Projekt, ringsum die Themen, an jedem Thema seine
+     Aufgaben, Entscheide und Infos. Anders als Kanban und Liste zeigt
+     dieses Bild alle drei Arten: Es beantwortet nicht «was ist zu
+     tun», sondern «was wissen wir über dieses Thema».
+     --------------------------------------------------------------- */
+
+  /* Welche Themen aufgeklappt sind — überlebt das Neuzeichnen */
+  var offeneThemen = {};
+
+  function themenbild(p) {
+    var alle = P.allePunkte(null).filter(function (o) {
+      /* Übernommene stehen im Nachfolgeprotokoll — sonst stünde
+         derselbe Punkt zweimal im Bild. */
+      return o.punkt.status !== A.STATUS_UEBERNOMMEN;
+    });
+
+    if (!alle.length) {
+      return el('div', { class: 'panelbody muted',
+        text: 'Noch kein Punkt erfasst — weder aus einem Protokoll noch von Hand.' });
+    }
+
+    /* Nach Thema gruppieren, Punkte ohne Thema in einer eigenen Gruppe */
+    var themen = A.themenListe();
+    var gruppen = [];
+    themen.forEach(function (t) {
+      var drin = alle.filter(function (o) { return o.punkt.thema === t.id; });
+      if (drin.length) gruppen.push({ thema: t, punkte: drin });
+    });
+    var ohne = alle.filter(function (o) {
+      return !themen.some(function (t) { return t.id === o.punkt.thema; });
+    });
+    if (ohne.length) {
+      gruppen.push({ thema: { id: '', label: 'ohne Thema', farbe: '#aab2bd' }, punkte: ohne });
+    }
+
+    var W = 1120, MITTE = { x: W / 2, y: 0 };
+    var RADIUS = 210;          // Abstand der Themenknoten zur Mitte
+    var ZEILE = 17;            // Höhe einer Punktzeile
+    var s = U.s;
+
+    /* Höhe: Die Themen stehen auf einem Kreis; je Thema kommt die
+       Liste seiner Punkte dazu. Die Höhe folgt dem längsten Ast. */
+    var n = gruppen.length;
+    var proSeite = Math.ceil(n / 2);
+    var maxPunkte = 0;
+    gruppen.forEach(function (g) {
+      var z = offeneThemen[g.thema.id] ? g.punkte.length : Math.min(g.punkte.length, 5);
+      if (z > maxPunkte) maxPunkte = z;
+    });
+    var H = Math.max(420, 130 + proSeite * (70 + Math.min(maxPunkte, 8) * ZEILE));
+    MITTE.y = H / 2;
+
+    var kinder = [];
+
+    /* Die Äste zuerst, damit die Knoten darüber liegen */
+    var stellen = gruppen.map(function (g, i) {
+      /* Halbkreis links, Halbkreis rechts — so bleibt in der Mitte
+         Platz für den Projektnamen und die Beschriftungen laufen nicht
+         ineinander. */
+      var rechts = i % 2 === 0;
+      var reihe = Math.floor(i / 2);
+      var schritt = proSeite > 1 ? (H - 150) / (proSeite - 1) : 0;
+      var y = proSeite > 1 ? 75 + reihe * schritt : H / 2;
+      var x = rechts ? MITTE.x + RADIUS : MITTE.x - RADIUS;
+      return { g: g, x: x, y: y, rechts: rechts };
+    });
+
+    stellen.forEach(function (st) {
+      var t = st.g.thema;
+      var xm = (MITTE.x + st.x) / 2;
+      kinder.push(s('path', {
+        d: 'M ' + MITTE.x + ' ' + MITTE.y +
+           ' C ' + xm + ' ' + MITTE.y + ', ' + xm + ' ' + st.y + ', ' + st.x + ' ' + st.y,
+        fill: 'none', stroke: t.farbe, 'stroke-width': 2, opacity: 0.55
+      }));
+    });
+
+    /* Projekt in der Mitte */
+    kinder.push(s('circle', { cx: MITTE.x, cy: MITTE.y, r: 58, fill: '#232c39' }));
+    /* Der Name wird auf zwei Zeilen gebrochen — er passt sonst nicht in
+       den Kreis und läuft über den Rand hinaus. */
+    var namensZeilen = umbrechen(p.name || 'Projekt', 14, 2);
+    namensZeilen.forEach(function (zeile, i) {
+      kinder.push(s('text', { x: MITTE.x,
+        y: MITTE.y - (namensZeilen.length === 2 ? 8 : 1) + i * 13,
+        'text-anchor': 'middle', 'font-size': 11.5, fill: '#fff', 'font-weight': '640' },
+        zeile));
+    });
+    kinder.push(s('text', { x: MITTE.x, y: MITTE.y + (namensZeilen.length === 2 ? 22 : 15),
+      'text-anchor': 'middle', 'font-size': 10, fill: '#aab6c6' },
+      alle.length + ' Punkte'));
+
+    /* Themen und ihre Punkte */
+    stellen.forEach(function (st) {
+      var t = st.g.thema;
+      var punkte = st.g.punkte.slice().sort(function (a, b) {
+        return String(a.punkt.typ).localeCompare(String(b.punkt.typ)) ||
+               String(a.punkt.text).localeCompare(String(b.punkt.text), 'de');
+      });
+      var offen = !!offeneThemen[t.id];
+      var zeigen = offen ? punkte : punkte.slice(0, 5);
+      var anker = st.rechts ? 'start' : 'end';
+      var tx = st.rechts ? st.x + 16 : st.x - 16;
+
+      kinder.push(s('circle', { cx: st.x, cy: st.y, r: 9,
+        fill: t.farbe, stroke: '#fff', 'stroke-width': 2 }));
+      kinder.push(s('text', { x: tx, y: st.y + 1, 'text-anchor': anker,
+        'font-size': 12.5, 'font-weight': '640', fill: '#232c39' },
+        kuerzen(t.label, 24)));
+      kinder.push(s('text', { x: tx, y: st.y + 15, 'text-anchor': anker,
+        'font-size': 10, fill: '#6b7484' },
+        zaehlung(punkte)));
+
+      zeigen.forEach(function (o, j) {
+        var y = st.y + 32 + j * ZEILE;
+        var pt = o.punkt;
+        var farbe = pt.typ === 'entscheid' ? '#0d7a45'
+          : pt.typ === 'info' ? '#6b7484'
+          : (pt.status === 'erledigt' ? '#0d7a45'
+             : (pt.termin && pt.termin < A.heute() ? '#c02e26' : '#1f5fd0'));
+
+        /* Kleines Zeichen je Art: Raute für Entscheid, Punkt für Info,
+           Quadrat für Aufgabe. */
+        var zx = st.rechts ? st.x + 8 : st.x - 8;
+        if (pt.typ === 'entscheid') {
+          kinder.push(s('polygon', {
+            points: [zx, y - 8, zx + 4, y - 4, zx, y, zx - 4, y - 4].join(' '),
+            fill: farbe }));
+        } else if (pt.typ === 'info') {
+          kinder.push(s('circle', { cx: zx, cy: y - 4, r: 3, fill: farbe }));
+        } else {
+          kinder.push(s('rect', { x: zx - 3.5, y: y - 7.5, width: 7, height: 7,
+            rx: 1.5, fill: farbe,
+            opacity: pt.status === 'erledigt' ? 0.45 : 1 }));
+        }
+
+        var text = s('text', { x: st.rechts ? zx + 9 : zx - 9, y: y,
+          'text-anchor': anker, 'font-size': 11,
+          fill: pt.status === 'erledigt' ? '#9aa3ae' : '#3c4553',
+          'text-decoration': pt.status === 'erledigt' ? 'line-through' : 'none' },
+          kuerzen(pt.text || '(ohne Text)', 34));
+        text.appendChild(s('title', {}, [
+          pt.text || '(ohne Text)',
+          A.PUNKT_TYPEN.find(function (x) { return x.id === pt.typ; }).label,
+          pt.termin ? 'Termin ' + A.datum(pt.termin) : '',
+          'aus ' + o.herkunft
+        ].filter(Boolean).join('\n')));
+        kinder.push(text);
+      });
+
+      /* Mehr als fünf: aufklappbar */
+      if (punkte.length > 5) {
+        var y2 = st.y + 32 + zeigen.length * ZEILE;
+        var mehr = s('text', { x: st.rechts ? st.x + 17 : st.x - 17, y: y2,
+          'text-anchor': anker, 'font-size': 10.5, fill: '#1f5fd0',
+          style: 'cursor:pointer', class: 'mehrknopf' },
+          offen ? '− weniger' : '+ ' + (punkte.length - 5) + ' weitere');
+        mehr.addEventListener('click', function () {
+          offeneThemen[t.id] = !offeneThemen[t.id];
+          A.render();
+        });
+        kinder.push(mehr);
+      }
+    });
+
+    return el('div', { class: 'panelbody' }, [
+      U.svg(W, H, kinder, { h: H }),
+      el('div', { class: 'legende' }, [
+        el('span', {}, [el('i', { style: 'background:#1f5fd0;border-radius:2px' }),
+          el('span', { text: 'Aufgabe' })]),
+        el('span', {}, [el('i', { style: 'background:#0d7a45;transform:rotate(45deg)' }),
+          el('span', { text: 'Entscheid' })]),
+        el('span', {}, [el('i', { style: 'background:#6b7484;border-radius:50%' }),
+          el('span', { text: 'Info' })]),
+        el('span', {}, [el('i', { style: 'background:#c02e26;border-radius:2px' }),
+          el('span', { text: 'überfällig' })])
+      ]),
+      el('div', { class: 'hilfe', style: 'margin-top:8px',
+        text: 'Alles, was in den Protokollen und von Hand erfasst wurde, nach Themen ' +
+              'geordnet. Erledigte Aufgaben sind durchgestrichen; übernommene stehen bei ' +
+              'ihrem Nachfolger. Mit dem Zeiger über einem Eintrag steht der volle Text.' })
+    ]);
+  }
+
+  function zaehlung(punkte) {
+    var a = punkte.filter(function (o) { return o.punkt.typ === 'aufgabe'; }).length;
+    var e = punkte.filter(function (o) { return o.punkt.typ === 'entscheid'; }).length;
+    var i = punkte.filter(function (o) { return o.punkt.typ === 'info'; }).length;
+    return [a ? a + ' Aufgaben' : '', e ? e + ' Entscheide' : '', i ? i + ' Infos' : '']
+      .filter(Boolean).join(' · ');
+  }
+
+  /* Text auf höchstens «zeilen» Zeilen umbrechen, an Wortgrenzen. */
+  function umbrechen(text, breite, zeilen) {
+    var worte = String(text || '').split(/\s+/).filter(Boolean);
+    var raus = [], aktuell = '';
+    worte.forEach(function (w) {
+      var probe = aktuell ? aktuell + ' ' + w : w;
+      if (probe.length <= breite || !aktuell) { aktuell = probe; return; }
+      raus.push(aktuell); aktuell = w;
+    });
+    if (aktuell) raus.push(aktuell);
+    if (raus.length > zeilen) {
+      raus = raus.slice(0, zeilen);
+      raus[zeilen - 1] = kuerzen(raus[zeilen - 1] + '…', breite + 1);
+    }
+    return raus.map(function (z) { return kuerzen(z, breite + 2); });
+  }
+
+  function kuerzen(text, n) {
+    text = String(text || '');
+    return text.length > n ? text.slice(0, n - 1) + '…' : text;
   }
 
   /* Termin mit Ampel: überfällig ist rot, in den nächsten 14 Tagen gelb */
@@ -662,7 +1138,11 @@ window.APP = window.APP || {};
               typ: 'aufgabe', text: pt.text, termin: pt.termin,
               bemerkung: 'übernommen aus ' + (A.reihe(o.sitzung.reihe) || {}).label +
                          ' Nr. ' + o.sitzung.nummer }));
-            pt.status = 'verschoben';
+            /* Der alte Punkt lebt im neuen Protokoll weiter — das ist
+               kein Warten auf Rückmeldung, sondern ein Umzug. */
+            pt.status = A.STATUS_UEBERNOMMEN;
+            pt.erledigt_am = s.datum || A.heute();
+            pt.erledigt_in = s.id;
             fremdSpeichern(o.sitzung);
             schmutzig(); A.render();
           } })])

@@ -398,7 +398,7 @@ app/ui.js             Feldbausteine, Datenherkunft, Plausibilität
 app/views.js          Eingabeseiten
 app/results.js        Ergebnis, Analyse, Bericht
 app/portfolio.js      Portfolio, Tracking, Archivieren, Import und Export
-app/protokoll.js      Sitzungsprotokolle, Pendenzen, Versand
+app/protokoll.js      Sitzungsprotokolle, Aufgaben, Kanban, Themenbild
 app/termine.js        Terminplan: SIA-Phasen, Aufgaben, Meilensteine
 app/admin.js          Verwaltung, Änderungsverlauf, Anmerkungen
 app/main.js           Zustand, Navigation, Kennzahlenleiste, Rollen

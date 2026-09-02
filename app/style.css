@@ -387,6 +387,56 @@ textarea:focus { outline: none; border-color: var(--accent); }
 /* Am Bildschirm gilt das Umgekehrte */
 .nurdruck { display: none; }
 
+/* ---------------------------------------------------------------- Kanban */
+
+.kanban { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+@media (max-width: 900px) { .kanban { grid-template-columns: 1fr; } }
+
+.kanban-spalte { background: var(--panel2); border: 1px solid var(--line); border-radius: 7px; }
+.kanban-kopf {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 11px; border-bottom: 1px solid var(--line);
+  font-size: 11px; letter-spacing: .06em; text-transform: uppercase;
+  font-weight: 700; color: var(--kopf);
+}
+.kanban-kopf .zahl {
+  margin-left: auto; font-family: var(--mono); font-size: 11px;
+  color: var(--muted); background: #fff; border: 1px solid var(--line);
+  border-radius: 10px; padding: 0 7px;
+}
+/* Die Ablagefläche behält eine Mindesthöhe, sonst kann man in eine
+   leere Spalte nichts ziehen. */
+.kanban-feld { padding: 9px; display: grid; gap: 8px; min-height: 120px; }
+.kanban-feld.ueber { background: var(--accent2); border-radius: 0 0 7px 7px; }
+.kanban-leer { color: var(--muted); font-size: 11.5px; text-align: center; padding: 14px 0; }
+
+.kanban-karte {
+  background: #fff; border: 1px solid var(--line2);
+  border-left: 4px solid var(--line2); border-radius: 5px;
+  padding: 8px 10px; cursor: grab; position: relative;
+  box-shadow: 0 1px 2px rgba(16,21,28,.05);
+}
+.kanban-karte:hover { border-color: var(--muted); }
+.kanban-karte.zieht { opacity: .45; cursor: grabbing; }
+.kanban-karte.spaet { background: #fdf6f5; }
+.kanban-karte .ktext { font-size: 12.5px; line-height: 1.35; margin-bottom: 6px; }
+.kanban-karte .kmarken { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 6px; }
+.kanban-karte .kmarken .tag { font-size: 10px; padding: 1px 6px; }
+.kanban-karte .kfuss {
+  display: flex; justify-content: space-between; gap: 8px;
+  font-size: 10.5px; color: var(--muted); font-family: var(--mono);
+}
+.kanban-karte .kfuss .spaet { color: var(--neg); font-weight: 600; }
+.kanban-karte .kherkunft { font-size: 10px; color: #aab2bd; margin-top: 3px; }
+.kanban-karte .kknoepfe {
+  position: absolute; top: 4px; right: 4px; display: none; gap: 2px;
+}
+.kanban-karte:hover .kknoepfe { display: flex; }
+.kanban-karte .kknoepfe button { padding: 0 6px; font-size: 13px; line-height: 1.5; }
+
+/* Themenbild: der Aufklappknopf ist ein Text im SVG */
+.mehrknopf:hover { text-decoration: underline; }
+
 /* Farbpunkt des Themas — in einer langen Traktandenliste findet das
    Auge damit zusammengehörende Punkte, ohne zu lesen. */
 .themenpunkt {

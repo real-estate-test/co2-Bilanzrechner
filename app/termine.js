@@ -230,7 +230,7 @@ window.APP = window.APP || {};
   function farbe(b) {
     if (b.art === 'phase') return T.RECHENFARBEN[b.rechen] || '#8a8f99';
     if (b.status === 'erledigt') return '#0d7a45';
-    if (b.status === 'verschoben') return '#8a8f99';
+    if (b.status === 'warten' || b.status === A.STATUS_UEBERNOMMEN) return '#8a8f99';
     if (b.bis && b.bis < A.heute()) return '#c02e26';     // überfällig
     if (b.art === 'entscheid' || b.meilenstein) return '#0d7a45';
     return '#1f5fd0';
@@ -740,7 +740,7 @@ window.APP = window.APP || {};
       { f: '#1f5fd0', l: 'Aufgabe offen' },
       { f: '#c02e26', l: 'überfällig' },
       { f: '#0d7a45', l: 'erledigt / Entscheid' },
-      { f: '#8a8f99', l: 'verschoben' }
+      { f: '#8a8f99', l: 'wartet / übernommen' }
     ];
     return el('div', { class: 'legende' }, eintraege.map(function (e) {
       return el('span', {}, [el('i', { style: 'background:' + e.f }), el('span', { text: e.l })]);

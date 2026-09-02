@@ -6,7 +6,7 @@ window.APP = window.APP || {};
 (function (A) {
   'use strict';
 
-  A.SCHEMA = 17;
+  A.SCHEMA = 18;
 
   /* ---------------------------------------------------------------
      Stammlisten
@@ -373,11 +373,30 @@ window.APP = window.APP || {};
     return A.themenListe().find(function (t) { return t.id === id; }) || null;
   };
 
+  /* Die drei Zustände einer Aufgabe — sie sind zugleich die Spalten
+     der Kanban-Ansicht. «übernommen» steht nicht zur Wahl: Diesen
+     Zustand vergibt allein die Pendenzenübernahme, wenn eine Aufgabe
+     in ein neues Protokoll wandert. */
   A.PUNKT_STATUS = [
-    { id: 'offen',      label: 'offen' },
-    { id: 'erledigt',   label: 'erledigt' },
-    { id: 'verschoben', label: 'verschoben' }
+    { id: 'offen',    label: 'offen' },
+    { id: 'warten',   label: 'warten auf Rückmeldung' },
+    { id: 'erledigt', label: 'erledigt' }
   ];
+
+  A.STATUS_UEBERNOMMEN = 'uebernommen';
+
+  A.statusLabel = function (id) {
+    if (id === A.STATUS_UEBERNOMMEN) return 'übernommen';
+    var st = A.PUNKT_STATUS.find(function (x) { return x.id === id; });
+    return st ? st.label : (id || 'offen');
+  };
+
+  /* Eine Aufgabe ist erledigt, wenn sie nicht mehr auf jemanden
+     wartet — übernommene zählen dazu, sie leben im neuen Protokoll
+     weiter. */
+  A.statusOffen = function (id) {
+    return id !== 'erledigt' && id !== A.STATUS_UEBERNOMMEN;
+  };
 
   /* Sitzungsreihen. Vorgabe wie bei den Firmen firmenweit pflegbar —
      jede Reihe zählt ihre Sitzungen für sich. */
@@ -414,6 +433,9 @@ window.APP = window.APP || {};
   };
 
   A.reihe = function (id) {
+    if (id === A.MANUELL_REIHE) {
+      return { id: id, kuerzel: '', label: 'manuell erfasst' };
+    }
     return A.reihenListe().find(function (r) { return r.id === id; }) || null;
   };
 
@@ -540,6 +562,12 @@ window.APP = window.APP || {};
   };
 
   A.defPunkt = function (vorgabe) {
+    /* «verschoben» hiess, was heute «warten auf Rückmeldung» heisst.
+       Umgeschrieben wird beim Lesen — die Punkte liegen als JSON in
+       der Sitzungszeile, eine Datenbankmigration gäbe es dafür nicht. */
+    if (vorgabe && vorgabe.status === 'verschoben') {
+      vorgabe = Object.assign({}, vorgabe, { status: 'warten' });
+    }
     var pt = {
       id: A.uid(),
       phase: 'allgemein',
@@ -557,6 +585,16 @@ window.APP = window.APP || {};
     };
     Object.keys(vorgabe || {}).forEach(function (k) { pt[k] = vorgabe[k]; });
     return pt;
+  };
+
+  /* Aufgaben ohne Sitzung liegen in einer eigenen Sammelsitzung je
+     Projekt. Sie nutzt dieselbe Tabelle wie die Protokolle — gleiche
+     Struktur, gleiche Rechte, gleicher Schutz gegen gegenseitiges
+     Überschreiben — erscheint aber nirgends als Protokoll. */
+  A.MANUELL_REIHE = '_manuell';
+
+  A.istManuell = function (s) {
+    return !!s && s.reihe === A.MANUELL_REIHE;
   };
 
   A.defSitzung = function (projektId, reiheId) {

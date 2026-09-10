@@ -238,6 +238,34 @@ window.APP = window.APP || {};
       wahl.appendChild(el('option', { value: r.id, text: r.label }));
     });
 
+    /* Offene Aufgaben der Reihe wandern beim Anlegen mit — genau das,
+       was die Pendenzenübernahme von Hand tut. Abschaltbar, weil eine
+       Sitzung auch einmal bei null anfangen soll. */
+    var mitnehmen = el('input', { type: 'checkbox', checked: '', style: 'width:auto' });
+
+    function offeneDerReihe(reiheId) {
+      var raus = [];
+      S.liste.forEach(function (si) {
+        if (A.istManuell(si) || si.reihe !== reiheId) return;
+        (si.punkte || []).forEach(function (pt) {
+          if (pt.typ === 'aufgabe' && A.statusOffen(pt.status)) {
+            raus.push({ sitzung: si, punkt: pt });
+          }
+        });
+      });
+      return raus;
+    }
+
+    var zahl = el('span', { class: 'muted', style: 'font-size:11.5px' });
+    function zahlNachfuehren() {
+      var n = offeneDerReihe(wahl.value).length;
+      zahl.textContent = n
+        ? n + (n === 1 ? ' offene Aufgabe wandert mit' : ' offene Aufgaben wandern mit')
+        : 'keine offenen Aufgaben in dieser Reihe';
+    }
+    wahl.addEventListener('change', zahlNachfuehren);
+    zahlNachfuehren();
+
     koerper.push(el('div', { class: 'panelbody',
       style: 'display:flex;gap:10px;align-items:center;flex-wrap:wrap' }, [
       wahl,
@@ -253,6 +281,21 @@ window.APP = window.APP || {};
         /* Die Standardtraktanden der Reihe plus die des Projekts. Sie
            sind danach ganz normale Punkte. */
         s.punkte = A.standardpunkte(A.state.p, wahl.value);
+
+        /* Danach die Pendenzen: Sie stehen unter ihrem Thema hinter den
+           formalen Traktanden. Der Ursprungspunkt gilt als übernommen
+           und lebt hier weiter — dieselbe Aufgabe steht nie in zwei
+           Fassungen in zwei Protokollen. */
+        var uebernommen = mitnehmen.checked ? offeneDerReihe(wahl.value) : [];
+        var quellen = [];
+        uebernommen.forEach(function (o) {
+          /* Für den Fall des Scheiterns merken, wie der Punkt stand. */
+          o.vorher = { status: o.punkt.status,
+                       erledigt_am: o.punkt.erledigt_am, erledigt_in: o.punkt.erledigt_in };
+          umziehen(s, o.sitzung, o.punkt);
+          if (quellen.indexOf(o.sitzung) < 0) quellen.push(o.sitzung);
+        });
+
         S.liste.push(s);
         /* Sofort sichern: sonst wäre die Nummer vergeben, das Protokoll
            aber nach einem Seitenwechsel verschwunden. Scheitert das
@@ -260,15 +303,37 @@ window.APP = window.APP || {};
            Protokoll in der Liste, das es nirgends gibt. */
         P.speichern(s).then(function (ok) {
           if (!ok) {
+            /* Die Ursprungspunkte wurden noch nicht geschrieben — sie
+               stehen im Speicher auf «übernommen» und müssen zurück. */
+            uebernommen.forEach(function (o) {
+              o.punkt.status = o.vorher.status;
+              o.punkt.erledigt_am = o.vorher.erledigt_am;
+              o.punkt.erledigt_in = o.vorher.erledigt_in;
+            });
             S.liste = S.liste.filter(function (x) { return x.id !== s.id; });
             A.render();
             return;
           }
-          var gesichert = S.liste.find(function (x) { return x.id === s.id; }) || s;
-          oeffnen(gesichert);
+          /* Erst wenn das neue Protokoll steht, werden die Quellen
+             nachgeführt — sonst gälten Aufgaben als übernommen, ohne
+             dass es einen Nachfolger gibt. */
+          return Promise.all(quellen.map(function (q) { return P.speichern(q); }))
+            .then(function () {
+              if (uebernommen.length) {
+                A.meldung('ok', uebernommen.length +
+                  (uebernommen.length === 1 ? ' offene Aufgabe übernommen.'
+                                            : ' offene Aufgaben übernommen.'));
+              }
+              var gesichert = S.liste.find(function (x) { return x.id === s.id; }) || s;
+              oeffnen(gesichert);
+            });
         });
       } }),
-      el('span', { class: 'muted', style: 'font-size:11.5px',
+      el('label', { style: 'display:flex;gap:6px;align-items:center;font-size:12px' }, [
+        mitnehmen, el('span', { text: 'offene Aufgaben übernehmen' })
+      ]),
+      zahl,
+      el('span', { class: 'muted', style: 'font-size:11.5px;margin-left:auto',
         text: 'Die Reihen werden unter Verwaltung gepflegt.' })
     ]));
 
@@ -320,7 +385,7 @@ window.APP = window.APP || {};
 
     var firmenweit = A.traktandenLesen();
     var anzahl = reihen.reduce(function (n, r) {
-      return n + ((firmenweit[r.id] || []).length);
+      return n + (((firmenweit[r.id] || {}).punkte || []).length);
     }, 0);
 
     return U.panel('Standardpunkte dieses Projekts',
@@ -1112,6 +1177,31 @@ window.APP = window.APP || {};
     if (i >= 0) s[feld].splice(i, 1);
   }
 
+  /* Eine offene Aufgabe zieht in ein neues Protokoll um: Sie entsteht
+     dort als neuer Punkt mit demselben Thema, derselben Zuständigkeit
+     und demselben Termin, und der alte Punkt gilt als übernommen. So
+     steht dieselbe Aufgabe nie in zwei Fassungen in zwei Protokollen.
+     Beide Wege — der Knopf in den Pendenzen und die Übernahme beim
+     Anlegen — gehen durch diese Funktion. */
+  function umziehen(ziel, quelle, pt) {
+    var r = A.reihe(quelle.reihe);
+    var herkunft = 'übernommen aus ' + (r ? (r.kuerzel || r.label) : quelle.reihe) +
+                   ' ' + quelle.nummer + ' vom ' + A.datum(quelle.datum);
+    var neu = A.defPunkt({
+      thema: pt.thema, phase: pt.phase, beteiligter: pt.beteiligter,
+      typ: 'aufgabe', text: pt.text, termin: pt.termin, prio: pt.prio,
+      status: pt.status === 'warten' ? 'warten' : 'offen',
+      bemerkung: pt.bemerkung ? pt.bemerkung + ' · ' + herkunft : herkunft
+    });
+    ziel.punkte.push(neu);
+    /* Der alte Punkt lebt im neuen Protokoll weiter — das ist kein
+       Warten auf Rückmeldung, sondern ein Umzug. */
+    pt.status = A.STATUS_UEBERNOMMEN;
+    pt.erledigt_am = ziel.datum || A.heute();
+    pt.erledigt_in = ziel.id;
+    return neu;
+  }
+
   /* Offene Aufgaben früherer Sitzungen derselben Reihe. Sie werden
      nicht kopiert, sondern an ihrem Ursprungsort geändert — sonst
      stünde dieselbe Aufgabe in fünf Protokollen und niemand wüsste,
@@ -1148,15 +1238,7 @@ window.APP = window.APP || {};
         el('td', { class: 'w1' }, [el('button', { class: 'ghost sm schreibend',
           text: 'übernehmen', title: 'Als neuen Punkt in dieses Protokoll holen',
           onclick: function () {
-            s.punkte.push(A.defPunkt({ phase: pt.phase, beteiligter: pt.beteiligter,
-              typ: 'aufgabe', text: pt.text, termin: pt.termin,
-              bemerkung: 'übernommen aus ' + (A.reihe(o.sitzung.reihe) || {}).label +
-                         ' Nr. ' + o.sitzung.nummer }));
-            /* Der alte Punkt lebt im neuen Protokoll weiter — das ist
-               kein Warten auf Rückmeldung, sondern ein Umzug. */
-            pt.status = A.STATUS_UEBERNOMMEN;
-            pt.erledigt_am = s.datum || A.heute();
-            pt.erledigt_in = s.id;
+            umziehen(s, o.sitzung, pt);
             fremdSpeichern(o.sitzung);
             schmutzig(); A.render();
           } })])

@@ -1366,22 +1366,12 @@ window.APP = window.APP || {};
       return sel;
     })()]));
 
-    tr.appendChild(el('td', {}, [(function () {
-      /* Das globale Textfeld ist 150 px hoch — in einer Protokollzeile
-         wäre das eine Wand. Hier wächst es beim Tippen mit. */
-      var ta = el('textarea', { rows: '1',
-        style: 'width:100%;min-width:220px;min-height:0;height:38px;padding:5px 7px;' +
-               'border:1px solid var(--line);border-radius:4px;font-family:inherit;' +
-               'font-size:12.5px;resize:vertical;overflow:hidden' },
-        [pt.text || '']);
-      function mitwachsen() {
-        ta.style.height = 'auto';
-        ta.style.height = Math.max(38, ta.scrollHeight + 2) + 'px';
-      }
-      setTimeout(mitwachsen, 0);
-      ta.addEventListener('input', function () { pt.text = ta.value; mitwachsen(); schmutzig(); });
-      return ta;
-    })()]));
+    /* Das globale Textfeld ist 150 px hoch — in einer Protokollzeile
+       wäre das eine Wand. Dieses beginnt einzeilig und wächst mit. */
+    tr.appendChild(el('td', {}, [
+      U.zelleArea(pt, 'text', { eigen: true, min: 38, breit: 220,
+        onchange: function (v) { pt.text = v; schmutzig(); } })
+    ]));
 
     /* Thema — die Ordnung quer zu den Phasen. Der farbige Punkt macht
        eine lange Liste auf einen Blick lesbar. */

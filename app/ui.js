@@ -479,6 +479,56 @@ window.APP = window.APP || {};
     return inp;
   };
 
+  /* Mehrzeilige Textzelle. Sie beginnt einzeilig und wächst beim
+     Tippen mit — ein Satz wie «Kniestock klein <1.2m; Kniestock gross
+     <3.5m» soll ganz zu sehen sein, ohne dass jede Zeile der Tabelle
+     von Anfang an drei Zeilen hoch ist.
+
+     opts.min      kleinste Höhe in Pixeln (Vorgabe 30)
+     opts.max      grösste Höhe, darüber wird gescrollt (Vorgabe 150)
+     opts.breit    kleinste Breite in Pixeln, sonst folgt sie der Spalte
+     opts.onchange wird nach jedem Anschlag mit dem Wert gerufen
+     opts.onblur   wird beim Verlassen des Feldes gerufen
+     opts.eigen    true = das Feld schreibt nicht selbst in die Daten */
+  U.zelleArea = function (obj, key, opts) {
+    opts = opts || {};
+    var min = opts.min || 30, max = opts.max || 150;
+    var ta = el('textarea', { rows: '1', placeholder: opts.platzhalter || '',
+      class: 'zellenarea',
+      style: 'height:' + min + 'px' +
+             (opts.breit ? ';min-width:' + opts.breit + 'px' : '') }, [obj[key] || '']);
+
+    function mitwachsen() {
+      ta.style.height = 'auto';
+      var h = Math.min(max, Math.max(min, ta.scrollHeight + 2));
+      ta.style.height = h + 'px';
+      ta.style.overflowY = ta.scrollHeight > max ? 'auto' : 'hidden';
+    }
+    /* Beim ersten Zeichnen steht das Feld noch nicht im Dokument;
+       scrollHeight wäre 0. Deshalb einmal nachfassen. */
+    setTimeout(mitwachsen, 0);
+
+    /* Auf Papier ist ein Textfeld kein Textfeld — und vor allem druckt
+       eine textarea nur, was in ihrer Höhe Platz hat. Ein langer
+       Eintrag wäre auf dem Blatt nach zwei Wörtern zu Ende. Deshalb
+       steht daneben dieselbe Angabe als gewöhnlicher Text; gedruckt
+       wird die, am Bildschirm das Feld. */
+    var abdruck = el('div', { class: 'nurdruck zellendruck', text: obj[key] || '' });
+
+    ta.addEventListener('input', function () {
+      if (!opts.eigen) { obj[key] = ta.value; A.markDirty(); }
+      abdruck.textContent = ta.value;
+      mitwachsen();
+      if (opts.onchange) opts.onchange(ta.value);
+    });
+    if (opts.onblur) ta.addEventListener('blur', function () { opts.onblur(ta.value); });
+
+    var box = el('div', { class: 'zellenbox' }, [ta, abdruck]);
+    box.feld = ta;
+    box.nachwachsen = mitwachsen;
+    return box;
+  };
+
   U.zelleSel = function (obj, key, optionen, opts) {
     opts = opts || {};
     var s = el('select');

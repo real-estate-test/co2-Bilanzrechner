@@ -157,6 +157,20 @@ main { min-width: 0; display: flex; flex-direction: column; }
 .inp input:focus, .inp select:focus { outline: none; }
 .inp .unit { display: flex; align-items: center; padding: 0 8px; font-size: 11px; color: var(--muted); background: var(--panel2); border-left: 1px solid var(--line); white-space: nowrap; }
 .inp.bad { border-color: var(--warn); background: var(--warnbg); }
+/* Mehrzeilige Tabellenzelle: beginnt einzeilig wie ein Eingabefeld und
+   wächst beim Tippen mit. Ohne min-height/min-width der globalen
+   Textfeldregel, die für ganze Absätze gedacht ist. */
+.zellenarea {
+  width: 100%; min-width: 0; min-height: 0;
+  padding: 5px 7px; font-family: inherit; font-size: 12.5px;
+  line-height: 1.35; resize: vertical; overflow: hidden;
+  border: 1px solid var(--line); border-radius: 4px;
+}
+.zellenarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent2); }
+.zellenbox { display: block; }
+/* Die Druckfassung übernimmt Zeilenumbrüche aus dem Feld. */
+.zellendruck { white-space: pre-wrap; }
+
 /* --- Standortkarte ------------------------------------------------ */
 .kartenrahmen { border-top: 1px solid var(--line); }
 .kartenrahmen .leaflet-container { font: inherit; background: var(--panel2); }
@@ -362,6 +376,12 @@ textarea:focus { outline: none; border-color: var(--accent); }
   /* Kalenderfelder zeigen je nach Browsersprache 05/12/2026. Auf Papier
      steht stattdessen die ausgeschriebene Fassung. */
   .nichtdrucken { display: none !important; }
+  /* Gedruckt wird die Textfassung neben dem mehrzeiligen Feld, nicht
+     das Feld selbst: Eine textarea gibt auf Papier nur her, was in
+     ihre Höhe passt — ein langer Eintrag wäre nach zwei Wörtern zu
+     Ende. */
+  .zellenarea { display: none !important; }
+
   .nurdruck { display: inline !important; }
   div.nurdruck { display: block !important; }
 
@@ -494,7 +514,7 @@ tr.brentfaellt input { color: var(--muted); }
    Baurecht davon, wird aus der Notiz eine Warnung. */
 .brweicht { color: var(--warn); font-weight: 600; }
 
-.brtabelle input { width: 100%; }
+.brtabelle input, .brtabelle textarea { width: 100%; }
 .brtabelle td { vertical-align: top; }
 
 @media print {

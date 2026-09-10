@@ -471,6 +471,22 @@ textarea:focus { outline: none; border-color: var(--accent); }
   letter-spacing: -.01em;
 }
 
+/* --- Aufgaben nach Zuständigkeit --------------------------------- */
+
+/* Kopfzeile je Person. Sie trennt die Blöcke deutlicher als ein
+   blosser Zwischentitel, weil darunter jedes Mal eine Tabelle mit
+   eigener Kopfzeile folgt. */
+.personenkopf {
+  display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap;
+  padding: 8px 0 6px; margin-top: 14px;
+  border-bottom: 1px solid var(--line2);
+}
+.personenkopf:first-child { margin-top: 0; }
+.personenkopf .pname { font-weight: 640; font-size: 13.5px; color: var(--kopf); }
+/* Aufgaben, für die sich niemand zuständig fühlt — die auffälligsten. */
+.personenkopf .pname.herrenlos { color: var(--warn); }
+.personenkopf .sp { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+
 /* Themenbild: der Aufklappknopf ist ein Text im SVG */
 .mehrknopf:hover { text-decoration: underline; }
 

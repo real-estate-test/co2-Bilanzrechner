@@ -421,7 +421,7 @@ window.APP = window.APP || {};
      { id: 'themen', label: 'nach Themen' },
      { id: 'fristen', label: 'nach Fristen' }]
       .forEach(function (m) {
-        var b = el('button', { class: Z.modus === m.id ? 'primary' : '', text: m.label });
+        var b = el('button', { class: Z.modus === m.id ? 'on' : '', text: m.label });
         b.addEventListener('click', function () { Z.modus = m.id; A.render(); });
         wahl.appendChild(b);
       });

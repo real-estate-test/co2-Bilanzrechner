@@ -494,8 +494,12 @@ window.APP = window.APP || {};
     var umschalter = el('div', { class: 'seg noprint', style: 'display:flex;gap:0' });
     [{ id: 'liste', label: 'Liste' },
      { id: 'kanban', label: 'Kanban' },
+     { id: 'personen', label: 'Zuständigkeit' },
      { id: 'themen', label: 'Themenbild' }].forEach(function (a) {
-      var b = el('button', { class: S.ansicht === a.id ? 'primary' : '', text: a.label });
+      /* Der Segmentschalter markiert die aktive Wahl über «on» —
+         «primary» wird von der Segmentregel überstimmt und bliebe
+         unsichtbar. */
+      var b = el('button', { class: S.ansicht === a.id ? 'on' : '', text: a.label });
       b.addEventListener('click', function () { S.ansicht = a.id; A.render(); });
       umschalter.appendChild(b);
     });
@@ -508,6 +512,7 @@ window.APP = window.APP || {};
     var inhalt;
     if (S.ansicht === 'kanban') inhalt = kanban(p, aufgaben);
     else if (S.ansicht === 'themen') inhalt = themenbild(p);
+    else if (S.ansicht === 'personen') inhalt = nachZustaendigkeit(p);
     else inhalt = pendenzenListe(p);
 
     return U.panel('Aufgaben',
@@ -571,6 +576,107 @@ window.APP = window.APP || {};
       { label: 'Prio' }, { label: 'Zuständig' }, { label: 'Termin', n: true },
       { label: 'Status' }
     ], zeilen)]);
+  }
+
+  /* ---------------------------------------------------------------
+     Nach Zuständigkeit — wer hat was am Hals
+
+     Dieselben offenen Aufgaben wie in der Liste, aber nach Person
+     gebündelt: die Sicht, die man vor einer Sitzung braucht, wenn man
+     die Runde durchgeht. Aufgaben ohne Zuständigkeit stehen am Schluss
+     in einem eigenen Block — sie sind die gefährlichsten, weil sich
+     niemand angesprochen fühlt.
+     --------------------------------------------------------------- */
+
+  function nachZustaendigkeit(p) {
+    var offen = P.offenePunkte(null);
+    var beteiligte = A.beteiligteListe(p);
+    var heute = A.heute();
+
+    /* Gruppen in der Reihenfolge der Adressliste, damit die Sicht
+       zwischen zwei Aufrufen nicht springt. */
+    var gruppen = beteiligte.map(function (b) {
+      return { id: b.id, name: b.name || b.kuerzel || 'ohne Namen',
+               zusatz: [b.firma, b.rolle].filter(Boolean).join(' · '),
+               punkte: [] };
+    });
+    var ohne = { id: '', name: 'ohne Zuständigkeit', zusatz: '', punkte: [], herrenlos: true };
+
+    offen.forEach(function (o) {
+      var g = gruppen.find(function (x) { return x.id === o.punkt.beteiligter; });
+      /* Auch eine Zuständigkeit, die nicht mehr in der Adressliste
+         steht, darf keine Aufgabe verschlucken. */
+      (g || ohne).punkte.push(o);
+    });
+
+    var box = el('div', { class: 'panelbody' });
+    var mitArbeit = gruppen.filter(function (g) { return g.punkte.length; });
+    if (ohne.punkte.length) mitArbeit.push(ohne);
+
+    if (!mitArbeit.length) {
+      box.appendChild(el('div', { class: 'muted', text: 'Keine offenen Aufgaben.' }));
+      return box;
+    }
+
+    mitArbeit.forEach(function (g) {
+      var spaet = g.punkte.filter(function (o) {
+        return o.punkt.termin && o.punkt.termin < heute;
+      }).length;
+
+      var kopf = el('div', { class: 'personenkopf' }, [
+        el('span', { class: 'pname' + (g.herrenlos ? ' herrenlos' : ''), text: g.name }),
+        g.zusatz ? el('span', { class: 'muted', style: 'font-size:11.5px', text: g.zusatz }) : null,
+        el('span', { class: 'sp' }, [
+          spaet ? el('span', { class: 'tag neg', text: spaet + ' überfällig' }) : null,
+          el('span', { class: 'tag warn',
+            text: g.punkte.length + (g.punkte.length === 1 ? ' offen' : ' offen') })
+        ].filter(Boolean))
+      ].filter(Boolean));
+
+      /* Innerhalb einer Person nach Termin — was zuerst fällig ist,
+         steht oben; Aufgaben ohne Termin am Schluss. */
+      var sortiert = g.punkte.slice().sort(function (a, b) {
+        return (a.punkt.termin || '9999').localeCompare(b.punkt.termin || '9999');
+      });
+
+      var zeilen = sortiert.map(function (o) {
+        var t = A.thema(o.punkt.thema);
+        var pr = A.prioritaet(o.punkt.prio);
+        var r = A.reihe(o.sitzung.reihe);
+        return el('tr', {}, [
+          el('td', { style: 'width:150px' }, t ? [
+            el('span', { class: 'themenpunkt', style: 'background:' + t.farbe }),
+            el('span', { text: ' ' + t.label })
+          ] : [el('span', { class: 'muted', text: '—' })]),
+          el('td', { text: o.punkt.text || '—' }),
+          el('td', { style: 'width:74px' }, pr.id
+            ? [el('span', { class: 'tag' + (pr.klasse ? ' ' + pr.klasse : ''), text: pr.label })]
+            : [el('span', { class: 'muted', text: '—' })]),
+          terminZelle(o.punkt.termin),
+          el('td', { style: 'width:180px' }, [statuswahl(o.punkt, o.sitzung)]),
+          el('td', { class: 'muted', style: 'width:120px',
+            text: A.istManuell(o.sitzung) ? 'manuell'
+                : (r ? r.kuerzel || r.label : '') + ' ' + o.sitzung.nummer })
+        ]);
+      });
+
+      box.appendChild(kopf);
+      box.appendChild(U.tabelle([
+        { label: 'Thema' }, { label: 'Aufgabe' }, { label: 'Prio' },
+        { label: 'Termin', n: true }, { label: 'Status' }, { label: 'aus' }
+      ], zeilen));
+    });
+
+    /* Wer nichts offen hat, steht als Zeile darunter — als Block mit
+       leerer Tabelle wären das bei zwölf Beteiligten zwölf leere
+       Kästen, aber ganz verschweigen sollte man ihn auch nicht. */
+    var frei = gruppen.filter(function (g) { return !g.punkte.length; });
+    if (frei.length) {
+      box.appendChild(el('div', { class: 'hilfe', style: 'margin-top:12px',
+        text: 'Ohne offene Aufgaben: ' +
+              frei.map(function (g) { return g.name; }).join(', ') }));
+    }
+    return box;
   }
 
   /* ---------------------------------------------------------------

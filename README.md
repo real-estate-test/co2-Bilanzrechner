@@ -419,7 +419,7 @@ app/ui.js             Feldbausteine, Datenherkunft, Plausibilität
 app/views.js          Eingabeseiten
 app/results.js        Ergebnis, Analyse, Bericht
 app/portfolio.js      Portfolio, Tracking, Archivieren, Import und Export
-app/protokoll.js      Sitzungsprotokolle, Aufgaben, Kanban, Themenbild
+app/protokoll.js      Sitzungsprotokolle, Aufgaben in vier Ansichten
 app/baurecht.js       Baurecht-Check: geltendes Baurecht je Grundstück
 app/termine.js        Terminplan: SIA-Phasen, Aufgaben, Meilensteine
 app/admin.js          Verwaltung, Änderungsverlauf, Anmerkungen

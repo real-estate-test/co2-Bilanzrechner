@@ -718,6 +718,106 @@ window.APP = window.APP || {};
       'welche Themen als Überschrift erscheinen — und was schon darunter steht',
       [trBody, trFuss]));
 
+    /* --- Baurecht-Prüfpunkte ----------------------------------------- */
+    var brBody = el('div', { class: 'panelbody' });
+    var brFuss = el('div', { class: 'panelbody' });
+
+    function baurechtZeichnen(liste) {
+      U.leeren(brBody);
+
+      /* Nach Gruppen geordnet — verschoben wird innerhalb der Gruppe,
+         weil die Reihenfolge über Gruppen hinweg nichts bedeutet. */
+      A.BAURECHT_GRUPPEN.forEach(function (g) {
+        var drin = liste.filter(function (x) { return x.gruppe === g.id; });
+
+        var zeilen = drin.map(function (x, i) {
+          var stelle = liste.indexOf(x);
+          function tauschen(richtung) {
+            var nachbar = drin[i + richtung];
+            if (!nachbar) return;
+            var a = liste.indexOf(x), b = liste.indexOf(nachbar);
+            liste[a] = nachbar; liste[b] = x;
+            baurechtZeichnen(liste);
+          }
+          return el('tr', {}, [
+            el('td', { class: 'n muted', style: 'width:44px', text: String(i + 1) }),
+            el('td', {}, [U.zelleTxt(x, 'label', { platzhalter: 'z. B. Waldabstand' })]),
+            el('td', {}, [U.zelleTxt(x, 'hilfe', {})]),
+            el('td', { style: 'width:78px' }, [
+              el('button', { class: 'ghost sm', text: '↑', title: 'nach oben',
+                disabled: i === 0 ? '' : null,
+                onclick: function () { tauschen(-1); } }),
+              el('button', { class: 'ghost sm', text: '↓', title: 'nach unten',
+                disabled: i === drin.length - 1 ? '' : null,
+                onclick: function () { tauschen(1); } })
+            ]),
+            el('td', { class: 'w1' }, [el('button', { class: 'ghost sm', text: '×',
+              title: 'Prüfpunkt entfernen',
+              onclick: function () { liste.splice(stelle, 1); baurechtZeichnen(liste); } })])
+          ]);
+        });
+        if (!zeilen.length) {
+          zeilen.push(el('tr', {}, [el('td', { colspan: 5, class: 'muted',
+            text: 'Keine Prüfpunkte in dieser Gruppe.' })]));
+        }
+
+        brBody.appendChild(el('h3', { class: 'zt', text: g.label }));
+        brBody.appendChild(U.tabelle([
+          { label: 'Nr.', n: true }, { label: 'Prüfpunkt' }, { label: 'Hinweis' },
+          { label: 'Reihenfolge' }, { label: '' }
+        ], zeilen));
+        brBody.appendChild(el('div', { class: 'noprint',
+          style: 'margin:6px 0 16px' }, [
+          el('button', { class: 'ghost sm', text: '+ Prüfpunkt in «' + g.label + '»',
+            onclick: function () {
+              liste.push({ id: A.uid(), gruppe: g.id, label: '', hilfe: '' });
+              baurechtZeichnen(liste);
+            } })
+        ]));
+      });
+
+      U.leeren(brFuss);
+      brFuss.appendChild(el('div', { style: 'display:flex;gap:10px;flex-wrap:wrap' }, [
+        el('button', { class: 'primary', text: 'Prüfpunkte speichern', onclick: function () {
+          var neu = A.baurechtSetzen(liste);
+          var fertig = function () {
+            A.meldung('ok', neu.length + ' Prüfpunkte gespeichert.');
+            A.render();
+          };
+          if (A.store.modus === 'server') {
+            A.store.einstellungSetzen('baurecht', neu).then(fertig)
+              .catch(function (f) { A.meldung('warn', f.message); });
+          } else { fertig(); }
+        } }),
+        el('button', { text: 'auf die Vorlage zurücksetzen', onclick: function () {
+          if (!confirm('Alle Prüfpunkte durch die ursprüngliche Baurecht-Checkliste ' +
+                       'ersetzen?\n\nEigene Ergänzungen in dieser Liste gehen dabei ' +
+                       'verloren. Die Einträge in den Projekten bleiben bestehen.')) return;
+          baurechtZeichnen(JSON.parse(JSON.stringify(A.BAURECHT_KATALOG)));
+        } })
+      ]));
+      brFuss.appendChild(el('div', { class: 'hilfe', style: 'margin-top:10px',
+        text: 'Diese Prüfpunkte erscheinen im Reiter «Baurecht-Check» jedes Projekts. ' +
+              'Ein neuer Punkt taucht auch in bereits bearbeiteten Projekten auf — dort ' +
+              'als leere Zeile. Wird ein Punkt entfernt, verschwindet er aus der Ansicht; ' +
+              'was in den Projekten dazu erfasst wurde, bleibt gespeichert und käme mit ' +
+              'dem Punkt wieder zum Vorschein.' }));
+    }
+
+    if (A.store.modus === 'server') {
+      brBody.appendChild(el('div', { class: 'muted', text: 'wird geladen …' }));
+      A.store.einstellung('baurecht').then(function (liste) {
+        if (Array.isArray(liste) && liste.length) A.baurechtkatalog = liste;
+        baurechtZeichnen(A.baurechtListe());
+      }).catch(function () { baurechtZeichnen(A.baurechtListe()); });
+    } else {
+      baurechtZeichnen(A.baurechtListe());
+    }
+
+    out.appendChild(U.panel('Baurecht-Prüfpunkte',
+      'die Fragen im Reiter «Baurecht-Check» — für alle Projekte gleich',
+      [brBody, brFuss]));
+
     /* --- Briefkopf: Logos und Absenderangaben ------------------------ */
     var bkBody = el('div', { class: 'panelbody' });
     var bkFuss = el('div', { class: 'panelbody' });

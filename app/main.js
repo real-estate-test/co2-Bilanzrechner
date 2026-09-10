@@ -17,6 +17,7 @@ window.APP = window.APP || {};
   A.briefkopf = null;      // Logos und Absenderangaben (nur im Serverbetrieb)
   A.standardtraktanden = null; // feste Traktanden je Sitzungsreihe
   A.themen = null;         // Themenliste für Protokollpunkte
+  A.baurechtkatalog = null; // Prüfpunkte des Baurecht-Checks
 
   A.SEITEN = [
     { id: 'portfolio',    ix: '0',  label: 'Portfolio' },
@@ -24,6 +25,7 @@ window.APP = window.APP || {};
     { id: 'adressen',     ix: '1a', label: 'Adressliste' },
     { id: 'protokolle',   ix: '1b', label: 'Protokolle/Aufgaben' },
     { id: 'termine',      ix: '1c', label: 'Phasen & Termine' },
+    { id: 'baurecht',     ix: '1d', label: 'Baurecht-Check' },
     { id: 'erwerb',       ix: '2',  label: 'Grundstück & Erwerbskosten' },
     { id: 'flaechen',     ix: '3',  label: 'Flächen & Volumen' },
     { id: 'bestand',      ix: '4',  label: 'Bestand' },
@@ -464,7 +466,8 @@ window.APP = window.APP || {};
             A.store.einstellung('sitzungsreihen').catch(function () { return null; }),
             A.store.einstellung('briefkopf').catch(function () { return null; }),
             A.store.einstellung('standardtraktanden').catch(function () { return null; }),
-            A.store.einstellung('themen').catch(function () { return null; })
+            A.store.einstellung('themen').catch(function () { return null; }),
+            A.store.einstellung('baurecht').catch(function () { return null; })
           ]);
         })
         .then(function (geladen) {
@@ -489,6 +492,9 @@ window.APP = window.APP || {};
             A.standardtraktanden = geladen[7];
           }
           if (geladen && Array.isArray(geladen[8]) && geladen[8].length) A.themen = geladen[8];
+          if (geladen && Array.isArray(geladen[9]) && geladen[9].length) {
+            A.baurechtkatalog = geladen[9];
+          }
           /* Zentralen Verkaufsstand übernehmen, falls er neuer ist als der
              lokale — geladen wird er nur von Hand. */
           return A.verkauf.zentralLaden().then(function () { weiter(serverModus); });

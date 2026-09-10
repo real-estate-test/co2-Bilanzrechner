@@ -6,7 +6,7 @@ window.APP = window.APP || {};
 (function (A) {
   'use strict';
 
-  A.SCHEMA = 19;
+  A.SCHEMA = 20;
 
   /* ---------------------------------------------------------------
      Stammlisten
@@ -405,6 +405,258 @@ window.APP = window.APP || {};
      weiter. */
   A.statusOffen = function (id) {
     return id !== 'erledigt' && id !== A.STATUS_UEBERNOMMEN;
+  };
+
+
+  /* ---------------------------------------------------------------
+     Baurecht-Check — Sammlung des geltenden Baurechts je Projekt
+
+     Der Katalog der Prüfpunkte wird firmenweit gepflegt, damit in
+     jedem Projekt dieselben Fragen gestellt werden. Was zu einem
+     Punkt gilt, steht im Projekt: ein Eintrag und eine Bemerkung,
+     üblicherweise die Rechtsgrundlage. Der Katalog stammt aus der
+     Baurecht-Checkliste und ist bewusst leer — Werte gehören ins
+     Projekt, nicht in die Vorlage.
+     --------------------------------------------------------------- */
+
+  A.BAURECHT_LOKAL = 'projektrechner.baurecht';
+  A.baurechtkatalog = null;
+
+  A.BAURECHT_GRUPPEN = [
+    { id: 'gst', label: 'Grundstück' },
+    { id: 'zif', label: 'Ziffern / Boni' },
+    { id: 'abs', label: 'Abstände / Begrenzungen' },
+    { id: 'wei', label: 'Weiteres' },
+    { id: 'gb', label: 'Grundbuch' },
+  ];
+
+  A.BAURECHT_KATALOG = [
+    /* Grundstück */
+    { id: 'gst_parzellennummer', gruppe: 'gst', label: 'Parzellennummer' },
+    { id: 'gst_ort_kanton', gruppe: 'gst', label: 'Ort (Kanton)' },
+    { id: 'gst_strasse', gruppe: 'gst', label: 'Strasse' },
+    { id: 'gst_strassentypen', gruppe: 'gst',
+      label: 'Strassentypen', hilfe: 'Kantonsstrassen? Gemeindestrassen …' },
+    { id: 'gst_erschliessung_von', gruppe: 'gst',
+      label: 'Erschliessung von', hilfe: 'Strassenname und Strassentyp' },
+    { id: 'gst_grundstuecksflaeche_gsf', gruppe: 'gst',
+      label: 'Grundstücksfläche (GSF)', rechen: 'grundstueck.flaeche' },
+    { id: 'gst_anrechenbare_gsf', gruppe: 'gst', label: 'anrechenbare GSF' },
+    { id: 'gst_zone', gruppe: 'gst', label: 'Zone' },
+    { id: 'gst_zonennutzung', gruppe: 'gst', label: 'Zonennutzung' },
+    { id: 'gst_bno_gueltig_vom', gruppe: 'gst', label: 'BNO gültig vom' },
+    { id: 'gst_bno_revision', gruppe: 'gst', label: 'BNO revision?' },
+    { id: 'gst_ivhb', gruppe: 'gst', label: 'IVHB' },
+    /* Ziffern / Boni */
+    { id: 'zif_ausnutzungsziffer_aussenwa', gruppe: 'zif',
+      label: 'Ausnutzungsziffer (Aussenwand bis 0.35cm)', rechen: 'grundstueck.az' },
+    { id: 'zif_max_anrechenbare_gf', gruppe: 'zif',
+      label: 'max anrechenbare GF', rechen: 'agf' },
+    { id: 'zif_baumassenziffer', gruppe: 'zif', label: 'Baumassenziffer' },
+    { id: 'zif_gruenflaechenziffer', gruppe: 'zif', label: 'Grünflächenziffer' },
+    { id: 'zif_geschossflaechenziffer', gruppe: 'zif', label: 'Geschossflächenziffer' },
+    { id: 'zif_spielplatzflaeche_aufentha', gruppe: 'zif',
+      label: 'Spielplatzfläche / Aufenthaltsflächen' },
+    { id: 'zif_attikageschoss_anrechenbar', gruppe: 'zif',
+      label: 'Attikageschoss anrechenbar' },
+    { id: 'zif_max_fussabdruck_attikagesc', gruppe: 'zif',
+      label: 'max Fussabdruck Attikageschoss' },
+    { id: 'zif_position', gruppe: 'zif', label: 'Position' },
+    { id: 'zif_weitere_dachgeschoss_besch', gruppe: 'zif',
+      label: 'weitere Dachgeschoss beschränkungen' },
+    { id: 'zif_arealueberbauung_moeglich', gruppe: 'zif',
+      label: 'Arealüberbauung möglich' },
+    { id: 'zif_gf_mit_arealbonus', gruppe: 'zif', label: 'GF mit Arealbonus' },
+    { id: 'zif_minergie_bonus', gruppe: 'zif', label: 'Minergie Bonus' },
+    { id: 'zif_wintergarten_bonus', gruppe: 'zif', label: 'Wintergarten Bonus' },
+    { id: 'zif_gestaltungsplan_pflicht', gruppe: 'zif', label: 'Gestaltungsplan pflicht' },
+    /* Abstände / Begrenzungen */
+    { id: 'abs_grenzabstand_o_i_klein', gruppe: 'abs', label: 'Grenzabstand o.i. klein' },
+    { id: 'abs_grenzabstand_o_i_gross', gruppe: 'abs', label: 'Grenzabstand o.i. gross' },
+    { id: 'abs_grenzabstand_unterniveau', gruppe: 'abs',
+      label: 'Grenzabstand Unterniveau' },
+    { id: 'abs_vorspringende_gebaeudeteil', gruppe: 'abs',
+      label: 'vorspringende Gebäudeteile' },
+    { id: 'abs_strassenabstand_fuer_pp_un', gruppe: 'abs',
+      label: 'Strassenabstand für PP und Stützmauer bis 1.8m Höhe' },
+    { id: 'abs_baulinienplan_vorhanden', gruppe: 'abs', label: 'Baulinienplan vorhanden?' },
+    { id: 'abs_gebaeudeabstand', gruppe: 'abs', label: 'Gebäudeabstand' },
+    { id: 'abs_zonengrenzabstand', gruppe: 'abs', label: 'Zonengrenzabstand' },
+    { id: 'abs_strassenabstand_gemeinde_o', gruppe: 'abs',
+      label: 'Strassenabstand (Gemeinde o.i.+u.i.)' },
+    { id: 'abs_gewaesserabstand', gruppe: 'abs', label: 'Gewässerabstand' },
+    { id: 'abs_mehrlaengenzuschlaege_haup', gruppe: 'abs',
+      label: 'Mehrlängenzuschläge Hauptseite' },
+    { id: 'abs_mehrlaengenzuschlaege_nebe', gruppe: 'abs',
+      label: 'Mehrlängenzuschläge Nebenseiten' },
+    { id: 'abs_gesamthoehe_flachdach', gruppe: 'abs', label: 'Gesamthöhe (Flachdach)' },
+    { id: 'abs_fassadenhoehe', gruppe: 'abs', label: 'Fassadenhöhe' },
+    { id: 'abs_mehrhoehenzuschlag', gruppe: 'abs', label: 'Mehrhöhenzuschlag' },
+    { id: 'abs_traufhoehe', gruppe: 'abs', label: 'Traufhöhe' },
+    { id: 'abs_anzahl_vg', gruppe: 'abs',
+      label: 'Anzahl VG', rechen: 'grundstueck.geschosse' },
+    { id: 'abs_grenze_vollgeschoss_ug', gruppe: 'abs', label: 'Grenze Vollgeschoss / UG' },
+    { id: 'abs_dachgauben_durchbrueche', gruppe: 'abs', label: 'Dachgauben / Durchbrüche' },
+    { id: 'abs_gebaeudelaenge', gruppe: 'abs', label: 'Gebäudelänge' },
+    { id: 'abs_dachneigung_klein_und_anba', gruppe: 'abs',
+      label: 'Dachneigung klein und Anbauten' },
+    { id: 'abs_dachneigung_exkl_klein_und', gruppe: 'abs',
+      label: 'Dachneigung exkl. Klein und Anbauten' },
+    /* Weiteres */
+    { id: 'wei_altlasten', gruppe: 'wei', label: 'Altlasten' },
+    { id: 'wei_archaeologische_fundstelle', gruppe: 'wei',
+      label: 'archäologische Fundstelle' },
+    { id: 'wei_bahnlinienabstand', gruppe: 'wei', label: 'Bahnlinienabstand' },
+    { id: 'wei_dachgestaltung', gruppe: 'wei', label: 'Dachgestaltung' },
+    { id: 'wei_empfindlichkeitsstufe', gruppe: 'wei', label: 'Empfindlichkeitsstufe' },
+    { id: 'wei_energiesparmassnahmen_44_b', gruppe: 'wei',
+      label: 'Energiesparmassnahmen §44 BNO' },
+    { id: 'wei_erdsonde_erlaubt', gruppe: 'wei', label: 'Erdsonde erlaubt' },
+    { id: 'wei_gemeinschaftsraeume', gruppe: 'wei', label: 'Gemeinschaftsräume' },
+    { id: 'wei_gewaesserabstand', gruppe: 'wei',
+      label: 'Gewässerabstand', hilfe: 'Kantonsübergangsbestimmungen prüfen!' },
+    { id: 'wei_gewaesserschutzbereich', gruppe: 'wei', label: 'Gewässerschutzbereich' },
+    { id: 'wei_grundwasserpumpe_erlaubt', gruppe: 'wei',
+      label: 'Grundwasserpumpe erlaubt' },
+    { id: 'wei_hochspannungsleitung', gruppe: 'wei',
+      label: 'Hochspannungsleitung',
+      hilfe: 'Vorhanden? Wenn ja, welcher Abstand? Und wann wurde sie eingezont?' },
+    { id: 'wei_interessenslinie_vorhanden', gruppe: 'wei',
+      label: 'Interessenslinie vorhanden' },
+    { id: 'wei_isos', gruppe: 'wei', label: 'ISOS' },
+    { id: 'wei_massgebendes_terrain_gefae', gruppe: 'wei',
+      label: 'massgebendes Terrain Gefälle' },
+    { id: 'wei_naturgefahren', gruppe: 'wei', label: 'Naturgefahren' },
+    { id: 'wei_parking', gruppe: 'wei', label: 'Parking' },
+    { id: 'wei_schutzbestand_vegetation', gruppe: 'wei',
+      label: 'Schutzbestand Vegetation' },
+    { id: 'wei_schutzobjekte_vorhanden', gruppe: 'wei', label: 'Schutzobjekte vorhanden?' },
+    { id: 'wei_schutzraumpflicht', gruppe: 'wei',
+      label: 'Schutzraumpflicht',
+      hilfe: 'Wenn mehr als 38 Zimmer i.d.R. immer verpflichtend' },
+    { id: 'wei_stuetzmauern', gruppe: 'wei', label: 'Stützmauern' },
+    { id: 'wei_waldabstand', gruppe: 'wei', label: 'Waldabstand' },
+    /* Grundbuch */
+    { id: 'gb_dienstbarkeiten_vorhanden', gruppe: 'gb',
+      label: 'Dienstbarkeiten vorhanden' },
+    { id: 'gb_dienstbarkeiten_benoetigt', gruppe: 'gb', label: 'Dienstbarkeiten benötigt' },
+    { id: 'gb_dienstbarkeiten_optional', gruppe: 'gb', label: 'Dienstbarkeiten Optional' },
+    { id: 'gb_pot_grundstueckszukaeufe', gruppe: 'gb',
+      label: 'pot. Grundstückszukäufe',
+      hilfe: 'Sinnvolle Erweiterungen, um z. B. Arealboni oder Erschliessung zu erhalten oder zu optimieren' },
+  ];
+
+  /* Drei Zustände je Prüfpunkt. Ohne sie wäre eine leere Zeile
+     mehrdeutig — «geprüft, gibt es hier nicht» sieht sonst aus wie
+     «noch nicht angeschaut». */
+  A.BAURECHT_STATUS = [
+    { id: 'offen',     label: 'offen' },
+    { id: 'geprueft',  label: 'geprüft' },
+    { id: 'entfaellt', label: 'nicht relevant' }
+  ];
+
+  A.baurechtStatusLabel = function (id) {
+    var s = A.BAURECHT_STATUS.find(function (x) { return x.id === id; });
+    return s ? s.label : 'offen';
+  };
+
+  A.baurechtListe = function () {
+    var liste = Array.isArray(A.baurechtkatalog) ? A.baurechtkatalog : null;
+    if (!liste) {
+      try { liste = JSON.parse(localStorage.getItem(A.BAURECHT_LOKAL) || 'null'); }
+      catch (e) { liste = null; }
+    }
+    if (!Array.isArray(liste) || !liste.length) liste = A.BAURECHT_KATALOG;
+    var gruppen = A.BAURECHT_GRUPPEN.map(function (g) { return g.id; });
+    return liste.filter(function (x) { return x && x.label; }).map(function (x) {
+      return { id: x.id || A.uid(),
+               gruppe: gruppen.indexOf(x.gruppe) >= 0 ? x.gruppe : gruppen[0],
+               label: String(x.label).trim(),
+               hilfe: x.hilfe || '', rechen: x.rechen || '' };
+    });
+  };
+
+  A.baurechtSetzen = function (liste) {
+    var sauber = (liste || []).filter(function (x) { return x && x.label; })
+      .map(function (x) {
+        return { id: x.id || A.uid(), gruppe: x.gruppe || 'gst',
+                 label: String(x.label).trim(),
+                 hilfe: String(x.hilfe || '').trim(),
+                 rechen: x.rechen || '' };
+      });
+    A.baurechtkatalog = sauber;
+    try { localStorage.setItem(A.BAURECHT_LOKAL, JSON.stringify(sauber)); } catch (e) {}
+    return sauber;
+  };
+
+  A.baurechtGruppe = function (id) {
+    return A.BAURECHT_GRUPPEN.find(function (g) { return g.id === id; }) || null;
+  };
+
+  /* Der Eintrag zu einem Prüfpunkt. Er entsteht erst beim ersten
+     Anfassen — ein unbearbeitetes Projekt trägt keine 75 leeren
+     Zeilen mit sich herum. */
+  A.baurechtEintrag = function (p, punktId, anlegen) {
+    if (!p.baurecht || typeof p.baurecht !== 'object') {
+      p.baurecht = { eintraege: {}, eigene: [] };
+    }
+    var e = p.baurecht.eintraege[punktId];
+    if (!e && anlegen) {
+      e = p.baurecht.eintraege[punktId] = { wert: '', bemerkung: '', status: 'offen' };
+    }
+    return e || { wert: '', bemerkung: '', status: 'offen' };
+  };
+
+  /* Die Prüfpunkte eines Projekts, nach Gruppen geordnet: erst die
+     firmenweiten, danach die projekteigenen Ergänzungen. */
+  A.baurechtPunkte = function (p) {
+    var eigene = (p && p.baurecht && Array.isArray(p.baurecht.eigene))
+      ? p.baurecht.eigene : [];
+    return A.BAURECHT_GRUPPEN.map(function (g) {
+      var katalog = A.baurechtListe().filter(function (x) { return x.gruppe === g.id; });
+      var dazu = eigene.filter(function (x) { return x.gruppe === g.id; })
+        .map(function (x) {
+          return { id: x.id, gruppe: g.id, label: x.label || '',
+                   hilfe: x.hilfe || '', rechen: '', eigen: true };
+        });
+      return { gruppe: g, punkte: katalog.concat(dazu) };
+    });
+  };
+
+  /* Bearbeitungsstand: geprüft und nicht relevant gelten als erledigt. */
+  A.baurechtStand = function (p) {
+    var gesamt = 0, fertig = 0, gefuellt = 0;
+    A.baurechtPunkte(p).forEach(function (bl) {
+      bl.punkte.forEach(function (pt) {
+        gesamt++;
+        var e = A.baurechtEintrag(p, pt.id);
+        if (e.status === 'geprueft' || e.status === 'entfaellt') fertig++;
+        if (String(e.wert || '').trim()) gefuellt++;
+      });
+    });
+    return { gesamt: gesamt, fertig: fertig, gefuellt: gefuellt,
+             offen: gesamt - fertig };
+  };
+
+  /* Vier Prüfpunkte kennt die Rechnung bereits. Der Baurecht-Check
+     schreibt sie nicht — er zeigt daneben, was gerechnet wird, damit
+     ein Auseinanderlaufen auffällt. */
+  A.baurechtRechenwert = function (p, r, pfad) {
+    if (!pfad || !r) return null;
+    if (pfad === 'agf') {
+      return { wert: r.flaechen ? r.flaechen.agf_zulaessig : 0,
+               dez: 0, einheit: 'm²', label: 'anrechenbare GF' };
+    }
+    if (pfad === 'grundstueck.flaeche') {
+      return { wert: A.get(p, pfad), dez: 0, einheit: 'm²', label: 'Grundstücksfläche' };
+    }
+    if (pfad === 'grundstueck.az') {
+      return { wert: A.get(p, pfad), dez: 2, einheit: '', label: 'Ausnützungsziffer' };
+    }
+    if (pfad === 'grundstueck.geschosse') {
+      return { wert: A.get(p, pfad), dez: 0, einheit: '', label: 'Vollgeschosse' };
+    }
+    return null;
   };
 
   /* Sitzungsreihen. Vorgabe wie bei den Firmen firmenweit pflegbar —
@@ -1082,6 +1334,12 @@ window.APP = window.APP || {};
            eigene = frei erfasste Termine und Meilensteine */
       termine: { phasen: [], eigene: [] },
 
+      /* Das für dieses Grundstück geltende Baurecht. Die Fragen stehen
+         im firmenweiten Katalog, die Antworten hier:
+           eintraege = { punktId: { wert, bemerkung, status } }
+           eigene    = Prüfpunkte, die es nur in diesem Projekt gibt */
+      baurecht: { eintraege: {}, eigene: [] },
+
       grundstueck: {
         flaeche: 2500,
         az_modus: 'az',                  // 'az' = über Ausnützungsziffer, 'agf' = direkt
@@ -1716,6 +1974,15 @@ window.APP = window.APP || {};
       if (typeof x.thema !== 'string') x.thema = '';
       if (typeof x.prio !== 'string') x.prio = '';
     });
+
+    /* --- Schema 19 -> 20: Baurecht-Check. Bestehende Projekte
+       starten mit leeren Einträgen; die Fragen kommen aus dem
+       firmenweiten Katalog. -------------------------------------- */
+    if (!p.baurecht || typeof p.baurecht !== 'object') p.baurecht = {};
+    if (!p.baurecht.eintraege || typeof p.baurecht.eintraege !== 'object') {
+      p.baurecht.eintraege = {};
+    }
+    if (!Array.isArray(p.baurecht.eigene)) p.baurecht.eigene = [];
 
     /* Startdatum aus einem vorhandenen Startjahr ableiten */
     if (!p.startdatum && p.startjahr) p.startdatum = p.startjahr + '-01-01';

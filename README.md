@@ -160,6 +160,20 @@ Projektmanagement-Honorar BKP 599; die Dritthonorare BKP 558.1 zählen mit.
 Wahlweise auch auf Anlagekosten, Landwert oder Projektgewinn. Alternativ Baurecht mit Einmalentschädigung und Baurechtszins.
 Kantonale Richtwerte für AG · SO · ZH · LU · BE · BS · BL sind hinterlegt.
 
+**Baurecht-Check** Eine Sammlung des für das Grundstück geltenden Baurechts:
+75 Prüfpunkte in fünf Gruppen (Grundstück, Ziffern und Boni, Abstände und
+Begrenzungen, Weiteres, Grundbuch), je Punkt ein Eintrag, eine Bemerkung —
+üblicherweise die Rechtsgrundlage — und ein Status aus *offen*, *geprüft* und
+*nicht relevant*. Der Katalog der Prüfpunkte wird firmenweit unter Verwaltung
+gepflegt, damit in jedem Projekt dieselben Fragen gestellt werden; im Projekt
+lassen sich einzelne Zeilen ergänzen.
+
+Vier Punkte kennt die Kalkulation ebenfalls — Grundstücksfläche,
+Ausnützungsziffer, anrechenbare Geschossfläche und Vollgeschosse. Der
+Baurecht-Check schreibt sie **nicht**, sondern zeigt daneben, womit gerechnet
+wird, und meldet eine Abweichung. Wer im Baurecht 0.6 einträgt und mit 0.9
+rechnet, soll das sehen, statt dass ihm still die Marge verändert wird.
+
 **Baukosten** nach BKP, auf die praxisrelevanten Gruppen verdichtet:
 
 | BKP | Zeile | Menge |
@@ -399,6 +413,7 @@ app/views.js          Eingabeseiten
 app/results.js        Ergebnis, Analyse, Bericht
 app/portfolio.js      Portfolio, Tracking, Archivieren, Import und Export
 app/protokoll.js      Sitzungsprotokolle, Aufgaben, Kanban, Themenbild
+app/baurecht.js       Baurecht-Check: geltendes Baurecht je Grundstück
 app/termine.js        Terminplan: SIA-Phasen, Aufgaben, Meilensteine
 app/admin.js          Verwaltung, Änderungsverlauf, Anmerkungen
 app/main.js           Zustand, Navigation, Kennzahlenleiste, Rollen

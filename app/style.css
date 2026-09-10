@@ -460,3 +460,59 @@ textarea:focus { outline: none; border-color: var(--accent); }
   display: inline-block; width: 9px; height: 9px; border-radius: 50%;
   flex: none; vertical-align: middle;
 }
+
+/* ---------------------------------------------------------------
+   Baurecht-Check
+   --------------------------------------------------------------- */
+
+/* Zwischentitel innerhalb eines Panels — trennt die Prüfgruppen in
+   der Verwaltung, ohne dass jede ein eigenes Panel bräuchte. */
+.zt {
+  font-size: 12px; font-weight: 660; letter-spacing: .02em;
+  text-transform: uppercase; color: var(--muted);
+  margin: 4px 0 7px;
+}
+
+/* Der Balken zeigt, wie weit die Prüfung gediehen ist. */
+.brbalken {
+  height: 7px; margin-top: 12px; border-radius: 4px;
+  background: var(--panel2); border: 1px solid var(--line);
+  overflow: hidden;
+}
+.brbalken-in {
+  height: 100%; background: var(--warn); border-radius: 3px;
+  transition: width .18s ease;
+}
+.brbalken-in.voll { background: var(--pos); }
+
+/* Ein Prüfpunkt, der hier nicht zutrifft, bleibt sichtbar, tritt aber
+   zurück — er ist beantwortet, nur eben mit «nein». */
+tr.brentfaellt td { opacity: .55; }
+tr.brentfaellt input { color: var(--muted); }
+
+/* Der gerechnete Wert steht klein unter dem Eintrag. Läuft er dem
+   Baurecht davon, wird aus der Notiz eine Warnung. */
+.brweicht { color: var(--warn); font-weight: 600; }
+
+.brtabelle input { width: 100%; }
+.brtabelle td { vertical-align: top; }
+
+@media print {
+  /* Ein Baurechtsblatt geht nach aussen — an den Architekten, den
+     Juristen, die Gemeinde. Anlagekosten und Marge haben darauf so
+     wenig verloren wie auf einem Protokoll. */
+  body.seite-baurecht #kpibar,
+  body.seite-baurecht #warnbar,
+  body.seite-baurecht #meldungen { display: none !important; }
+
+  /* Der Balken sagt auf Papier nichts, was die Zahl daneben nicht
+     schon sagt. Die Kacheln bleiben nebeneinander: Auf Blattbreite
+     würde sonst die Regel für schmale Bildschirme greifen. */
+  body.seite-baurecht .brbalken { display: none; }
+  body.seite-baurecht .cols.c3 { grid-template-columns: repeat(3, 1fr); }
+
+  /* Eine Gruppe darf über die Seite hinauslaufen — bei 22 Prüfpunkten
+     bliebe sonst ein halbes Blatt leer. Eine einzelne Zeile nicht. */
+  body.seite-baurecht .panel { break-inside: auto; }
+  body.seite-baurecht tr { break-inside: avoid; }
+}

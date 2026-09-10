@@ -6,7 +6,7 @@ window.APP = window.APP || {};
 (function (A) {
   'use strict';
 
-  A.SCHEMA = 18;
+  A.SCHEMA = 19;
 
   /* ---------------------------------------------------------------
      Stammlisten
@@ -373,6 +373,15 @@ window.APP = window.APP || {};
     return A.themenListe().find(function (t) { return t.id === id; }) || null;
   };
 
+  /* Die Nummer eines Themas ist seine Stelle in der firmenweiten
+     Liste — fest, nicht laufend. «Kosten» ist damit in jedem Protokoll
+     Traktandum 3, und man findet dieselbe Sache über Sitzungen und
+     Projekte hinweg unter derselben Nummer wieder. */
+  A.themaNummer = function (id) {
+    var i = A.themenListe().findIndex(function (t) { return t.id === id; });
+    return i < 0 ? 0 : i + 1;
+  };
+
   /* Die drei Zustände einer Aufgabe — sie sind zugleich die Spalten
      der Kanban-Ansicht. «übernommen» steht nicht zur Wahl: Diesen
      Zustand vergibt allein die Pendenzenübernahme, wenn eine Aufgabe
@@ -523,34 +532,81 @@ window.APP = window.APP || {};
   A.TRAKTANDEN_LOKAL = 'projektrechner.standardtraktanden';
   A.standardtraktanden = null;   // { reiheId: [ {id,text,typ,phase} ] }
 
+  /* Je Sitzungsreihe steht hier, WELCHE Themen als Traktanden
+     erscheinen und welche Punkte darunter schon vorformuliert sind:
+
+       { <reiheId>: { themen: [themaId, …], punkte: [ {…}, … ] } }
+
+     Die frühere Form war eine blosse Punkteliste je Reihe; sie wird
+     beim Lesen umgeschrieben, die Themen ergeben sich dann aus den
+     Punkten. */
   A.traktandenLesen = function () {
     var t = A.standardtraktanden;
     if (!t) {
       try { t = JSON.parse(localStorage.getItem(A.TRAKTANDEN_LOKAL) || 'null'); }
       catch (e) { t = null; }
     }
-    return t && typeof t === 'object' ? t : {};
+    t = t && typeof t === 'object' ? t : {};
+
+    var raus = {};
+    Object.keys(t).forEach(function (k) {
+      var e = t[k];
+      if (Array.isArray(e)) {
+        /* alte Form: nur Punkte */
+        var themen = [];
+        e.forEach(function (x) {
+          if (x && x.thema && themen.indexOf(x.thema) < 0) themen.push(x.thema);
+        });
+        raus[k] = { themen: themen, punkte: e };
+      } else {
+        raus[k] = {
+          themen: Array.isArray(e && e.themen) ? e.themen : [],
+          punkte: Array.isArray(e && e.punkte) ? e.punkte : []
+        };
+      }
+    });
+    return raus;
   };
 
   A.traktandenSetzen = function (t) {
     var sauber = {};
     Object.keys(t || {}).forEach(function (k) {
-      sauber[k] = (t[k] || []).filter(function (x) { return x && x.text; })
-        .map(function (x) {
-          return { id: x.id || A.uid(), text: String(x.text).trim(),
-                   typ: x.typ || 'info', phase: x.phase || 'allgemein',
-                   thema: x.thema || '', prio: x.prio || '' };
-        });
+      var e = t[k] || {};
+      sauber[k] = {
+        themen: (Array.isArray(e.themen) ? e.themen : []).filter(Boolean),
+        punkte: (Array.isArray(e.punkte) ? e.punkte : [])
+          .filter(function (x) { return x && x.text; })
+          .map(function (x) {
+            return { id: x.id || A.uid(), text: String(x.text).trim(),
+                     typ: x.typ || 'info', phase: x.phase || 'allgemein',
+                     thema: x.thema || '', prio: x.prio || '' };
+          })
+      };
     });
     A.standardtraktanden = sauber;
     try { localStorage.setItem(A.TRAKTANDEN_LOKAL, JSON.stringify(sauber)); } catch (e) {}
     return sauber;
   };
 
+  /* Die Traktanden einer Sitzungsreihe: die gewählten Themen in der
+     firmenweiten Reihenfolge, jedes mit seiner festen Nummer. Ist für
+     eine Reihe nichts gewählt, gelten alle Themen — sonst stünde ein
+     neues Protokoll ohne jede Überschrift da. */
+  A.reiheThemen = function (reiheId) {
+    var alle = A.themenListe();
+    var gewaehlt = (A.traktandenLesen()[reiheId] || {}).themen || [];
+    var liste = gewaehlt.length
+      ? alle.filter(function (t) { return gewaehlt.indexOf(t.id) >= 0; })
+      : alle;
+    return liste.map(function (t) {
+      return { thema: t, nr: A.themaNummer(t.id) };
+    });
+  };
+
   /* Standardpunkte für eine neue Sitzung: firmenweite Vorgabe der
      Reihe, danach die Ergänzungen des Projekts. */
   A.standardpunkte = function (p, reiheId) {
-    var firmenweit = (A.traktandenLesen()[reiheId] || []);
+    var firmenweit = ((A.traktandenLesen()[reiheId] || {}).punkte) || [];
     var eigene = ((p && p.standardpunkte) || []).filter(function (x) {
       return !x.reihe || x.reihe === reiheId;
     });
@@ -638,40 +694,43 @@ window.APP = window.APP || {};
      Phasen folgen dem SIA-Katalog, Beteiligte der Reihenfolge in der
      Adressliste — so bleibt die Nummer eines Punktes stabil, solange
      sich an Phase und Zuständigkeit nichts ändert. */
+  /* Gliederung eines Protokolls: Thema → Punkte.
+
+     Die Themen kommen aus der Sitzungsreihe und behalten ihre feste
+     Nummer aus der Verwaltung. Alle gewählten Themen erscheinen, auch
+     leere — eine fehlende Überschrift liest sich sonst wie ein
+     verlorener Abschnitt. Punkte ohne Thema sammeln sich am Ende. */
   A.gliederung = function (p, sitzung) {
-    var beteiligte = A.beteiligteListe(p);
-    var reihenfolge = {};
-    beteiligte.forEach(function (b, i) { reihenfolge[b.id] = i; });
-
-    var gruppen = [];
-    A.SIA_PHASEN.forEach(function (ph) {
-      var drin = (sitzung.punkte || []).filter(function (pt) { return pt.phase === ph.id; });
-      if (!drin.length) return;
-
-      var planer = [];
-      drin.forEach(function (pt) {
-        var key = pt.beteiligter || '';
-        var g = planer.find(function (x) { return x.id === key; });
-        if (!g) {
-          var b = beteiligte.find(function (x) { return x.id === key; });
-          g = { id: key, person: b || null,
-                label: b ? [b.rolle, b.name].filter(Boolean).join(' · ') : 'ohne Zuständigkeit',
-                sort: b ? reihenfolge[b.id] : 9999, punkte: [] };
-          planer.push(g);
-        }
-        g.punkte.push(pt);
-      });
-      planer.sort(function (a, b) { return a.sort - b.sort; });
-      gruppen.push({ phase: ph, planer: planer });
+    var punkte = sitzung.punkte || [];
+    var gruppen = A.reiheThemen(sitzung.reihe).map(function (e) {
+      return {
+        thema: e.thema, nr: String(e.nr),
+        punkte: punkte.filter(function (pt) { return pt.thema === e.thema.id; })
+      };
     });
 
-    /* Nummern vergeben: Phase.Planer.Punkt */
-    gruppen.forEach(function (g, i) {
-      g.nr = String(i + 1);
-      g.planer.forEach(function (pl, j) {
-        pl.nr = g.nr + '.' + (j + 1);
-        pl.punkte.forEach(function (pt, k) { pt._nr = pl.nr + '.' + (k + 1); });
+    /* Was einem Thema angehört, das in dieser Reihe nicht vorgesehen
+       ist, verschwindet nicht — es bekommt eine eigene Überschrift. */
+    var bekannt = {};
+    gruppen.forEach(function (g) { bekannt[g.thema.id] = true; });
+    var rest = {};
+    punkte.forEach(function (pt) {
+      if (bekannt[pt.thema]) return;
+      var key = pt.thema || '';
+      (rest[key] = rest[key] || []).push(pt);
+    });
+    Object.keys(rest).forEach(function (key) {
+      var t = A.thema(key);
+      gruppen.push({
+        thema: t || { id: '', label: 'ohne Thema', farbe: '#aab2bd' },
+        nr: t ? String(A.themaNummer(key)) : '–',
+        punkte: rest[key], ausserhalb: true
       });
+    });
+
+    /* Nummern vergeben: Thema.Punkt */
+    gruppen.forEach(function (g) {
+      g.punkte.forEach(function (pt, i) { pt._nr = g.nr + '.' + (i + 1); });
     });
     return gruppen;
   };

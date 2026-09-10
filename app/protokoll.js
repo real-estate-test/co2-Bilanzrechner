@@ -1183,58 +1183,68 @@ window.APP = window.APP || {};
     var gruppen = A.gliederung(p, s);
     var koerper = [];
 
-    if (!gruppen.length) {
-      koerper.push(el('div', { class: 'panelbody muted',
-        text: 'Noch kein Punkt erfasst.' }));
-    }
-
-    /* Eine Tabelle je Phase; die Zuständigkeit steht als Gruppenzeile
-       darin. Ein Tabellenkopf je Planer wäre unruhig und würde das
-       Protokoll auf dem Papier zerreissen. */
+    /* Eine Tabelle je Thema. Die Überschrift trägt die feste Nummer aus
+       der Verwaltung; leere Traktanden bleiben stehen, damit auf dem
+       Papier niemand einen fehlenden Abschnitt vermutet. */
     gruppen.forEach(function (g) {
-      var zeilen = [];
-      /* Eine einzige Gruppe ohne Zuständigkeit braucht keine
-         Zwischenzeile — sie sagt nichts und zerreisst die Tabelle. */
-      var nurOhne = g.planer.length === 1 && !g.planer[0].id;
-      g.planer.forEach(function (pl) {
-        if (!nurOhne) {
-          zeilen.push(el('tr', { class: 'sum' }, [
-            el('td', { class: 'n muted', text: pl.nr }),
-            el('td', { colspan: 9, text: pl.label })
-          ]));
-        }
-        pl.punkte.forEach(function (pt) { zeilen.push(punktZeile(p, s, pt, beteiligte)); });
+      var zeilen = g.punkte.map(function (pt) {
+        return punktZeile(p, s, pt, beteiligte);
       });
 
+      var kopf = el('div', {
+        style: 'display:flex;align-items:center;gap:8px;margin-bottom:5px' }, [
+        el('span', { class: 'themenpunkt',
+          style: 'background:' + (g.thema.farbe || '#aab2bd') }),
+        el('span', { style: 'font-weight:640;color:var(--kopf)',
+          text: g.nr + '  ' + g.thema.label }),
+        g.ausserhalb
+          ? el('span', { class: 'tag warn noprint',
+              title: 'Dieses Thema ist für diese Sitzungsart nicht vorgesehen',
+              text: 'nicht in dieser Sitzungsart' })
+          : null,
+        /* Der Punkt wird direkt unter seinem Traktandum angelegt — mit
+           dem Thema, unter dem der Knopf steht. */
+        el('button', { class: 'ghost sm schreibend noprint', style: 'margin-left:auto',
+          text: '+ Punkt', title: 'Punkt zu «' + g.thema.label + '»',
+          onclick: function () {
+            var letzt = g.punkte[g.punkte.length - 1];
+            s.punkte.push(A.defPunkt({
+              thema: g.thema.id,
+              phase: letzt ? letzt.phase : 'allgemein',
+              beteiligter: letzt ? letzt.beteiligter
+                : (beteiligte[0] ? beteiligte[0].id : ''),
+              typ: 'info'
+            }));
+            schmutzig(); A.render();
+          } })
+      ]);
+
+      /* Ein leeres Traktandum behält seine Überschrift, aber keine
+         Tabelle — ein Kopf ohne Zeilen ist nur Lärm. */
       koerper.push(el('div', { class: 'panelbody' }, [
-        el('div', { style: 'font-weight:640;color:var(--kopf);margin-bottom:5px',
-          text: g.nr + '  ' + A.phaseLabel(g.phase.id) }),
-        U.tabelle([
-          { label: 'Nr.', w: '62px' }, { label: 'Typ', w: '104px' },
-          { label: 'Punkt' }, { label: 'Thema', w: '140px' },
-          { label: 'Prio', w: '86px' }, { label: 'Zuständig', w: '150px' },
-          { label: 'Termin', w: '128px' }, { label: 'Status', w: '112px' },
-          { label: 'Phase', w: '150px', klasse: 'noprint' }, { label: '', klasse: 'noprint' }
-        ], zeilen)
+        kopf,
+        zeilen.length
+          ? U.tabelle([
+              { label: 'Nr.', w: '62px' }, { label: 'Typ', w: '104px' },
+              { label: 'Punkt' }, { label: 'Thema', w: '140px', klasse: 'noprint' },
+              { label: 'Prio', w: '86px' }, { label: 'Zuständig', w: '150px' },
+              { label: 'Termin', w: '128px' }, { label: 'Status', w: '112px' },
+              { label: 'Phase', w: '150px', klasse: 'noprint' },
+              { label: '', klasse: 'noprint' }
+            ], zeilen)
+          : el('div', { class: 'muted', style: 'font-size:11.5px;padding:2px 0 4px',
+              text: 'keine Punkte zu diesem Traktandum' })
       ]));
     });
 
-    /* Neuer Punkt: Phase und Zuständigkeit werden vom letzten Punkt
-       übernommen — beim Protokollieren bleibt man meist im Thema. */
-    koerper.push(el('div', { class: 'panelbody noprint' }, [
-      el('button', { class: 'schreibend', text: '+ Punkt', onclick: function () {
-        var letzt = s.punkte[s.punkte.length - 1];
-        s.punkte.push(A.defPunkt({
-          phase: letzt ? letzt.phase : 'allgemein',
-          beteiligter: letzt ? letzt.beteiligter : (beteiligte[0] ? beteiligte[0].id : ''),
-          typ: 'info'
-        }));
-        schmutzig(); A.render();
-      } })
-    ]));
+    if (!gruppen.length) {
+      koerper.push(el('div', { class: 'panelbody muted',
+        text: 'Für diese Sitzungsart ist kein Thema als Traktandum vorgesehen — ' +
+              'unter Verwaltung wählen.' }));
+    }
 
-    return U.panel('Traktanden', 'Phase → Zuständigkeit → Punkte · die Nummern ergeben sich daraus',
-      koerper);
+    return U.panel('Traktanden',
+      'Themen als Überschrift · Nummern aus der Verwaltung', koerper);
   }
 
   function punktZeile(p, s, pt, beteiligte) {
@@ -1514,14 +1524,12 @@ window.APP = window.APP || {};
     var gruppen = A.gliederung(p, s);
     var zeilen = [];
     gruppen.forEach(function (g) {
-      g.planer.forEach(function (pl) {
-        pl.punkte.forEach(function (pt) {
-          if (pt.typ !== 'aufgabe' || pt.status !== 'offen') return;
-          var b = beteiligte.find(function (x) { return x.id === pt.beteiligter; });
-          zeilen.push('  ' + pt._nr + '  ' + (pt.text || '') +
-            '  [' + (b ? (b.kuerzel || b.name) : 'offen') + ', ' +
-            (pt.termin ? 'bis ' + A.datum(pt.termin) : 'ohne Termin') + ']');
-        });
+      g.punkte.forEach(function (pt) {
+        if (pt.typ !== 'aufgabe' || !A.statusOffen(pt.status)) return;
+        var b = beteiligte.find(function (x) { return x.id === pt.beteiligter; });
+        zeilen.push('  ' + pt._nr + '  ' + (pt.text || '') +
+          '  [' + (b ? (b.kuerzel || b.name) : 'offen') + ', ' +
+          (pt.termin ? 'bis ' + A.datum(pt.termin) : 'ohne Termin') + ']');
       });
     });
     if (!zeilen.length) return 'Es sind keine offenen Aufgaben festgehalten.\n';

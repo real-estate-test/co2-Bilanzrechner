@@ -130,7 +130,7 @@ window.APP = window.APP || {};
           id: 'punkt:' + pt.id, art: pt.typ,
           text: pt.text || '(ohne Text)',
           von: start, bis: ende,
-          phase: pt.phase, beteiligter: pt.beteiligter,
+          phase: pt.phase, thema: pt.thema, beteiligter: pt.beteiligter,
           person: person(pt.beteiligter),
           status: pt.status,
           meilenstein: pt.typ === 'entscheid',
@@ -149,7 +149,7 @@ window.APP = window.APP || {};
         id: 'eigen:' + e.id, art: e.meilenstein ? 'meilenstein' : 'eigen',
         text: e.text || '(ohne Text)',
         von: e.von || e.bis, bis: e.bis || e.von,
-        phase: e.phase, beteiligter: e.beteiligter,
+        phase: e.phase, thema: e.thema || '', beteiligter: e.beteiligter,
         person: person(e.beteiligter),
         status: e.status || 'offen',
         meilenstein: !!e.meilenstein,
@@ -209,6 +209,30 @@ window.APP = window.APP || {};
       });
     }
     return gruppen;
+  };
+
+  /* Nach Themen — dieselbe Ordnung wie im Protokoll. Die Phasenbalken
+     bleiben aussen vor: Eine Phase ist ein Zeitraum, kein Thema. */
+  T.nachThemen = function (p, balken) {
+    var gruppen = A.themenListe().map(function (t) {
+      return { thema: t, nr: A.themaNummer(t.id), eintraege: [] };
+    });
+    var ohne = { thema: { id: '', label: 'ohne Thema', farbe: '#aab2bd' },
+                 nr: 0, eintraege: [] };
+
+    balken.forEach(function (b) {
+      if (b.art === 'phase') return;
+      var g = gruppen.find(function (x) { return x.thema.id === b.thema; });
+      (g || ohne).eintraege.push(b);
+    });
+
+    gruppen.forEach(function (g) {
+      g.eintraege.sort(function (a, b) {
+        return String(a.bis || '9999').localeCompare(String(b.bis || '9999'));
+      });
+    });
+    if (ohne.eintraege.length) gruppen.push(ohne);
+    return gruppen.filter(function (g) { return g.eintraege.length; });
   };
 
   /* Flach und nach Enddatum sortiert — ohne die Phasenbalken, die in
@@ -393,7 +417,9 @@ window.APP = window.APP || {};
 
     /* Umschalter */
     var wahl = el('div', { class: 'seg', style: 'display:flex;gap:0' });
-    [{ id: 'phasen', label: 'nach Phasen' }, { id: 'fristen', label: 'nach Fristen' }]
+    [{ id: 'phasen', label: 'nach Phasen' },
+     { id: 'themen', label: 'nach Themen' },
+     { id: 'fristen', label: 'nach Fristen' }]
       .forEach(function (m) {
         var b = el('button', { class: Z.modus === m.id ? 'primary' : '', text: m.label });
         b.addEventListener('click', function () { Z.modus = m.id; A.render(); });
@@ -418,7 +444,18 @@ window.APP = window.APP || {};
 
     /* Zeilen aufbauen */
     var zeilen = [];
-    if (Z.modus === 'phasen') {
+    if (Z.modus === 'themen') {
+      T.nachThemen(p, sichtbar).forEach(function (g) {
+        zeilen.push({ tiefe: 0, gruppe: true,
+          label: (g.nr ? g.nr + ' · ' : '') + g.thema.label,
+          balken: [] });
+        g.eintraege.forEach(function (b) {
+          zeilen.push({ tiefe: 1,
+            label: b.text + (b.person ? '  (' + (b.person.kuerzel || b.person.name) + ')' : ''),
+            balken: [b] });
+        });
+      });
+    } else if (Z.modus === 'phasen') {
       T.nachPhasen(p, sichtbar).forEach(function (g) {
         zeilen.push({ tiefe: 0, gruppe: true,
           label: (g.phase.sia ? g.phase.sia + ' · ' : '') + g.phase.label,
@@ -451,9 +488,10 @@ window.APP = window.APP || {};
         'Enddatum sortiert.')
     ]));
 
-    return U.panel('Terminplan',
-      Z.modus === 'phasen' ? 'Phase → Zuständigkeit → Termine' : 'alle Termine nach Enddatum',
-      koerper);
+    var untertitel = Z.modus === 'phasen' ? 'Phase → Zuständigkeit → Termine'
+      : Z.modus === 'themen' ? 'Thema → Termine · wie im Protokoll'
+      : 'alle Termine nach Enddatum';
+    return U.panel('Terminplan', untertitel, koerper);
   }
 
   /* Phasen mit Von/Bis und der Markierung fürs Portfolio */

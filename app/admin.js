@@ -518,6 +518,9 @@ window.APP = window.APP || {};
       U.leeren(thBody);
       var zeilen = liste.map(function (t, i) {
         return el('tr', {}, [
+          /* Die Stelle in dieser Liste ist die Traktandennummer im
+             Protokoll — deshalb steht sie hier sichtbar davor. */
+          el('td', { class: 'n muted', style: 'width:44px', text: String(i + 1) }),
           el('td', { style: 'width:56px' }, [(function () {
             var f = el('input', { type: 'color', value: t.farbe || '#6b7484',
               style: 'width:38px;height:26px;padding:0;border:1px solid var(--line2);' +
@@ -526,16 +529,33 @@ window.APP = window.APP || {};
             return f;
           })()]),
           el('td', {}, [U.zelleTxt(t, 'label', { platzhalter: 'z. B. Kosten' })]),
+          el('td', { style: 'width:78px' }, [
+            el('button', { class: 'ghost sm', text: '↑', title: 'nach oben',
+              disabled: i === 0 ? '' : null,
+              onclick: function () {
+                if (i === 0) return;
+                liste.splice(i - 1, 0, liste.splice(i, 1)[0]);
+                themenZeichnen(liste);
+              } }),
+            el('button', { class: 'ghost sm', text: '↓', title: 'nach unten',
+              disabled: i === liste.length - 1 ? '' : null,
+              onclick: function () {
+                if (i >= liste.length - 1) return;
+                liste.splice(i + 1, 0, liste.splice(i, 1)[0]);
+                themenZeichnen(liste);
+              } })
+          ]),
           el('td', { class: 'w1' }, [el('button', { class: 'ghost sm', text: '×',
             onclick: function () { liste.splice(i, 1); themenZeichnen(liste); } })])
         ]);
       });
       if (!zeilen.length) {
-        zeilen.push(el('tr', {}, [el('td', { colspan: 3, class: 'muted',
+        zeilen.push(el('tr', {}, [el('td', { colspan: 5, class: 'muted',
           text: 'Keine Themen — es gelten die Standardthemen.' })]));
       }
       thBody.appendChild(U.tabelle([
-        { label: 'Farbe' }, { label: 'Thema' }, { label: '' }
+        { label: 'Nr.', n: true }, { label: 'Farbe' }, { label: 'Thema' },
+        { label: 'Reihenfolge' }, { label: '' }
       ], zeilen));
 
       U.leeren(thFuss);
@@ -557,10 +577,11 @@ window.APP = window.APP || {};
         } })
       ]));
       thFuss.appendChild(el('div', { class: 'hilfe', style: 'margin-top:10px',
-        text: 'Das Thema sagt, WORUM es geht — die Phase sagt, WANN. Jeder Protokollpunkt ' +
-              'bekommt eines; damit lassen sich Entscheide, Aufgaben und Infos später über ' +
-              'alle Protokolle hinweg nach Thema sammeln. Ein Thema, das an Punkten hängt, ' +
-              'sollte nicht entfernt werden — die Punkte stünden sonst ohne Zuordnung da.' }));
+        text: 'Die Themen sind die Traktanden der Protokolle: Diese Reihenfolge ist die ' +
+              'Reihenfolge im Protokoll, und die Nummer links bleibt dieselbe — «Kosten» ist ' +
+              'in jedem Protokoll dasselbe Traktandum. Welche Themen in welcher Sitzungsart ' +
+              'erscheinen, steht darunter. Ein Thema, an dem Punkte hängen, sollte nicht ' +
+              'entfernt werden — die Punkte stünden sonst unter «ohne Thema».' }));
     }
 
     if (A.store.modus === 'server') {
@@ -583,48 +604,81 @@ window.APP = window.APP || {};
     function traktandenZeichnen(daten) {
       U.leeren(trBody);
       var reihen = A.reihenListe();
+      var themen = A.themenListe();
 
       reihen.forEach(function (r) {
-        if (!Array.isArray(daten[r.id])) daten[r.id] = [];
-        var liste = daten[r.id];
+        if (!daten[r.id] || typeof daten[r.id] !== 'object') daten[r.id] = {};
+        if (!Array.isArray(daten[r.id].themen)) daten[r.id].themen = [];
+        if (!Array.isArray(daten[r.id].punkte)) daten[r.id].punkte = [];
+        var eintrag = daten[r.id];
 
+        var block = el('div', { style: 'margin-bottom:18px' }, [
+          el('div', { style: 'font-weight:640;color:var(--kopf);margin-bottom:6px',
+            text: r.label + (r.kuerzel ? ' (' + r.kuerzel + ')' : '') })
+        ]);
+
+        /* Welche Themen in dieser Sitzungsart als Traktandum erscheinen.
+           Die Nummer stammt aus der globalen Themenliste und bleibt
+           dieselbe, egal welche Reihe. */
+        var chips = el('div', { style: 'display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px' });
+        themen.forEach(function (t, i) {
+          var an = eintrag.themen.indexOf(t.id) >= 0;
+          var b = el('button', { class: 'sm' + (an ? ' primary' : ''),
+            title: an ? 'erscheint als Traktandum ' + (i + 1) : 'nicht in dieser Sitzungsart' }, [
+            el('span', { class: 'themenpunkt',
+              style: 'background:' + t.farbe + ';margin-right:6px' }),
+            el('span', { text: (i + 1) + ' · ' + t.label })
+          ]);
+          b.addEventListener('click', function () {
+            var ix = eintrag.themen.indexOf(t.id);
+            if (ix >= 0) eintrag.themen.splice(ix, 1); else eintrag.themen.push(t.id);
+            traktandenZeichnen(daten);
+          });
+          chips.appendChild(b);
+        });
+        block.appendChild(chips);
+        block.appendChild(el('div', { class: 'muted', style: 'font-size:11.5px;margin-bottom:8px',
+          text: eintrag.themen.length
+            ? eintrag.themen.length + ' von ' + themen.length + ' Themen erscheinen als Traktandum'
+            : 'kein Thema gewählt — dann erscheinen alle' }));
+
+        /* Vorformulierte Punkte unter den Traktanden */
+        var liste = eintrag.punkte;
         var zeilen = liste.map(function (t, i) {
           return el('tr', {}, [
+            el('td', { style: 'width:180px' }, [
+              U.zelleSel(t, 'thema', [{ id: '', label: '— ohne Thema —' }].concat(
+                themen.map(function (x) {
+                  return { id: x.id, label: A.themaNummer(x.id) + ' · ' + x.label }; })))]),
             el('td', {}, [U.zelleTxt(t, 'text', { platzhalter: 'z. B. Genehmigung Vorprotokoll' })]),
-            el('td', { style: 'width:130px' }, [
+            el('td', { style: 'width:126px' }, [
               U.zelleSel(t, 'typ', A.PUNKT_TYPEN.map(function (x) {
                 return { id: x.id, label: x.label }; }))]),
-            el('td', { style: 'width:190px' }, [
+            el('td', { style: 'width:180px' }, [
               U.zelleSel(t, 'phase', A.SIA_PHASEN.map(function (ph) {
                 return { id: ph.id, label: ph.sia ? ph.sia + ' · ' + ph.label : ph.label }; }))]),
-            el('td', { style: 'width:170px' }, [
-              U.zelleSel(t, 'thema', [{ id: '', label: '— ohne Thema —' }].concat(
-                A.themenListe().map(function (x) {
-                  return { id: x.id, label: x.label }; })))]),
             el('td', { class: 'w1' }, [el('button', { class: 'ghost sm', text: '×',
               onclick: function () { liste.splice(i, 1); traktandenZeichnen(daten); } })])
           ]);
         });
         if (!zeilen.length) {
           zeilen.push(el('tr', {}, [el('td', { colspan: 5, class: 'muted',
-            text: 'Keine Standardpunkte — Protokolle dieser Reihe starten leer.' })]));
+            text: 'Keine vorformulierten Punkte — die Traktanden starten leer.' })]));
         }
 
-        trBody.appendChild(el('div', { style: 'margin-bottom:14px' }, [
-          el('div', { style: 'font-weight:640;color:var(--kopf);margin-bottom:5px',
-            text: r.label + (r.kuerzel ? ' (' + r.kuerzel + ')' : '') }),
-          U.tabelle([
-            { label: 'Traktandum' }, { label: 'Typ' }, { label: 'Phase' },
-            { label: 'Thema' }, { label: '' }
-          ], zeilen),
-          el('div', { style: 'margin-top:6px' }, [
-            el('button', { class: 'sm', text: '+ Punkt', onclick: function () {
-              liste.push({ id: A.uid(), text: '', typ: 'info', phase: 'allgemein',
-                thema: '', prio: '' });
-              traktandenZeichnen(daten);
-            } })
-          ])
+        block.appendChild(U.tabelle([
+          { label: 'Traktandum' }, { label: 'Punkt' }, { label: 'Typ' },
+          { label: 'Phase' }, { label: '' }
+        ], zeilen));
+        block.appendChild(el('div', { style: 'margin-top:6px' }, [
+          el('button', { class: 'sm', text: '+ Punkt', onclick: function () {
+            liste.push({ id: A.uid(), text: '', typ: 'info', phase: 'allgemein',
+              thema: eintrag.themen[0] || '', prio: '' });
+            traktandenZeichnen(daten);
+          } })
         ]));
+
+        trBody.appendChild(block);
       });
 
       U.leeren(trFuss);
@@ -641,9 +695,11 @@ window.APP = window.APP || {};
           } else { fertig(); }
         } }));
       trFuss.appendChild(el('div', { class: 'hilfe', style: 'margin-top:10px',
-        text: 'Diese Punkte stehen in jedem neuen Protokoll der jeweiligen Reihe. Sie sind dort ' +
-              'ganz normale Punkte — änderbar und löschbar. Was nur in einem bestimmten Projekt ' +
-              'immer vorkommt, wird dort unter «Protokolle/Aufgaben» ergänzt.' }));
+        text: 'Die gewählten Themen sind die Überschriften im Protokoll dieser Sitzungsart — ' +
+              'in der Reihenfolge und mit der Nummer aus der Themenliste oben. Sie erscheinen ' +
+              'auch dann, wenn nichts darunter steht; eine fehlende Überschrift liest sich ' +
+              'sonst wie ein verlorener Abschnitt. Die Punkte hier stehen beim Anlegen schon ' +
+              'unter ihrem Traktandum und sind danach gewöhnliche Punkte.' }));
     }
 
     if (A.store.modus === 'server') {
@@ -658,7 +714,8 @@ window.APP = window.APP || {};
       traktandenZeichnen(JSON.parse(JSON.stringify(A.traktandenLesen())));
     }
 
-    out.appendChild(U.panel('Standardtraktanden', 'feste Punkte je Sitzungsreihe',
+    out.appendChild(U.panel('Traktanden je Sitzungsart',
+      'welche Themen als Überschrift erscheinen — und was schon darunter steht',
       [trBody, trFuss]));
 
     /* --- Briefkopf: Logos und Absenderangaben ------------------------ */

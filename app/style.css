@@ -434,6 +434,23 @@ textarea:focus { outline: none; border-color: var(--accent); }
 .kanban-karte:hover .kknoepfe { display: flex; }
 .kanban-karte .kknoepfe button { padding: 0 6px; font-size: 13px; line-height: 1.5; }
 
+/* Überschrift eines Traktandums im Protokoll. Die Farbe kommt vom
+   Thema und wird am Element gesetzt; hier steht nur die Form. */
+.traktandenkopf {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 10px; margin-bottom: 7px;
+  border: 1px solid var(--line); border-left: 4px solid var(--line2);
+  border-radius: 5px;
+}
+.traktandenkopf .tnr {
+  font-family: var(--mono); font-size: 12px; font-weight: 700;
+  color: var(--kopf); min-width: 16px;
+}
+.traktandenkopf .tlabel {
+  font-weight: 640; font-size: 13px; color: var(--kopf);
+  letter-spacing: -.01em;
+}
+
 /* Themenbild: der Aufklappknopf ist ein Text im SVG */
 .mehrknopf:hover { text-decoration: underline; }
 

@@ -887,6 +887,20 @@ window.APP = window.APP || {};
     return raus.map(function (z) { return kuerzen(z, breite + 2); });
   }
 
+  /* Eine Farbe über Weiss aufhellen. rgba statt color-mix, weil das
+     in jedem Browser funktioniert und der Wert aus der Verwaltung als
+     Hex kommt. */
+  function tönung(hex, anteil) {
+    var h = String(hex || '').replace('#', '');
+    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    if (h.length !== 6) return 'transparent';
+    var r = parseInt(h.slice(0, 2), 16),
+        g = parseInt(h.slice(2, 4), 16),
+        b = parseInt(h.slice(4, 6), 16);
+    if (isNaN(r) || isNaN(g) || isNaN(b)) return 'transparent';
+    return 'rgba(' + r + ',' + g + ',' + b + ',' + anteil + ')';
+  }
+
   function kuerzen(text, n) {
     text = String(text || '');
     return text.length > n ? text.slice(0, n - 1) + '…' : text;
@@ -1191,12 +1205,15 @@ window.APP = window.APP || {};
         return punktZeile(p, s, pt, beteiligte);
       });
 
-      var kopf = el('div', {
-        style: 'display:flex;align-items:center;gap:8px;margin-bottom:5px' }, [
-        el('span', { class: 'themenpunkt',
-          style: 'background:' + (g.thema.farbe || '#aab2bd') }),
-        el('span', { style: 'font-weight:640;color:var(--kopf)',
-          text: g.nr + '  ' + g.thema.label }),
+      /* Die Überschriftenzeile trägt die Themenfarbe: kräftig als
+         Balken links, sehr hell als Grund. So gliedert sich das
+         Protokoll auch beim Überfliegen, ohne bunt zu werden. */
+      var farbe = g.thema.farbe || '#aab2bd';
+      var kopf = el('div', { class: 'traktandenkopf',
+        style: 'border-left-color:' + farbe + ';background:' + tönung(farbe, 0.1) }, [
+        el('span', { class: 'themenpunkt', style: 'background:' + farbe }),
+        el('span', { class: 'tnr', text: g.nr }),
+        el('span', { class: 'tlabel', text: g.thema.label }),
         g.ausserhalb
           ? el('span', { class: 'tag warn noprint',
               title: 'Dieses Thema ist für diese Sitzungsart nicht vorgesehen',
@@ -1204,7 +1221,8 @@ window.APP = window.APP || {};
           : null,
         /* Der Punkt wird direkt unter seinem Traktandum angelegt — mit
            dem Thema, unter dem der Knopf steht. */
-        el('button', { class: 'ghost sm schreibend noprint', style: 'margin-left:auto',
+        el('button', { class: 'ghost sm schreibend noprint',
+          style: 'margin-left:auto;background:#fff',
           text: '+ Punkt', title: 'Punkt zu «' + g.thema.label + '»',
           onclick: function () {
             var letzt = g.punkte[g.punkte.length - 1];

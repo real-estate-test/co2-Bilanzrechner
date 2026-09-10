@@ -22,6 +22,31 @@
      zu den Projektdaten. */
   var zu = {};
 
+  /* Statusfilter. Wie der Filter im Portfolio eine Ansichtseinstellung
+     und kein Projektinhalt: Er bleibt lokal gemerkt und gilt beim
+     nächsten Aufruf wieder. null = alles zeigen. */
+  var FILTER_KEY = 'projektrechner.baurechtfilter';
+
+  function filterLesen() {
+    try {
+      var roh = localStorage.getItem(FILTER_KEY);
+      if (!roh) return null;
+      var l = JSON.parse(roh);
+      return Array.isArray(l) ? l : null;
+    } catch (e) { return null; }
+  }
+
+  function filterSchreiben(liste) {
+    try {
+      if (!liste) localStorage.removeItem(FILTER_KEY);
+      else localStorage.setItem(FILTER_KEY, JSON.stringify(liste));
+    } catch (e) { /* privater Modus: gilt dann nur für diese Sitzung */ }
+  }
+
+  function sichtbar(status, gewaehlt) {
+    return !gewaehlt || gewaehlt.indexOf(status || 'offen') >= 0;
+  }
+
   /* Wo der Bearbeitungsstand angezeigt wird. Ein Statuswechsel darf
      die Seite nicht neu zeichnen: Wer gerade tippt, verlöre dabei
      Cursor und Rest der Eingabe. Stattdessen werden genau diese
@@ -60,16 +85,17 @@
   A.views.baurecht = function (p) {
     var out = el('div', {});
     var stand = A.baurechtStand(p);
+    var gewaehlt = filterLesen();
     anzeige = { balken: null, kacheln: null, gruppen: {} };
 
     out.appendChild(U.kopf('Baurecht-Check',
       'Das für dieses Grundstück geltende Baurecht. Die Prüfpunkte werden ' +
       'unter Verwaltung gepflegt und gelten für alle Projekte.'));
 
-    out.appendChild(fortschritt(p, stand));
+    out.appendChild(fortschritt(p, stand, gewaehlt));
 
     A.baurechtPunkte(p).forEach(function (block) {
-      out.appendChild(gruppenPanel(p, block));
+      out.appendChild(gruppenPanel(p, block, gewaehlt));
     });
 
     out.appendChild(el('div', { class: 'panel noprint' }, [
@@ -100,7 +126,50 @@
     }).length;
   }
 
-  function fortschritt(p, stand) {
+  /* Ein Chip je Status, mit der Zahl dahinter. Ausgeschaltete Stati
+     verschwinden aus den Tabellen; die Zahlen im Stand darüber zählen
+     weiterhin den ganzen Katalog — sonst sähe eine gefilterte Ansicht
+     wie ein fertig geprüftes Projekt aus. */
+  function filterchips(p, gewaehlt) {
+    var alle = A.BAURECHT_STATUS.map(function (s) { return s.id; });
+    var proStatus = {};
+    A.baurechtPunkte(p).forEach(function (block) {
+      block.punkte.forEach(function (pt) {
+        var st = A.baurechtEintrag(p, pt.id).status || 'offen';
+        proStatus[st] = (proStatus[st] || 0) + 1;
+      });
+    });
+
+    var chips = el('div', { class: 'chips' });
+    A.BAURECHT_STATUS.forEach(function (st) {
+      var an = sichtbar(st.id, gewaehlt);
+      var anzahl = proStatus[st.id] || 0;
+      var c = el('button', { type: 'button', class: 'chip' + (an ? ' on' : ''),
+        title: an ? 'ausblenden' : 'wieder einblenden' }, [
+        el('span', { text: st.label }),
+        el('span', { class: 'zahl', text: String(anzahl) })
+      ]);
+      c.addEventListener('click', function () {
+        var basis = gewaehlt ? gewaehlt.slice() : alle.slice();
+        var i = basis.indexOf(st.id);
+        if (i >= 0) basis.splice(i, 1); else basis.push(st.id);
+        /* Alles gewählt = kein Filter. Eine leere Auswahl bleibt
+           bestehen: So lässt sich von «nichts» aus gezielt ein
+           einzelner Status einschalten. */
+        filterSchreiben(basis.length === alle.length ? null : basis);
+        A.render();
+      });
+      chips.appendChild(c);
+    });
+
+    if (gewaehlt) {
+      chips.appendChild(el('button', { type: 'button', class: 'chip', text: 'alle zeigen',
+        onclick: function () { filterSchreiben(null); A.render(); } }));
+    }
+    return chips;
+  }
+
+  function fortschritt(p, stand, gewaehlt) {
     var anteil = stand.gesamt ? stand.fertig / stand.gesamt : 0;
     var innen = el('div', { class: 'brbalken-in' + (anteil >= 1 ? ' voll' : ''),
       style: 'width:' + (anteil * 100).toFixed(1) + '%' });
@@ -120,6 +189,13 @@
       eintragWert: kEintrag.querySelector('.v')
     };
 
+    /* Gedruckt muss dastehen, dass gefiltert wurde — ein Blatt, dem
+       stillschweigend ein Drittel fehlt, ist irreführend. */
+    var versteckt = gewaehlt
+      ? A.BAURECHT_STATUS.filter(function (s) { return gewaehlt.indexOf(s.id) < 0; })
+          .map(function (s) { return s.label; })
+      : [];
+
     return U.panel('Stand der Prüfung', null, [
       el('div', { class: 'panelbody' }, [
         el('div', { class: 'cols c3' }, [
@@ -127,7 +203,21 @@
           U.kachel('Prüfpunkte', String(stand.gesamt), 'Katalog und Ergänzungen')
         ]),
         balken
-      ])
+      ]),
+      el('div', { class: 'panelbody' }, [
+        el('div', { class: 'noprint',
+          style: 'display:flex;gap:12px;align-items:center;flex-wrap:wrap' }, [
+          el('span', { class: 'muted',
+            style: 'font-size:11px;letter-spacing:.06em;text-transform:uppercase',
+            text: 'zeigen' }),
+          filterchips(p, gewaehlt)
+        ]),
+        versteckt.length
+          ? el('div', { class: 'hilfe nurdruck', style: 'margin-top:8px',
+              text: 'Ausgeblendet: ' + versteckt.join(', ') +
+                    ' — diese Aufstellung ist nicht vollständig.' })
+          : null
+      ].filter(Boolean))
     ]);
   }
 
@@ -135,14 +225,26 @@
      Eine Gruppe
      --------------------------------------------------------------- */
 
-  function gruppenPanel(p, block) {
+  function gruppenPanel(p, block, gewaehlt) {
     var g = block.gruppe;
     var offen = zaehleOffen(p, block);
 
-    var zeilen = block.punkte.map(function (pt) { return punktZeile(p, pt); });
+    /* Gefiltert wird beim Aufbau der Seite, nicht während des Tippens:
+       Eine Zeile, deren Status gerade nachrückt, soll einem nicht unter
+       dem Cursor verschwinden. Sie steht bis zum nächsten Aufbau. */
+    var gezeigt = block.punkte.filter(function (pt) {
+      return sichtbar(A.baurechtEintrag(p, pt.id).status, gewaehlt);
+    });
+    var weg = block.punkte.length - gezeigt.length;
+
+    var zeilen = gezeigt.map(function (pt) { return punktZeile(p, pt); });
     if (!zeilen.length) {
+      /* Die Überschrift bleibt auch dann stehen, wenn nichts darunter
+         steht — sonst liest sich eine fehlende Gruppe wie ein
+         verlorener Abschnitt. */
       zeilen.push(el('tr', {}, [el('td', { colspan: 5, class: 'muted',
-        text: 'Keine Prüfpunkte in dieser Gruppe.' })]));
+        text: weg ? 'Alle ' + weg + ' Prüfpunkte dieser Gruppe sind ausgeblendet.'
+                  : 'Keine Prüfpunkte in dieser Gruppe.' })]));
     }
 
     var koerper = el('div', { class: 'panelbody' }, [U.tabelle([
@@ -174,7 +276,11 @@
       text: offen ? offen + ' offen' : 'vollständig' });
     anzeige.gruppen[g.id] = marke;
 
-    return U.panel(g.label, block.punkte.length + ' Prüfpunkte',
+    var untertitel = weg
+      ? gezeigt.length + ' von ' + block.punkte.length + ' Prüfpunkten'
+      : block.punkte.length + ' Prüfpunkte';
+
+    return U.panel(g.label, untertitel,
       zu[g.id] ? [] : [koerper, fuss], [marke, knopf]);
   }
 

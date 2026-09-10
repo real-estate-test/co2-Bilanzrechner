@@ -168,6 +168,13 @@ Begrenzungen, Weiteres, Grundbuch), je Punkt ein Eintrag, eine Bemerkung —
 gepflegt, damit in jedem Projekt dieselben Fragen gestellt werden; im Projekt
 lassen sich einzelne Zeilen ergänzen.
 
+Ein Filter über den drei Zuständen blendet aus, was gerade nicht
+interessiert — meist die als *nicht relevant* abgehakten Punkte. Er bleibt
+über Sitzungen hinweg gemerkt und gilt auch für den Ausdruck; dort steht dann
+ein Vermerk, dass die Aufstellung nicht vollständig ist. Die Zahlen im Kopf
+zählen immer den ganzen Katalog, damit eine gefilterte Ansicht nicht wie ein
+fertig geprüftes Projekt aussieht.
+
 Vier Punkte kennt die Kalkulation ebenfalls — Grundstücksfläche,
 Ausnützungsziffer, anrechenbare Geschossfläche und Vollgeschosse. Der
 Baurecht-Check schreibt sie **nicht**, sondern zeigt daneben, womit gerechnet

@@ -183,16 +183,22 @@ window.APP = window.APP || {};
         U.kachel('Bruttorendite Miete', A.fmtPct(k.bruttorendite, 2),
           'auf ' + A.fmtMio(k.ak_ertrag) + ' anteilige AK · Ziel ' + A.fmtPct(pp.ziele.bruttorendite, 2),
           k.bruttorendite >= pp.ziele.bruttorendite ? 'pos' : ''),
-        U.kachel('Nettorendite Miete', A.fmtPct(k.nettorendite, 2),
-          A.fmtPct(k.anteil_ertrag * 100) + ' der Nutzfläche wird gehalten'),
+        /* Was ein Investor für den gehaltenen Anteil zahlte. Steht hier
+           statt im Exit-Block, weil es den Mietanteil betrifft — der
+           Exit-Block daneben zeigt den geplanten Verkauf. Die beiden
+           Kacheln heissen fast gleich; der Untertitel trennt sie. */
+        U.kachel('Erlös bei Verkauf an Endinvestor', fmt(k.halten_wert),
+          'Mietanteil bei ' + A.fmtPct(pp.bewertung.rendite_halten, 2) + ' Bruttorendite'),
 
         U.kachel('Gesamtinvestition Anteil Exit', fmt(k.gi_exit), anteilText(k.anteil_exit)),
         U.kachel('Erlöse Verkauf an Endinvestor', fmt(k.exit_wert),
-          k.gi_exit > 0 ? 'Gewinn ' + fmt(k.exit_wert - k.gi_exit) : null),
+          'Exit-Anteil' + (k.gi_exit > 0
+            ? ' · Gewinn ' + fmt(k.exit_wert - k.gi_exit) : '')),
         U.kachel('EBT Exit', A.fmtPct(k.ebt_exit),
           k.gi_exit > 0 ? 'auf ' + A.fmtMio(k.gi_exit) + ' Investition' : 'kein Exit-Anteil',
           k.gi_exit > 0 ? (k.ebt_exit >= pp.ziele.marge ? 'pos' : 'neg') : ''),
-        U.kachel('Wert gehaltener Flächen', fmt(k.halten_wert), 'bei Projektende'),
+        U.kachel('Nettorendite Miete', A.fmtPct(k.nettorendite, 2),
+          A.fmtPct(k.anteil_ertrag * 100) + ' der Nutzfläche wird gehalten'),
 
         U.kachel('Rendite auf Eigenkapital', A.fmtPct(k.roe), 'auf ' + A.fmtMio(k.ek_max) + ' verpflichtet'),
         U.kachel('Interner Zinsfuss', k.irr === null ? '–' : A.fmtPct(k.irr), 'auf Eigenkapital-Cashflow'),

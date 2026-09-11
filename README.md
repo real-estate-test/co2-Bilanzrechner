@@ -285,7 +285,13 @@ alles wenig. Die Gesamtinvestition (Anlagekosten inklusive Vermarktung) wird
 deshalb über den Nutzflächenanteil auf **STWE**, **Miete** und **Exit** verteilt,
 und jedem Block steht seine eigene Kennzahl gegenüber: *EBT STWE* als
 (Erlös − anteilige Investition) ÷ anteilige Investition, dasselbe für den
-Exit-Anteil, und für den Mietanteil die Brutto- und Nettorendite. Der
+Exit-Anteil, und für den Mietanteil die Brutto- und Nettorendite.
+
+Der Mietanteil wird gerechnet, als bliebe er im Bestand — ein Verkauf an einen
+Investor ist aber jederzeit eine Option. Eine eigene Zeile beantwortet deshalb,
+zu welchen Konditionen das möglich wäre: Ertragswert, Gewinn gegenüber der
+anteiligen Investition und das EBT darauf. Sie doppelt den Exit-Block bewusst —
+dort steht der geplante Verkauf, hier die Möglichkeit. Der
 Flächenschlüssel behandelt jeden Quadratmeter gleich — wo Gewerbe im Erdgeschoss
 anders kostet als Wohnen darüber, bildet er das nicht ab.
 

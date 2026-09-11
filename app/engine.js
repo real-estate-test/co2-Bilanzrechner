@@ -1351,6 +1351,14 @@ window.APP = window.APP || {};
 
     var ebtStwe = gi_stwe > 0 ? (ERT.stwe_erloes - gi_stwe) / gi_stwe * 100 : 0;
     var ebtExit = gi_exit > 0 ? (ERT.exit_wert - gi_exit) / gi_exit * 100 : 0;
+
+    /* Der Mietanteil wird gerechnet, als bliebe er im Bestand. Ein
+       Verkauf an einen Investor ist aber jederzeit eine Möglichkeit,
+       und die Frage «zu welchen Konditionen wäre das möglich?» stellt
+       sich vor jedem Entscheid. Deshalb dieselbe Rechnung wie beim
+       Exit, angewandt auf den Ertragswert der gehaltenen Flächen. */
+    var gewinnMieteVerkauf = ERT.halten_wert - gi_miete;
+    var ebtMieteVerkauf = gi_miete > 0 ? gewinnMieteVerkauf / gi_miete * 100 : 0;
     /* ROE auf das verpflichtete Eigenkapital (Quote × Gesamtinvestition).
        Die effektiv gebundene Spitze wird separat ausgewiesen — sie liegt bei
        hohem Vorverkauf deutlich tiefer und würde die Kennzahl schönen. */
@@ -1508,7 +1516,9 @@ window.APP = window.APP || {};
         anteil_miete: ERT.anteil_miete,
         anteil_exit: ERT.anteil_exit,
         ebt_stwe: ebtStwe,
-        ebt_exit: ebtExit
+        ebt_exit: ebtExit,
+        gewinn_miete_verkauf: gewinnMieteVerkauf,
+        ebt_miete_verkauf: ebtMieteVerkauf
       }
     };
   };

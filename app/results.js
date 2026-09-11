@@ -181,7 +181,7 @@ window.APP = window.APP || {};
         U.kachel('Gesamtinvestition Anteil Miete', fmt(k.gi_miete), anteilText(k.anteil_miete)),
         U.kachel('Sollmiete', fmt(k.sollmiete), 'pro Jahr, Miete und Exit'),
         U.kachel('Bruttorendite Miete', A.fmtPct(k.bruttorendite, 2),
-          'auf ' + A.fmtMio(k.ak_ertrag) + ' anteilige AK · Ziel ' + A.fmtPct(pp.ziele.bruttorendite, 2),
+          'auf ' + A.fmtMio(k.ak_ertrag) + ' anteilige Investition · Ziel ' + A.fmtPct(pp.ziele.bruttorendite, 2),
           k.bruttorendite >= pp.ziele.bruttorendite ? 'pos' : ''),
         U.kachel('Nettorendite Miete', A.fmtPct(k.nettorendite, 2),
           A.fmtPct(k.anteil_ertrag * 100) + ' der Nutzfläche wird gehalten'),
@@ -275,18 +275,30 @@ window.APP = window.APP || {};
         (k.irr === null ? ' Ohne Vorzeichenwechsel im Zahlungsstrom ist er nicht bestimmbar.' : ''));
 
       fz('Bruttorendite Ertragsflächen',
-        'Sollmiete ÷ anteilige Anlagekosten',
+        'Sollmiete ÷ anteilige Investition',
         fmt(r.ertraege.sollmiete) + ' ÷ ' + fmt(k.ak_ertrag),
         A.fmtPct(k.bruttorendite, 2),
-        'Anteilige Anlagekosten = Anlagekosten × ' + A.fmtPct(k.anteil_ertrag * 100) +
-        ' Anteil gehaltener Nutzfläche. Verkaufte Flächen liefern keinen Mietertrag und ' +
-        'gehören deshalb nicht in den Nenner.');
+        'Anteilige Investition = Anlagekosten × ' + A.fmtPct(k.anteil_ertrag * 100) +
+        ' Anteil gehaltener Nutzfläche, zuzüglich der Vermarktungskosten, die auf diese ' +
+        'Flächen entfallen. Verkaufte Flächen liefern keinen Mietertrag und gehören ' +
+        'deshalb nicht in den Nenner. Dieselbe Grundlage verwenden die EBT-Kennzahlen ' +
+        'je Verwertungsart.');
 
       fz('Nettorendite Ertragsflächen',
-        'Nettoertrag ÷ anteilige Anlagekosten',
+        'Nettoertrag ÷ anteilige Investition',
         fmt(r.betrieb.noi_a) + ' ÷ ' + fmt(k.ak_ertrag),
         A.fmtPct(k.nettorendite, 2),
         'Nettoertrag = Sollmiete abzüglich Leerstand und Bewirtschaftungskosten.');
+
+      fz('EBT je Verwertungsart',
+        '(Erlös − anteilige Investition) ÷ anteilige Investition',
+        'STWE ' + fmt(k.stwe_erloes) + ' ÷ ' + fmt(k.gi_stwe),
+        A.fmtPct(k.ebt_stwe),
+        'Die Anlagekosten werden nach Nutzfläche verteilt, die Vermarktungskosten nach ' +
+        'ihrem Verursacher: Verkaufsprovision und Beurkundung auf den STWE-Anteil, die ' +
+        'Exit-Nebenkosten auf den Exit-Anteil, die Erstvermietung auf die vermieteten ' +
+        'Flächen nach ihrer Miete; Marketing und Musterwohnung nach Fläche. Die drei ' +
+        'Blöcke ergeben zusammen wieder die Gesamtinvestition.');
 
       U.leeren(formeln).appendChild(U.tabelle([
         { label: 'Kennzahl', w: '26%' }, { label: 'Formel', w: '22%' },

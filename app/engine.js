@@ -584,7 +584,10 @@ window.APP = window.APP || {};
       /* Getrennt nach Verwertung — Grundlage der anteiligen
          Investition je Block. nwf_halten bleibt die Summe aus Miete
          und Exit, weil die Renditekennzahlen darauf aufbauen. */
-      nwf_miete: 0, nwf_exit: 0
+      nwf_miete: 0, nwf_exit: 0,
+      /* Getrennt, weil die Erstvermietungsprovision auf beide
+         entfällt und nach Miete verteilt werden muss. */
+      sollmiete_miete: 0, sollmiete_exit: 0
     };
 
     A.TEILE.forEach(function (T) {
@@ -633,6 +636,7 @@ window.APP = window.APP || {};
           r.exit_wert += pos.wert;
           r.sollmiete += miete_a;
           r.sollmiete_halten += miete_a;
+          r.sollmiete_exit += miete_a;
           if (!istPP) { r.nwf_halten += menge; r.nwf_exit += menge; }
         } else {
           var rh = Math.max(0.5, num(p.bewertung.rendite_halten));
@@ -644,6 +648,7 @@ window.APP = window.APP || {};
           r.halten_wert += pos.wert;
           r.sollmiete += miete_a;
           r.sollmiete_halten += miete_a;
+          r.sollmiete_miete += miete_a;
           if (!istPP) { r.nwf_halten += menge; r.nwf_miete += menge; }
         }
         r.positionen.push(pos);
@@ -673,26 +678,33 @@ window.APP = window.APP || {};
     var v = p.vermarktung, z = [];
     var verkaufsbasis = ERT.stwe_erloes + ERT.exit_wert;
 
-    function zeile(id, label, basisText, wert) {
+    /* «traeger» sagt, welcher Verwertungsart die Kosten anzulasten
+       sind. Eine Verkaufsprovision entsteht nur für verkaufte
+       Wohnungen; sie über die Fläche auch dem Mietanteil anzuhängen
+       verfälschte dessen Ergebnis.
+         stwe | exit    — allein diesem Anteil
+         ertrag         — den vermieteten Flächen, nach ihrer Miete
+         flaeche        — allen, nach Nutzfläche */
+    function zeile(id, label, basisText, wert, traeger) {
       var iv = ist(p, 'vermarktung.' + id);
-      z.push({ id: id, label: label, basis: basisText,
+      z.push({ id: id, label: label, basis: basisText, traeger: traeger,
                betrag: iv !== null ? iv : wert, soll: wert, ist: iv !== null });
     }
 
     zeile('verkauf', 'Verkaufsprovision STWE', A.fmt(v.verkauf_pct, 2) + ' %',
-      ERT.stwe_erloes * pct(v.verkauf_pct));
+      ERT.stwe_erloes * pct(v.verkauf_pct), 'stwe');
     zeile('beurkundung', 'Beurkundung Verkauf (Anteil Verkäufer)',
-      A.fmt(v.beurkundung_verkauf, 2) + ' %', ERT.stwe_erloes * pct(v.beurkundung_verkauf));
+      A.fmt(v.beurkundung_verkauf, 2) + ' %', ERT.stwe_erloes * pct(v.beurkundung_verkauf), 'stwe');
     zeile('exit_nk', 'Verkaufsnebenkosten Exit an Investor',
-      A.fmt(v.exit_nebenkosten, 2) + ' %', ERT.exit_wert * pct(v.exit_nebenkosten));
+      A.fmt(v.exit_nebenkosten, 2) + ' %', ERT.exit_wert * pct(v.exit_nebenkosten), 'exit');
     zeile('vermietung', 'Erstvermietungsprovision',
       A.fmt(v.vermietung_monate, 2) + ' Monatsmieten',
-      ERT.sollmiete_halten / 12 * num(v.vermietung_monate));
+      ERT.sollmiete_halten / 12 * num(v.vermietung_monate), 'ertrag');
     zeile('marketing', 'Marketing / Werbung',
       v.marketing_basis === 'pauschal' ? 'pauschal' : A.fmt(v.marketing_pct, 2) + ' %',
       v.marketing_basis === 'pauschal' ? num(v.marketing_fix)
-        : (verkaufsbasis + ERT.halten_wert) * pct(v.marketing_pct));
-    zeile('muster', 'Musterwohnung / Visualisierung', 'pauschal', num(v.muster));
+        : (verkaufsbasis + ERT.halten_wert) * pct(v.marketing_pct), 'flaeche');
+    zeile('muster', 'Musterwohnung / Visualisierung', 'pauschal', num(v.muster), 'flaeche');
 
     var total = z.reduce(function (s, x) { return s + x.betrag; }, 0);
     return { zeilen: z, total: total };
@@ -1328,27 +1340,31 @@ window.APP = window.APP || {};
     /* Bruttorendite auf die ANTEILIGEN Anlagekosten der Ertragsflächen.
        Auf die gesamten Anlagekosten bezogen wäre sie bei Mischprojekten
        verzerrt, weil verkaufte Flächen keinen Mietertrag liefern. */
-    var ak_ertrag = anlagekosten * ERT.anteil_ertrag;
+    /* --- Aufteilung nach Verwertung -------------------------------
+       Die Anlagekosten werden über den Nutzflächenanteil verteilt, die
+       Vermarktung dagegen verursachungsgerecht: Eine Verkaufsprovision
+       entsteht nur für verkaufte Wohnungen. Zusammen ergeben die drei
+       Blöcke wieder die Gesamtinvestition. */
+    var vm = E.vermarktungAufteilen(VER, ERT);
+    var gi_stwe  = anlagekosten * ERT.anteil_stwe  + vm.stwe;
+    var gi_miete = anlagekosten * ERT.anteil_miete + vm.miete;
+    var gi_exit  = anlagekosten * ERT.anteil_exit  + vm.exit;
+
+    /* Die Renditen der Ertragsflächen beziehen sich auf dieselbe
+       Grundlage wie die EBT-Kacheln: die anteilige Gesamtinvestition
+       inklusive Vermarktung. Zwei Definitionen nebeneinander wären
+       nicht lesbar. */
+    var ak_ertrag = gi_miete + gi_exit;
     var bruttorendite = ak_ertrag > 0 ? ERT.sollmiete / ak_ertrag * 100 : 0;
     var nettorendite  = ak_ertrag > 0 ? BET.noi_a / ak_ertrag * 100 : 0;
     var margeAK = anlagekosten > 0 ? gewinnNach / anlagekosten * 100 : 0;
     var margeErloes = erloese > 0 ? gewinnNach / erloese * 100 : 0;
 
-    /* --- Aufteilung nach Verwertung -------------------------------
-       Die Gesamtinvestition (Anlagekosten inklusive Vermarktung) wird
-       über den Nutzflächenanteil auf die drei Verwertungsarten
-       verteilt. Jedem Block steht sein eigener Erlös gegenüber; die
-       Marge darauf misst, was der Block für sich genommen trägt.
-
-       Der Flächenschlüssel behandelt jeden Quadratmeter gleich. Wo
-       Gewerbe im Erdgeschoss deutlich anders kostet als Wohnen
-       darüber, bildet er das nicht ab — für die Beurteilung eines
-       Mischprojekts ist er trotzdem aussagekräftiger als eine
-       Gesamtmarge über alles. */
-    var gi_stwe  = gesamtinvestition * ERT.anteil_stwe;
-    var gi_miete = gesamtinvestition * ERT.anteil_miete;
-    var gi_exit  = gesamtinvestition * ERT.anteil_exit;
-
+    /* Jedem Block steht sein eigener Erlös gegenüber; die Marge darauf
+       misst, was er für sich genommen trägt. Der Flächenschlüssel der
+       Anlagekosten behandelt jeden Quadratmeter gleich — wo Gewerbe im
+       Erdgeschoss anders kostet als Wohnen darüber, bildet er das
+       nicht ab. */
     var ebtStwe = gi_stwe > 0 ? (ERT.stwe_erloes - gi_stwe) / gi_stwe * 100 : 0;
     var ebtExit = gi_exit > 0 ? (ERT.exit_wert - gi_exit) / gi_exit * 100 : 0;
 
@@ -1521,6 +1537,41 @@ window.APP = window.APP || {};
         ebt_miete_verkauf: ebtMieteVerkauf
       }
     };
+  };
+
+  /* Die Vermarktungskosten auf die Verwertungsarten verteilen. Jede
+     Zeile trägt ihren Verursacher bei sich (siehe E.vermarktung);
+     gemeinsame Posten wie Marketing gehen nach Nutzfläche, die
+     Erstvermietung nach Sollmiete der vermieteten Flächen. */
+  E.vermarktungAufteilen = function (VER, ERT) {
+    var raus = { stwe: 0, miete: 0, exit: 0 };
+    var smErtrag = ERT.sollmiete_miete + ERT.sollmiete_exit;
+
+    (VER.zeilen || []).forEach(function (z) {
+      var b = z.betrag || 0;
+      if (z.traeger === 'stwe') { raus.stwe += b; return; }
+      if (z.traeger === 'exit') { raus.exit += b; return; }
+      if (z.traeger === 'ertrag') {
+        if (smErtrag > 0) {
+          raus.miete += b * ERT.sollmiete_miete / smErtrag;
+          raus.exit  += b * ERT.sollmiete_exit  / smErtrag;
+        } else {
+          raus.miete += b;
+        }
+        return;
+      }
+      /* Vorgabe: nach Nutzfläche. Gibt es keine Flächen, bleibt der
+         Betrag beim Verkaufsanteil — irgendwo muss er hin, sonst
+         fehlte er in der Summe. */
+      if (ERT.nwf_total > 0) {
+        raus.stwe  += b * ERT.anteil_stwe;
+        raus.miete += b * ERT.anteil_miete;
+        raus.exit  += b * ERT.anteil_exit;
+      } else {
+        raus.stwe += b;
+      }
+    });
+    return raus;
   };
 
   /* Projektdauer aus dem Terminplan: vom Kaufdatum bis zum spätesten

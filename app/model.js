@@ -1289,10 +1289,14 @@ window.APP = window.APP || {};
       farbe: 'blau',
       erledigt: false,
       dashboard: false,   // im Portfolio zeigen
-      sia: ''             // Herkunft, falls aus einer SIA-Phase entstanden
+      sia: '',            // Herkunft, falls aus einer SIA-Phase entstanden
+      /* Ein Meilenstein hat keine Dauer: ein Datum, ein Zeichen. Er
+         ist kein eintägiger Vorgang — «Baustart» dauert nicht einen
+         Tag, er findet statt. */
+      meilenstein: false
     };
     Object.keys(vorgabe || {}).forEach(function (k) { v[k] = vorgabe[k]; });
-    v.tage = Math.max(1, Math.round(num0(v.tage)) || 1);
+    v.tage = v.meilenstein ? 1 : (Math.max(1, Math.round(num0(v.tage)) || 1));
     v.verz = Math.round(num0(v.verz));
     return v;
   };
@@ -1371,8 +1375,9 @@ window.APP = window.APP || {};
           if (ringe.indexOf(v.id) < 0) ringe.push(v.id);
         }
       }
-      var tage = Math.max(1, Math.round(num0(v.tage)) || 1);
-      /* Ein Vorgang von einem Tag beginnt und endet am selben Datum. */
+      /* Ein Meilenstein steht auf einem Datum; ein Vorgang von einem
+         Tag beginnt und endet am selben Datum. */
+      var tage = v.meilenstein ? 1 : Math.max(1, Math.round(num0(v.tage)) || 1);
       var ende = A.datumPlusTage(start, tage - 1);
 
       laeuft[v.id] = false;

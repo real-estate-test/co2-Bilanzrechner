@@ -402,7 +402,11 @@ window.APP = window.APP || {};
      aus der Plandauer: So passt der ganze Verlauf ins Bild und aufs
      Blatt — ein quer gedrucktes A4 fasst rund 950 Pixel. */
   var MONATSBREITE = [0, 26, 40, 62];
-  var PASSEND_BREITE = 950;
+  /* Zielbreite der Balkenfläche bei «passend». Bemessen für das quer
+     gedruckte A4: Davon geht die Vorgangstabelle ab, die im Druck auf
+     ihre Lesespalten zusammenschrumpft. Wer am Bildschirm mehr Detail
+     will, nimmt eine der festen Stufen. */
+  var PASSEND_BREITE = 560;
 
   function monatsbreite(anzahl) {
     var b = MONATSBREITE[Z.zoom];
@@ -487,7 +491,10 @@ window.APP = window.APP || {};
     return el('div', { class: 'panelbody noprint',
       style: 'display:flex;gap:10px;align-items:center;flex-wrap:wrap' }, [
       el('button', { class: 'primary schreibend', text: '+ Vorgang',
-        onclick: function () { vorgangAnlegen(p); } }),
+        onclick: function () { vorgangAnlegen(p, false); } }),
+      el('button', { class: 'schreibend', text: '◆ Meilenstein',
+        title: 'Ein Datum ohne Dauer — Baustart, Bezug, Abgabe',
+        onclick: function () { vorgangAnlegen(p, true); } }),
       el('button', { class: 'schreibend', text: 'SIA-Phasen einsetzen',
         title: 'Die zehn SIA-Phasen als verkettete Vorgänge anlegen',
         onclick: function () { siaEinsetzen(p); } }),
@@ -513,16 +520,18 @@ window.APP = window.APP || {};
     ]);
   }
 
-  function vorgangAnlegen(p) {
+  function vorgangAnlegen(p, alsMeilenstein) {
     var liste = A.vorgaenge(p);
     var letzter = liste[liste.length - 1];
     liste.push(A.defVorgang({
       label: '',
+      meilenstein: !!alsMeilenstein,
       /* Ein neuer Vorgang hängt sich hinten an — das ist der Fall, den
          man fast immer meint. Lösen lässt er sich mit einem Handgriff. */
       abh: letzter ? letzter.id : '',
       start: letzter ? '' : (p.startdatum || A.heute()),
-      tage: 20
+      tage: alsMeilenstein ? 1 : 20,
+      farbe: alsMeilenstein ? 'gruen' : 'blau'
     }));
     p.termine.vorgaenge = liste;
     A.markDirty(); A.render();
@@ -603,14 +612,27 @@ window.APP = window.APP || {};
       var g = gerechnet.byId[v.id];
       if (!g) return;
       var x0 = x(g.start), x1 = x(A.datumPlusTage(g.ende, 1));
-      var balken = el('div', {
-        class: 'gbalken' + (v.erledigt ? ' zu' : '') + (g.tage === 1 ? ' punkt' : ''),
-        style: 'left:' + x0 + 'px;top:' + (i * ZEILE + 7) + 'px;' +
-               'width:' + Math.max(4, x1 - x0) + 'px;' +
-               (v.erledigt ? '' : 'background:' + A.ganttFarbe(v.farbe) + ';'),
-        title: (v.label || 'ohne Bezeichnung') + '\n' +
-               A.datum(g.start) + ' – ' + A.datum(g.ende) + ' · ' + g.tage + ' Tage' +
-               (v.erledigt ? '\nerledigt' : '') });
+      var balken;
+
+      if (v.meilenstein) {
+        /* Die Raute sitzt mittig auf ihrem Datum — deshalb die halbe
+           Kantenlänge nach links. */
+        balken = el('div', {
+          class: 'gmeilenstein' + (v.erledigt ? ' zu' : ''),
+          style: 'left:' + (x0 - 7) + 'px;top:' + (i * ZEILE + 8) + 'px;' +
+                 (v.erledigt ? '' : 'background:' + A.ganttFarbe(v.farbe) + ';'),
+          title: (v.label || 'ohne Bezeichnung') + '\n' + A.datum(g.start) +
+                 (v.erledigt ? '\nerledigt' : '') });
+      } else {
+        balken = el('div', {
+          class: 'gbalken' + (v.erledigt ? ' zu' : '') + (g.tage === 1 ? ' punkt' : ''),
+          style: 'left:' + x0 + 'px;top:' + (i * ZEILE + 7) + 'px;' +
+                 'width:' + Math.max(4, x1 - x0) + 'px;' +
+                 (v.erledigt ? '' : 'background:' + A.ganttFarbe(v.farbe) + ';'),
+          title: (v.label || 'ohne Bezeichnung') + '\n' +
+                 A.datum(g.start) + ' – ' + A.datum(g.ende) + ' · ' + g.tage + ' Tage' +
+                 (v.erledigt ? '\nerledigt' : '') });
+      }
       ziehbar(p, v, g, balken, tagBreite);
       raster.appendChild(balken);
     });
@@ -651,10 +673,13 @@ window.APP = window.APP || {};
 
     var RAND = 6;                    // Breite des Griffs zum Verlängern
     var zieht = null;
+    /* Ein Meilenstein hat keine Länge — bei ihm gibt es nur den einen
+       Griff zum Verschieben. */
+    var nurSchieben = !!v.meilenstein;
 
     balken.addEventListener('pointermove', function (e) {
       if (zieht) return;
-      var amRand = e.offsetX > balken.offsetWidth - RAND;
+      var amRand = !nurSchieben && e.offsetX > balken.offsetWidth - RAND;
       balken.style.cursor = amRand ? 'col-resize' : 'grab';
     });
 
@@ -662,7 +687,8 @@ window.APP = window.APP || {};
       if (e.button !== 0 || !A.darfBearbeiten()) return;
       e.preventDefault();
       zieht = {
-        art: e.offsetX > balken.offsetWidth - RAND ? 'laenge' : 'schieben',
+        art: (!nurSchieben && e.offsetX > balken.offsetWidth - RAND)
+               ? 'laenge' : 'schieben',
         x: e.clientX,
         links0: parseFloat(balken.style.left) || 0,
         breite0: parseFloat(balken.style.width) || 0,
@@ -686,6 +712,8 @@ window.APP = window.APP || {};
            wandert die Verzögerung, und die kann nicht negativ werden. */
         if (v.abh) tage = Math.max(tage, -zieht.verz0);
         balken.style.left = (zieht.links0 + tage * tagBreite) + 'px';
+        /* Die Raute steht mit halber Kantenlänge Versatz — der bleibt
+           beim Ziehen erhalten, weil links0 ihn schon enthält. */
       }
       zieht.tageVersatz = tage;
       anzeigeZeigen(balken, v, g, zieht);
@@ -729,10 +757,12 @@ window.APP = window.APP || {};
     } else {
       start = A.datumPlusTage(zieht.start0, zieht.tageVersatz);
     }
-    anzeige.textContent = A.datum(start) + ' – ' +
-      A.datum(A.datumPlusTage(start, tage - 1)) + ' · ' + tage + ' Tage' +
-      (zieht.art === 'schieben' && v.abh
-        ? ' · Verzug ' + Math.max(0, zieht.verz0 + zieht.tageVersatz) + ' T' : '');
+    var verzug = zieht.art === 'schieben' && v.abh
+      ? ' · Verzug ' + Math.max(0, zieht.verz0 + zieht.tageVersatz) + ' T' : '';
+    anzeige.textContent = v.meilenstein
+      ? A.datum(start) + verzug
+      : A.datum(start) + ' – ' + A.datum(A.datumPlusTage(start, tage - 1)) +
+        ' · ' + tage + ' Tage' + verzug;
     var k = balken.getBoundingClientRect();
     anzeige.style.left = (k.left + window.scrollX) + 'px';
     anzeige.style.top = (k.top + window.scrollY - 24) + 'px';
@@ -769,8 +799,12 @@ window.APP = window.APP || {};
     /* Die Nummer ist zugleich der Griff zum Umsortieren. Nur sie ist
        ziehbar, nicht die ganze Zeile — sonst liesse sich in den
        Eingabefeldern kein Text mehr markieren. */
-    var griff = el('span', { class: 'gc gc-nr', text: String(i + 1),
-      draggable: 'true', title: 'ziehen, um die Reihenfolge zu ändern' });
+    var griff = el('span', { class: 'gc gc-nr', draggable: 'true',
+      title: 'ziehen, um die Reihenfolge zu ändern' }, [
+      v.meilenstein ? el('span', { class: 'mraute klein',
+        style: 'background:' + (v.erledigt ? '#c4cad3' : A.ganttFarbe(v.farbe)) }) : null,
+      el('span', { text: String(i + 1) })
+    ].filter(Boolean));
     griff.addEventListener('dragstart', function (e) {
       e.dataTransfer.setData('text/plain', v.id);
       e.dataTransfer.effectAllowed = 'move';
@@ -846,31 +880,44 @@ window.APP = window.APP || {};
       zeile.appendChild(el('span', { class: 'gc gc-datum gerechnet',
         text: A.datum(g.start), title: 'gerechnet aus der Abhängigkeit' }));
     } else {
-      var st = el('input', { type: 'date', value: v.start || '' });
+      /* Ein Kalenderfeld druckt sein Symbol und die Schreibweise des
+         Browsers — auf Papier steht stattdessen die ausgeschriebene
+         Fassung, wie überall sonst im Werkzeug. */
+      var st = el('input', { type: 'date', value: v.start || '', class: 'nichtdrucken' });
       st.addEventListener('change', function () { v.start = st.value; geaendert(); });
-      zeile.appendChild(el('span', { class: 'gc gc-datum' }, [st]));
+      zeile.appendChild(el('span', { class: 'gc gc-datum' }, [
+        st, el('span', { class: 'nurdruck', text: A.datum(g.start) })
+      ]));
     }
 
-    /* Dauer */
-    var tage = el('input', { type: 'number', class: 'mittig', min: '1',
-      value: String(v.tage || 1) });
-    tage.addEventListener('change', function () {
-      v.tage = Math.max(1, Math.round(parseFloat(tage.value) || 1)); geaendert();
-    });
-    zeile.appendChild(el('span', { class: 'gc gc-tage' }, [tage]));
+    /* Dauer und Ende — ein Meilenstein hat beides nicht. */
+    if (v.meilenstein) {
+      zeile.appendChild(el('span', { class: 'gc gc-tage gerechnet', text: '—',
+        title: 'Ein Meilenstein hat keine Dauer' }));
+      zeile.appendChild(el('span', { class: 'gc gc-datum gerechnet', text: '—' }));
+    } else {
+      var tage = el('input', { type: 'number', class: 'mittig', min: '1',
+        value: String(v.tage || 1) });
+      tage.addEventListener('change', function () {
+        v.tage = Math.max(1, Math.round(parseFloat(tage.value) || 1)); geaendert();
+      });
+      zeile.appendChild(el('span', { class: 'gc gc-tage' }, [tage]));
 
-    /* Ende — immer gerechnet. Wer es ändert, ändert die Dauer. */
-    var en = el('input', { type: 'date', value: g.ende || '' });
-    en.addEventListener('change', function () {
-      var t = A.tageZwischen(g.start, en.value);
-      if (t === null || t < 0) {
-        A.meldung('warn', 'Das Ende liegt vor dem Start.');
-        A.render(); return;
-      }
-      v.tage = t + 1;
-      geaendert();
-    });
-    zeile.appendChild(el('span', { class: 'gc gc-datum' }, [en]));
+      /* Ende — immer gerechnet. Wer es ändert, ändert die Dauer. */
+      var en = el('input', { type: 'date', value: g.ende || '', class: 'nichtdrucken' });
+      en.addEventListener('change', function () {
+        var t = A.tageZwischen(g.start, en.value);
+        if (t === null || t < 0) {
+          A.meldung('warn', 'Das Ende liegt vor dem Start.');
+          A.render(); return;
+        }
+        v.tage = t + 1;
+        geaendert();
+      });
+      zeile.appendChild(el('span', { class: 'gc gc-datum' }, [
+        en, el('span', { class: 'nurdruck', text: A.datum(g.ende) })
+      ]));
+    }
 
     /* Erledigt */
     var hk = el('input', { type: 'checkbox', checked: v.erledigt ? '' : null });
@@ -885,7 +932,8 @@ window.APP = window.APP || {};
     });
     fw.addEventListener('change', function () { v.farbe = fw.value; geaendert(); });
     zeile.appendChild(el('span', { class: 'gc gc-farbe' }, [
-      el('span', { class: 'farbtupfer', style: 'background:' + A.ganttFarbe(v.farbe) }),
+      el('span', { class: v.meilenstein ? 'mraute klein' : 'farbtupfer',
+        style: 'background:' + A.ganttFarbe(v.farbe) }),
       fw
     ]));
 

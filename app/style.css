@@ -687,12 +687,30 @@ tr.brentfaellt input { color: var(--muted); }
 /* Die Pfeilebene liegt über den Balken und fängt keine Klicks ab. */
 .gpfeile { position: absolute; left: 0; top: 38px; pointer-events: none; z-index: 2; }
 
+/* Meilenstein: ein Datum, kein Zeitraum. Gedrehtes Quadrat statt
+   eigener Form — so trägt es dieselbe Farbwahl wie ein Balken. */
+.gmeilenstein {
+  position: absolute; width: 14px; height: 14px;
+  transform: rotate(45deg); border-radius: 2px;
+  box-shadow: 0 1px 2px rgba(16,21,28,.18); z-index: 1;
+}
+.gmeilenstein.zu { background: #dfe3e8 !important; box-shadow: none; opacity: .8; }
+
+/* Dieselbe Raute klein, für Tabelle und Farbwahl. */
+.mraute {
+  display: inline-block; width: 9px; height: 9px; flex: none;
+  transform: rotate(45deg); border-radius: 1px;
+}
+.mraute.klein { width: 8px; height: 8px; }
+
 /* --- Ziehen ------------------------------------------------------- */
 
 /* Der Balken ist anfassbar: in der Mitte zum Verschieben, am rechten
    Rand zum Verlängern. Den Cursor setzt das Skript, weil er vom Ort
    innerhalb des Balkens abhängt. */
-.gbalken { touch-action: none; }
+.gbalken, .gmeilenstein { touch-action: none; }
+.gmeilenstein:not(.zu) { cursor: grab; }
+.gmeilenstein.zieht { opacity: .75; }
 .gbalken.zu { cursor: default; }
 .gbalken.zieht { opacity: .75; box-shadow: 0 2px 8px rgba(16,21,28,.28); }
 /* Der Griff zum Verlängern, nur beim Überfahren sichtbar. */
@@ -735,6 +753,10 @@ body.seite-termine #inhalt { max-width: none; }
      rollt nicht, sondern steht ganz da. */
   .gscroll { overflow: visible !important; }
   .gc-abh, .gc-verz, .gc-farbe, .gc-weg { display: none; }
+  /* Die Datumsspalten brauchen auf Papier kein Kalendersymbol und
+     damit weniger Platz — der geht an das Diagramm. */
+  .gc-datum { width: 86px; }
+  .gc-label { width: 170px; }
   .gantt { border-color: #ccc; }
   .gzeile { border-color: #e4e4e4; }
   .gc input, .gc select { border-color: transparent !important; }

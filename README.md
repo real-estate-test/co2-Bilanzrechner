@@ -184,6 +184,11 @@ Abhängigkeiten. Ein Vorgang mit Abhängigkeit beginnt am Tag nach dem Ende sein
 Vorgängers — sein Startdatum wird gerechnet, und verschiebt sich etwas, wandert
 die ganze Kette mit. Ringschlüsse werden abgewiesen, bevor sie entstehen.
 
+Neben Vorgängen mit Dauer gibt es **Meilensteine**: ein Datum ohne Dauer, als
+Raute gezeichnet, sonst mit denselben Spalten — Bezeichnung, Abhängigkeit,
+Verzögerung, Farbe, Erledigt-Haken. Ein Meilenstein kann an einem Vorgang
+hängen und ein Vorgang an ihm.
+
 Ein neues Projekt füllt der Knopf **SIA-Phasen einsetzen** mit den zehn Phasen,
 verkettet und mit Dauern aus dem Bauzeitmodell; danach ist jede Zeile frei.
 Erledigtes wird grau und durchgestrichen. Die Zeitachse lässt sich zwischen

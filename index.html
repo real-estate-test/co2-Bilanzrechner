@@ -1,426 +1,73 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CO₂-Bilanz-Rechner · Mehrfamilienhaus</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,900&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-<style>
-  :root{
-    --paper:#efe9dd; --paper2:#e6dfd0; --ink:#18130c; --muted:#736a5c; --line:#d3c9b5;
-    --accent:#c2532b; --good:#4a7a5c;
-    --c-trag:#8a3b1e; --c-trenn:#b05c2e; --c-innen:#cc8a44; --c-fass:#6f6f38;
-    --c-fenster:#3f6b6b; --c-dach:#4a7a5c; --c-rand:#9a9a6a; --c-estrich:#9a7b56; --c-boden:#c0a06a;
-    --c-op:#2c3e50;
-  }
-  *{box-sizing:border-box;margin:0;padding:0}
-  html{-webkit-text-size-adjust:100%}
-  body{
-    background:var(--paper);
-    color:var(--ink);
-    font-family:'IBM Plex Sans',sans-serif;
-    line-height:1.5;
-    background-image:radial-gradient(var(--line) 0.5px,transparent 0.5px);
-    background-size:22px 22px;
-    padding:28px 18px 80px;
-  }
-  .wrap{max-width:1080px;margin:0 auto}
-  .num{font-family:'IBM Plex Mono',monospace;font-feature-settings:"tnum"}
-
-  header{border-bottom:2px solid var(--ink);padding-bottom:18px;margin-bottom:6px}
-  .eyebrow{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--accent);font-weight:600}
-  h1{font-family:'Fraunces',serif;font-weight:900;font-size:clamp(30px,5vw,52px);line-height:.98;letter-spacing:-.01em;margin:8px 0 10px}
-  .sub{color:var(--muted);max-width:62ch;font-size:14.5px}
-
-  .disclaimer{
-    background:var(--paper2);border:1px solid var(--line);border-left:4px solid var(--accent);
-    padding:12px 15px;margin:20px 0 30px;font-size:12.5px;color:var(--muted);border-radius:2px
-  }
-  .disclaimer strong{color:var(--ink)}
-
-  .grid{display:grid;grid-template-columns:1.15fr 1fr;gap:34px;align-items:start}
-  @media(max-width:860px){.grid{grid-template-columns:1fr;gap:30px}}
-
-  .panel-title{font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink);font-weight:600;
-    display:flex;align-items:center;gap:10px;margin-bottom:14px}
-  .panel-title::before{content:"";width:22px;height:2px;background:var(--accent)}
-
-  .field{margin-bottom:16px}
-  .field>label{display:block;font-size:11px;font-weight:600;letter-spacing:.04em;color:var(--muted);text-transform:uppercase;margin-bottom:5px}
-  select{
-    width:100%;font-family:'IBM Plex Sans',sans-serif;font-size:14px;color:var(--ink);
-    background:#faf7f0;border:1px solid var(--line);border-radius:2px;padding:9px 11px;cursor:pointer;
-    appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path d='M2 4l4 4 4-4' stroke='%2318130c' stroke-width='1.4' fill='none'/></svg>");
-    background-repeat:no-repeat;background-position:right 11px center;transition:border-color .15s
-  }
-  select:focus{outline:none;border-color:var(--accent)}
-  .swatch{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:7px;vertical-align:middle}
-
-  .row2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-  .toggle{display:flex;align-items:center;gap:10px;background:#faf7f0;border:1px solid var(--line);border-radius:2px;padding:9px 11px;cursor:pointer;user-select:none}
-  .toggle input{accent-color:var(--good);width:17px;height:17px;cursor:pointer}
-  .toggle span{font-size:13.5px}
-
-  .slider-box{background:#faf7f0;border:1px solid var(--line);border-radius:2px;padding:14px 14px 10px}
-  .slider-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px}
-  .slider-head .yv{font-family:'Fraunces',serif;font-weight:900;font-size:34px;line-height:1;color:var(--accent)}
-  .slider-head .yl{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
-  input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:3px;background:var(--line);border-radius:3px;outline:none;margin:6px 0}
-  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;background:var(--accent);cursor:pointer;border:3px solid var(--paper);box-shadow:0 0 0 1px var(--accent)}
-  input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;background:var(--accent);cursor:pointer;border:3px solid var(--paper);box-shadow:0 0 0 1px var(--accent)}
-  .ticks{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);font-family:'IBM Plex Mono',monospace}
-
-  .ebf{display:flex;align-items:center;gap:10px;background:#faf7f0;border:1px solid var(--line);border-radius:2px;padding:8px 11px}
-  .ebf input{width:90px;font-family:'IBM Plex Mono',monospace;font-size:15px;border:none;background:transparent;color:var(--ink);text-align:right}
-  .ebf input:focus{outline:none}
-  .ebf .lab{font-size:13px;color:var(--muted);flex:1}
-  .ebf .unit{font-size:12px;color:var(--muted);font-family:'IBM Plex Mono',monospace}
-
-  /* results */
-  .result{background:var(--ink);color:var(--paper);border-radius:4px;padding:24px 22px;position:sticky;top:18px}
-  .big{font-family:'Fraunces',serif;font-weight:900;font-size:clamp(42px,8vw,68px);line-height:.92;letter-spacing:-.02em}
-  .big small{font-size:.32em;font-weight:500;letter-spacing:.02em;color:#b9b09c;display:inline-block;margin-left:6px}
-  .big-label{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#b9b09c;margin-bottom:4px}
-  .perm2{font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:#cdc4b0;margin-top:8px}
-  .perm2 b{color:var(--paper)}
-
-  .split{display:flex;margin:22px 0 6px;border-radius:3px;overflow:hidden;height:46px;font-family:'IBM Plex Mono',monospace}
-  .split>div{display:flex;flex-direction:column;justify-content:center;padding:0 12px;color:#fff;transition:flex-grow .35s ease}
-  .split .s-emb{background:var(--c-trag)}
-  .split .s-op{background:var(--c-op)}
-  .split .pc{font-size:18px;font-weight:600;line-height:1}
-  .split .nm{font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;opacity:.85;margin-top:2px}
-
-  .cross{font-size:12px;color:#cdc4b0;border-top:1px solid #39322a;padding-top:14px;margin-top:16px;line-height:1.5}
-  .cross b{color:var(--paper)}
-
-  /* breakdown */
-  .breakdown{margin-top:34px;background:#faf7f0;border:1px solid var(--line);border-radius:4px;padding:22px}
-  .stack{display:flex;height:30px;border-radius:3px;overflow:hidden;margin:6px 0 20px;border:1px solid var(--line)}
-  .stack>div{transition:flex-grow .35s ease;min-width:0}
-  table{width:100%;border-collapse:collapse;font-size:13px}
-  th{text-align:left;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600;padding:6px 6px;border-bottom:1px solid var(--line)}
-  td{padding:7px 6px;border-bottom:1px solid var(--line)}
-  td.r{text-align:right;font-family:'IBM Plex Mono',monospace}
-  tr:last-child td{border-bottom:none}
-  .tg td{font-weight:600}
-  .barcell{position:relative;width:34%}
-  .minibar{height:8px;border-radius:2px}
-  .lab-name{display:flex;align-items:center}
-
-  .foot{margin-top:30px;font-size:11.5px;color:var(--muted);line-height:1.6}
-  .foot code{font-family:'IBM Plex Mono',monospace;background:var(--paper2);padding:1px 5px;border-radius:2px}
-  .reset{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;background:none;border:1px solid var(--ink);color:var(--ink);padding:7px 14px;border-radius:2px;cursor:pointer;margin-top:8px}
-  .reset:hover{background:var(--ink);color:var(--paper)}
-</style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Projektrechner · Immobilienentwicklung</title>
+<meta name="description" content="Bewertungstool für Immobilienprojekte: Erwerb, Baukosten nach BKP, Erträge, Verwertung, Finanzierung und Portfolio-Tracking.">
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="app/style.css">
 </head>
 <body>
-<div class="wrap">
-  <header>
-    <div class="eyebrow">Lebenszyklus · grau + Betrieb · CH</div>
-    <h1>CO₂-Bilanz<br>Mehrfamilienhaus</h1>
-    <p class="sub">Wähle Konstruktion, Heizart und Betrachtungszeitraum. Der Rechner zeigt die kumulierte Treibhausgasbilanz und ihre Verteilung auf graue Energie (Erstellung) und laufenden Betrieb.</p>
-  </header>
 
-  <div class="disclaimer">
-    <strong>Wichtig:</strong> Alle Werte sind gerundete <strong>Durchschnitts-/Richtwerte</strong> in der Grössenordnung der KBOB-Ökobilanzdaten und der SIA-2040-Logik. Sie dienen dazu, Hebel und Verhältnisse sichtbar zu machen, und ersetzen <strong>keine projektbezogene Ökobilanz</strong>. Bezugsgrösse ist kg CO₂-eq pro m² Energiebezugsfläche (EBF).
-  </div>
+<div id="app">
 
-  <div class="grid">
-    <!-- INPUTS -->
-    <section>
-      <div class="panel-title">Konstruktion</div>
+  <aside id="nav">
+    <div class="brand">
+      <span>Projektrechner</span>
+      <b>Immobilienentwicklung</b>
+    </div>
 
-      <div class="field">
-        <label>Tragstruktur — Decken, tragende Wände, Fundament</label>
-        <select id="trag" data-color="--c-trag"></select>
+    <div class="navblock">
+      <label for="projektwahl">Projekt</label>
+      <select id="projektwahl"></select>
+    </div>
+
+    <div class="navblock">
+      <label>Detailtiefe</label>
+      <div class="seg" id="stufenwahl" style="width:100%">
+        <button data-stufe="schnell" title="Nur die wesentlichen Felder">Schnell</button>
+        <button data-stufe="standard" title="Übliche Bearbeitungstiefe">Standard</button>
+        <button data-stufe="detail" title="Alle Positionen">Detail</button>
       </div>
-      <div class="row2">
-        <div class="field">
-          <label>Wohnungstrennwände</label>
-          <select id="trenn" data-color="--c-trenn"></select>
-        </div>
-        <div class="field">
-          <label>Innenwände (Wohnung)</label>
-          <select id="innen" data-color="--c-innen"></select>
-        </div>
-      </div>
-      <div class="row2">
-        <div class="field">
-          <label>Fassade (Dämmung + Putz)</label>
-          <select id="fass" data-color="--c-fass"></select>
-        </div>
-        <div class="field">
-          <label>Fenster</label>
-          <select id="fenster" data-color="--c-fenster"></select>
-        </div>
-      </div>
-      <div class="row2">
-        <div class="field">
-          <label>Flachdach</label>
-          <select id="dach" data-color="--c-dach"></select>
-        </div>
-        <div class="field">
-          <label>Dachrand-Verkleidung</label>
-          <select id="rand" data-color="--c-rand"></select>
-        </div>
-      </div>
-      <div class="row2">
-        <div class="field">
-          <label>Estrich</label>
-          <select id="estrich" data-color="--c-estrich"></select>
-        </div>
-        <div class="field">
-          <label>Bodenbelag</label>
-          <select id="boden" data-color="--c-boden"></select>
-        </div>
-      </div>
+    </div>
 
-      <div class="panel-title" style="margin-top:24px">Energie &amp; Betrieb</div>
-      <div class="field">
-        <label>Heizung &amp; Warmwasser</label>
-        <select id="heiz" data-color="--c-op"></select>
-      </div>
-      <label class="toggle" style="margin-bottom:16px">
-        <input type="checkbox" id="pv" checked>
-        <span>PV-Anlage mit Fokus Eigennutzung (reduziert Betriebsemissionen)</span>
-      </label>
+    <nav id="seiten"></nav>
 
-      <div class="panel-title" style="margin-top:24px">Parameter</div>
-      <div class="slider-box" style="margin-bottom:14px">
-        <div class="slider-head">
-          <div><span class="yv num" id="yearVal">40</span> <span class="yl">Jahre Betrachtung</span></div>
-          <div class="yl num" id="yearHint"></div>
-        </div>
-        <input type="range" id="years" min="1" max="80" value="40" step="1">
-        <div class="ticks"><span>1</span><span>20</span><span>40</span><span>60</span><span>80</span></div>
-      </div>
-      <div class="ebf">
-        <span class="lab">Energiebezugsfläche (EBF)</span>
-        <input type="number" id="ebf" value="1500" min="50" step="50">
-        <span class="unit">m²</span>
-      </div>
-      <button class="reset" id="reset">Zurücksetzen</button>
-    </section>
+    <div class="navfoot">
+      <button id="btn-neu" class="schreibend">+ Neues Projekt</button>
+      <button id="btn-duplizieren" class="schreibend">Duplizieren</button>
+      <button id="btn-export">Export / Import</button>
+    </div>
 
-    <!-- RESULTS -->
-    <section>
-      <div class="result">
-        <div class="big-label">Kumulierte Bilanz über <span id="rYears">40</span> Jahre</div>
-        <div class="big"><span class="num" id="total">–</span><small>t CO₂-eq</small></div>
-        <div class="perm2">≙ <b class="num" id="perm2">–</b> kg CO₂-eq / m²·Jahr (amortisiert)</div>
+    <div id="kontoleiste"></div>
+  </aside>
 
-        <div class="split">
-          <div class="s-emb" id="splitEmb" style="flex-grow:50">
-            <span class="pc num" id="embPc">–</span><span class="nm">Graue Energie</span>
-          </div>
-          <div class="s-op" id="splitOp" style="flex-grow:50">
-            <span class="pc num" id="opPc">–</span><span class="nm">Betrieb</span>
-          </div>
-        </div>
+  <main>
+    <header id="kpibar"></header>
+    <div id="warnbar"></div>
+    <section id="inhalt"></section>
+  </main>
 
-        <div class="cross" id="cross"></div>
-      </div>
-    </section>
-  </div>
-
-  <!-- BREAKDOWN -->
-  <div class="breakdown">
-    <div class="panel-title">Verteilung auf Bauteile &amp; Betrieb</div>
-    <div class="stack" id="stack"></div>
-    <table>
-      <thead>
-        <tr><th>Posten</th><th style="text-align:right">kg/m²·a</th><th style="text-align:right">t CO₂-eq</th><th style="text-align:right">Anteil</th><th class="barcell"></th></tr>
-      </thead>
-      <tbody id="tbody"></tbody>
-    </table>
-  </div>
-
-  <p class="foot">
-    <b>Lesehilfe:</b> Graue Energie (Erstellung) fällt einmalig zu Baubeginn an und ist hier konstant; der Betrieb wächst linear mit den Jahren. Je sauberer die Heizung (Wärmepumpe + PV), desto länger dominiert die graue Energie — bei fossilen Heizungen überholt der Betrieb sie früh. Der <i>Crossover</i> zeigt das Jahr, in dem der Betrieb die Erstellung übersteigt.<br><br>
-    <b>Methodik &amp; Grenzen:</b> Werte als <code>kg CO₂-eq/m² EBF</code> (Erstellung) bzw. <code>kg CO₂-eq/m²·a</code> (Betrieb). Nicht enthalten: Haushaltsstrom der Bewohner, induzierte Mobilität, Rückbau/Entsorgung im Detail. Für eine verbindliche Bilanz: SIA 2032 / SIA 2040 mit aktuellen KBOB-Ökobilanzdaten.
-  </p>
 </div>
 
-<script>
-const DATA = {
-  trag:{label:"Tragstruktur",opts:[
-    {n:"Beton CEM I (Standardzement)",v:250},
-    {n:"Beton CEM II/B (klinkerreduziert)",v:200},
-    {n:"Beton CEM III (Hüttensand)",v:165},
-    {n:"RC-Beton + CEM III",v:148},
-    {n:"Holz-Beton-Hybriddecken",v:112},
-    {n:"Massivholzbau",v:70},
-  ]},
-  trenn:{label:"Wohnungstrennwände",opts:[
-    {n:"Beton CEM I",v:55},
-    {n:"Beton CEM III",v:38},
-    {n:"Kalksandstein",v:40},
-    {n:"Backstein / Mauerwerk",v:34},
-  ]},
-  innen:{label:"Innenwände (Wohnung)",opts:[
-    {n:"Backstein / Mauerwerk",v:22},
-    {n:"Kalksandstein",v:25},
-    {n:"Gipskarton-Ständerwand",v:12},
-    {n:"Lehmstein / Lehmbau",v:10},
-  ]},
-  fass:{label:"Fassade",opts:[
-    {n:"Mineralwolle + Mineralputz",v:28},
-    {n:"EPS + Kunstharzputz (WDVS)",v:35},
-    {n:"Hinterlüftet + Faserzement",v:30},
-    {n:"Hinterlüftet + Holzfaser",v:18},
-  ]},
-  fenster:{label:"Fenster",opts:[
-    {n:"Holz-Metall (Alu primär)",v:28},
-    {n:"Holz-Metall (Alu Recycling)",v:20},
-    {n:"Kunststoff (PVC)",v:32},
-    {n:"Holz",v:15},
-  ]},
-  dach:{label:"Flachdach",opts:[
-    {n:"Begrünt, 20 cm Substrat",v:30},
-    {n:"Kies / unbegrünt",v:22},
-    {n:"Begrünt + Holzdachaufbau",v:24},
-  ]},
-  rand:{label:"Dachrand",opts:[
-    {n:"Verbundblech (beschichtet)",v:6},
-    {n:"Titanzink / Alu (sortenrein)",v:4},
-  ]},
-  estrich:{label:"Estrich",opts:[
-    {n:"Anhydrit (Calciumsulfat)",v:16},
-    {n:"Zementestrich",v:24},
-    {n:"Trockenestrich",v:12},
-  ]},
-  boden:{label:"Bodenbelag",opts:[
-    {n:"Parkett, geölt (Eiche)",v:9},
-    {n:"Parkett, versiegelt",v:11},
-    {n:"Keramik / Feinsteinzeug",v:18},
-    {n:"Vinyl / PVC",v:14},
-  ]},
-};
-// Heating: op = heat+DHW operational kg CO2-eq/m2.a ; elec = is electricity-driven (PV interacts)
-const HEAT = [
-  {n:"Luft-Wasser-Wärmepumpe",op:4.0,elec:true},
-  {n:"Erdsonden-Wärmepumpe",op:2.8,elec:true},
-  {n:"Fernwärme (CH-Verbund)",op:3.5,elec:false},
-  {n:"Pellets / Holz",op:1.5,elec:false},
-  {n:"Gasheizung",op:11.0,elec:false},
-  {n:"Ölheizung",op:13.5,elec:false},
-];
-const BUILD_ELEC = 2.5;            // Gebäudebetriebsstrom kg/m2.a
-const PV_OFFSET_BASE = 2.0;        // PV deckt Allgemeinstrom
-const PV_OFFSET_WP = 1.3;          // zusätzlich Anteil WP-Strom bei Eigennutzung
-
-const COLORS = {trag:'--c-trag',trenn:'--c-trenn',innen:'--c-innen',fass:'--c-fass',
-  fenster:'--c-fenster',dach:'--c-dach',rand:'--c-rand',estrich:'--c-estrich',boden:'--c-boden',op:'--c-op'};
-
-const $=id=>document.getElementById(id);
-const cssv=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
-const fmt=(n,d=0)=>n.toLocaleString('de-CH',{minimumFractionDigits:d,maximumFractionDigits:d});
-
-// build selects
-for(const key in DATA){
-  const sel=$(key);
-  DATA[key].opts.forEach((o,i)=>{
-    const opt=document.createElement('option');
-    opt.value=i; opt.textContent=`${o.n}  ·  ${o.v} kg/m²`;
-    sel.appendChild(opt);
-  });
-}
-HEAT.forEach((h,i)=>{
-  const opt=document.createElement('option');
-  opt.value=i; opt.textContent=`${h.n}  ·  ${h.op} kg/m²·a`;
-  $('heiz').appendChild(opt);
-});
-
-const DEFAULTS={trag:0,trenn:0,innen:0,fass:0,fenster:0,dach:0,rand:0,estrich:0,boden:0,heiz:0,pv:true,years:40,ebf:1500};
-
-function setDefaults(){
-  for(const k in DATA) $(k).value=0;
-  $('heiz').value=0; $('pv').checked=true; $('years').value=40; $('ebf').value=1500;
-}
-
-function compute(){
-  const years=+$('years').value, ebf=Math.max(+$('ebf').value||0,0);
-  $('yearVal').textContent=years; $('rYears').textContent=years;
-
-  // embodied per component (kg/m2)
-  const emb={};
-  let embTot=0;
-  for(const k in DATA){const v=DATA[k].opts[+$(k).value].v; emb[k]=v; embTot+=v;}
-
-  // operational kg/m2.a
-  const h=HEAT[+$('heiz').value];
-  let opAnnual=h.op+BUILD_ELEC;
-  if($('pv').checked){
-    opAnnual-=PV_OFFSET_BASE;
-    if(h.elec) opAnnual-=PV_OFFSET_WP;
-  }
-  opAnnual=Math.max(opAnnual,0.2);
-
-  const opTot=opAnnual*years;                 // kg/m2 over period
-  const grand=embTot+opTot;                   // kg/m2 over period
-  const grandT=grand*ebf/1000;                // tonnes
-  const perm2a=years>0?grand/years:0;
-
-  // headline
-  $('total').textContent=fmt(grandT, grandT<100?1:0);
-  $('perm2').textContent=fmt(perm2a,1);
-
-  const embPc=grand>0?embTot/grand*100:0, opPc=100-embPc;
-  $('splitEmb').style.flexGrow=Math.max(embPc,4);
-  $('splitOp').style.flexGrow=Math.max(opPc,4);
-  $('embPc').textContent=fmt(embPc)+'%';
-  $('opPc').textContent=fmt(opPc)+'%';
-
-  // crossover
-  const cy=opAnnual>0?embTot/opAnnual:Infinity;
-  let ctxt;
-  if(cy>80) ctxt=`Bei dieser Konstellation übersteigt der Betrieb die graue Energie erst <b>nach &gt; 80 Jahren</b> — die Erstellung dominiert die Bilanz dauerhaft. Der Hebel liegt klar im Material.`;
-  else ctxt=`Der Betrieb überholt die graue Energie im <b>Jahr ${fmt(cy)}</b>. Davor dominiert die Erstellung, danach der laufende Betrieb.`;
-  $('cross').innerHTML=ctxt;
-
-  // breakdown rows
-  const rows=[];
-  for(const k in DATA){
-    rows.push({id:k,label:DATA[k].label+' — '+DATA[k].opts[+$(k).value].n,
-      perm2a:null, t:emb[k]*ebf/1000, share:emb[k]/grand*100, color:cssv(COLORS[k]), group:'emb'});
-  }
-  rows.push({id:'op',label:'Betrieb (Heizung, WW, Strom − PV) × '+years+' a',
-    perm2a:opAnnual, t:opTot*ebf/1000, share:opTot/grand*100, color:cssv(COLORS.op), group:'op'});
-
-  rows.sort((a,b)=>b.share-a.share);
-
-  // stacked bar (full = grand)
-  const stack=$('stack'); stack.innerHTML='';
-  rows.forEach(r=>{
-    const d=document.createElement('div');
-    d.style.background=r.color; d.style.flexGrow=Math.max(r.share,0.4);
-    d.title=`${r.label}: ${fmt(r.share,1)}%`;
-    stack.appendChild(d);
-  });
-
-  // table
-  const tb=$('tbody'); tb.innerHTML='';
-  const maxShare=Math.max(...rows.map(r=>r.share));
-  rows.forEach(r=>{
-    const tr=document.createElement('tr');
-    if(r.group==='op') tr.className='tg';
-    tr.innerHTML=`
-      <td><span class="lab-name"><span class="swatch" style="background:${r.color}"></span>${r.label}</span></td>
-      <td class="r">${r.perm2a!==null?fmt(r.perm2a,1):'—'}</td>
-      <td class="r">${fmt(r.t, r.t<100?1:0)}</td>
-      <td class="r">${fmt(r.share,1)}%</td>
-      <td class="barcell"><div class="minibar" style="background:${r.color};width:${(r.share/maxShare*100).toFixed(1)}%"></div></td>`;
-    tb.appendChild(tr);
-  });
-}
-
-// listeners
-document.querySelectorAll('select,input').forEach(el=>el.addEventListener('input',compute));
-$('reset').addEventListener('click',()=>{setDefaults();compute();});
-compute();
-</script>
+<script src="app/config.js"></script>
+<script src="app/model.js"></script>
+<script src="app/engine.js"></script>
+<script src="app/api.js"></script>
+<script src="app/store-server.js"></script>
+<script src="app/ui.js"></script>
+<script src="app/auth.js"></script>
+<script src="vendor/leaflet/leaflet.js"></script>
+<script src="app/verkauf.js"></script>
+<script src="app/karte.js"></script>
+<script src="app/views.js"></script>
+<script src="app/results.js"></script>
+<script src="app/portfolio.js"></script>
+<script src="app/protokoll.js"></script>
+<script src="app/baurecht.js"></script>
+<script src="app/termine.js"></script>
+<script src="app/admin.js"></script>
+<script src="app/main.js"></script>
 </body>
 </html>

@@ -1,0 +1,779 @@
+/* =====================================================================
+   Projektrechner · Oberfläche
+   Dichte, tabellarische Arbeitsumgebung für Zahlenarbeit.
+   ===================================================================== */
+
+:root {
+  --bg:      #f4f6f8;
+  --panel:   #ffffff;
+  --panel2:  #fafbfc;
+  --line:    #e2e6ec;
+  --line2:   #cfd6df;
+  --ink:     #10151c;
+  --ink2:    #3c4553;
+  --muted:   #6b7484;
+  /* Blocküberschriften bewusst dunkler als der übrige Sekundärtext —
+     sie gliedern die Seite und brauchen dafür Kontrast. */
+  --kopf:    #232c39;
+  --kopfbg:  #eef1f5;
+  --accent:  #1f5fd0;
+  --accent2: #e8f0fd;
+  --pos:     #0d7a45;
+  --neg:     #c02e26;
+  --warn:    #b06a00;
+  --warnbg:  #fdf5e6;
+  --shadow:  0 1px 2px rgba(16,21,28,.06), 0 4px 14px rgba(16,21,28,.04);
+  --mono:    ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, monospace;
+  --sans:    system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body { height: 100%; }
+
+body {
+  font-family: var(--sans);
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--ink);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+.num, input[type=number], td.n, th.n { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+td.n, th.n { text-align: right; }
+
+/* ---------------------------------------------------------------- Shell */
+
+#app { display: grid; grid-template-columns: 232px 1fr; min-height: 100vh; }
+
+#nav {
+  background: #131a24;
+  color: #c8d2e0;
+  display: flex; flex-direction: column;
+  position: sticky; top: 0; height: 100vh; overflow-y: auto;
+}
+.brand { padding: 16px 16px 12px; border-bottom: 1px solid #232c39; }
+.brand b { display: block; color: #fff; font-size: 14px; letter-spacing: -.01em; }
+.brand span { font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: #6b7c93; }
+
+.navblock { padding: 12px 12px 6px; }
+.navblock > label { display: block; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: #6b7c93; margin-bottom: 5px; }
+#nav select, #nav input {
+  width: 100%; background: #1c2531; border: 1px solid #2b3644; color: #dce4ee;
+  border-radius: 4px; padding: 6px 8px; font-size: 12.5px; font-family: var(--sans);
+}
+#nav select:focus, #nav input:focus { outline: none; border-color: var(--accent); }
+
+#seiten { padding: 6px 8px; flex: 1; }
+#seiten a {
+  display: flex; align-items: center; gap: 9px;
+  padding: 7px 9px; border-radius: 5px; color: #aab6c6;
+  text-decoration: none; font-size: 13px; cursor: pointer; user-select: none;
+}
+#seiten a .ix { font-family: var(--mono); font-size: 10.5px; color: #5d6b7d; width: 15px; }
+#seiten a:hover { background: #1c2531; color: #e6ecf4; }
+#seiten a.on { background: var(--accent); color: #fff; }
+#seiten a.on .ix { color: #b9d0f6; }
+#seiten hr { border: 0; border-top: 1px solid #232c39; margin: 8px 6px; }
+
+.navfoot { padding: 10px 12px 14px; border-top: 1px solid #232c39; display: grid; gap: 7px; }
+
+/* ---------------------------------------------------------------- Buttons */
+
+button {
+  font-family: var(--sans); font-size: 12.5px; cursor: pointer;
+  border: 1px solid var(--line2); background: var(--panel); color: var(--ink2);
+  border-radius: 5px; padding: 6px 11px; transition: background .12s, border-color .12s;
+}
+button:hover { background: var(--panel2); border-color: var(--muted); }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.primary:hover { background: #1a51b4; }
+button.ghost { background: transparent; border-color: transparent; color: var(--muted); padding: 4px 7px; }
+button.ghost:hover { background: var(--panel2); color: var(--ink); }
+button.danger:hover { border-color: var(--neg); color: var(--neg); }
+button.sm { padding: 3px 8px; font-size: 11.5px; }
+#nav button { background: #1c2531; border-color: #2b3644; color: #c8d2e0; }
+#nav button:hover { background: #26313f; color: #fff; }
+#nav button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+/* ---------------------------------------------------------------- KPI-Leiste */
+
+#kpibar {
+  position: sticky; top: 0; z-index: 30;
+  background: var(--panel); border-bottom: 1px solid var(--line);
+  padding: 9px 20px; display: flex; gap: 4px; flex-wrap: wrap; align-items: stretch;
+  box-shadow: 0 1px 6px rgba(16,21,28,.05);
+}
+.kpi { padding: 3px 14px 3px 0; margin-right: 10px; border-right: 1px solid var(--line); min-width: 96px; }
+.kpi:last-child { border-right: 0; }
+.kpi .k { font-size: 9.5px; letter-spacing: .07em; text-transform: uppercase; color: var(--ink2); white-space: nowrap; }
+.kpi .v { font-family: var(--mono); font-size: 17px; font-weight: 600; letter-spacing: -.02em; line-height: 1.25; }
+.kpi .v small { font-size: 11px; font-weight: 400; color: var(--muted); }
+.kpi .v.pos { color: var(--pos); } .kpi .v.neg { color: var(--neg); } .kpi .v.warnc { color: var(--warn); }
+
+/* ---------------------------------------------------------------- Inhalt */
+
+main { min-width: 0; display: flex; flex-direction: column; }
+#inhalt { padding: 20px 20px 90px; max-width: 1360px; }
+
+.seitenkopf { margin-bottom: 16px; }
+.seitenkopf h1 { font-size: 20px; font-weight: 640; letter-spacing: -.02em; }
+.seitenkopf p { color: var(--muted); font-size: 12.5px; max-width: 78ch; margin-top: 3px; }
+
+.panel {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 7px;
+  margin-bottom: 14px; box-shadow: var(--shadow); overflow: hidden;
+}
+.panel > h2 {
+  font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--kopf);
+  padding: 10px 14px; border-bottom: 1px solid var(--line2); background: var(--kopfbg);
+  display: flex; align-items: center; gap: 9px; font-weight: 700;
+}
+.panel > h2 .hint { font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--ink2); font-size: 11.5px; }
+.panel > h2 .sp { margin-left: auto; display: flex; gap: 6px; }
+.panelbody { padding: 13px 14px; }
+.panelbody + .panelbody { border-top: 1px solid var(--line); }
+
+.cols { display: grid; gap: 13px; }
+.c2 { grid-template-columns: 1fr 1fr; }
+.c3 { grid-template-columns: repeat(3, 1fr); }
+.c4 { grid-template-columns: repeat(4, 1fr); }
+@media (max-width: 1100px) { .c3, .c4 { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 820px)  { .c2, .c3, .c4 { grid-template-columns: 1fr; } #app { grid-template-columns: 1fr; } #nav { position: static; height: auto; } }
+
+/* ---------------------------------------------------------------- Felder */
+
+.f { margin-bottom: 11px; }
+.f > label { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--ink2); margin-bottom: 3px; }
+.f > label .req { color: var(--accent); }
+.inp { display: flex; align-items: stretch; border: 1px solid var(--line2); border-radius: 5px; background: #fff; overflow: hidden; }
+.inp:focus-within { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent2); }
+.inp input, .inp select {
+  flex: 1; min-width: 0; border: 0; padding: 6px 9px; font-size: 13px;
+  background: transparent; color: var(--ink); font-family: var(--sans);
+}
+.inp input[type=number] { text-align: right; font-family: var(--mono); }
+.inp input:focus, .inp select:focus { outline: none; }
+.inp .unit { display: flex; align-items: center; padding: 0 8px; font-size: 11px; color: var(--muted); background: var(--panel2); border-left: 1px solid var(--line); white-space: nowrap; }
+.inp.bad { border-color: var(--warn); background: var(--warnbg); }
+/* Mehrzeilige Tabellenzelle: beginnt einzeilig wie ein Eingabefeld und
+   wächst beim Tippen mit. Ohne min-height/min-width der globalen
+   Textfeldregel, die für ganze Absätze gedacht ist. */
+.zellenarea {
+  width: 100%; min-width: 0; min-height: 0;
+  padding: 5px 7px; font-family: inherit; font-size: 12.5px;
+  line-height: 1.35; resize: vertical; overflow: hidden;
+  border: 1px solid var(--line); border-radius: 4px;
+}
+.zellenarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent2); }
+.zellenbox { display: block; }
+/* Die Druckfassung übernimmt Zeilenumbrüche aus dem Feld. */
+.zellendruck { white-space: pre-wrap; }
+
+/* --- Standortkarte ------------------------------------------------ */
+.kartenrahmen { border-top: 1px solid var(--line); }
+.kartenrahmen .leaflet-container { font: inherit; background: var(--panel2); }
+/* Die Karte darf die Panelbreite nicht sprengen und muss unter den
+   festen Kopfleisten der Anwendung bleiben. */
+.kartenrahmen .leaflet-pane, .kartenrahmen .leaflet-control { z-index: 1; }
+.kartenrahmen .leaflet-top, .kartenrahmen .leaflet-bottom { z-index: 2; }
+.leaflet-tooltip.kartenkarte {
+  background: #fff; border: 1px solid var(--line2); border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(16,21,28,.14); padding: 8px 10px;
+  font-size: 12px; color: var(--ink); white-space: nowrap;
+}
+.leaflet-tooltip.kartenkarte::before { border-top-color: var(--line2); }
+@media print {
+  .kartenrahmen .leaflet-control-zoom, .kartenrahmen .leaflet-control-attribution { display: none; }
+}
+
+/* Gerechnetes Feld: die Ecke markiert eine hinterlegte Formel. Beim
+   Hineinklicken erscheint die Formel, beim Verlassen das Ergebnis.
+   Das Dreieck liegt über dem Einheitenfeld — dieses darf deshalb nicht
+   positioniert sein, sonst überdeckt es die Marke. */
+.inp.hatformel { position: relative; }
+.inp.hatformel::after {
+  content: ''; position: absolute; top: 0; right: 0; z-index: 1;
+  border-width: 0 9px 9px 0; border-style: solid;
+  border-color: transparent var(--accent) transparent transparent;
+  pointer-events: none;
+}
+/* Tabellenzellen tragen die Marke direkt am Eingabefeld */
+input.hatformel {
+  background-image: linear-gradient(225deg, var(--accent) 0 8px, transparent 8px);
+  background-repeat: no-repeat; background-position: top right;
+}
+.f .hilfe { font-size: 11px; color: var(--muted); margin-top: 3px; }
+.f .derived { font-size: 11px; color: var(--accent); margin-top: 3px; font-family: var(--mono); }
+
+.q { width: 7px; height: 7px; border-radius: 50%; border: 0; padding: 0; cursor: pointer; flex: none; background: var(--line2); }
+.q:hover { transform: scale(1.4); }
+.q.annahme { background: var(--warn); }
+.q.belegt  { background: var(--pos); }
+.qnote { font-size: 10.5px; color: var(--muted); font-style: italic; }
+
+.check { display: flex; align-items: center; gap: 8px; padding: 6px 0; font-size: 13px; cursor: pointer; user-select: none; }
+.check input { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
+
+.seg { display: inline-flex; border: 1px solid var(--line2); border-radius: 5px; overflow: hidden; background: var(--panel2); }
+.seg button { border: 0; border-radius: 0; background: transparent; padding: 5px 11px; font-size: 12px; color: var(--muted); }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button.on { background: var(--accent); color: #fff; }
+.seg button:hover:not(.on) { background: #eef1f5; color: var(--ink); }
+
+/* ---------------------------------------------------------------- Tabellen */
+
+.tw { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+th, td { padding: 6px 9px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
+thead th {
+  font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--kopf);
+  background: var(--panel2); font-weight: 700; position: sticky; top: 0; white-space: nowrap;
+}
+tbody tr:hover { background: #f8fafc; }
+tr.sum td { font-weight: 640; background: var(--panel2); border-top: 1.5px solid var(--line2); }
+tr.total td { font-weight: 700; background: #eef3fb; border-top: 2px solid var(--accent); font-size: 13px; }
+tr.grp td { background: #e8ecf2; font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--kopf); font-weight: 700; border-top: 1px solid var(--line2); }
+tr.grp td.n { font-size: 11.5px; letter-spacing: 0; text-transform: none; font-family: var(--mono); }
+td.muted, .muted { color: var(--muted); }
+td .bkp { font-family: var(--mono); font-size: 10.5px; color: var(--muted); }
+table input, table select {
+  border: 1px solid transparent; border-radius: 4px; padding: 3px 6px; font-size: 12.5px;
+  background: #fff; width: 100%; font-family: var(--sans); color: var(--ink);
+}
+table input[type=number] { text-align: right; font-family: var(--mono); }
+table input:hover, table select:hover { border-color: var(--line2); }
+table input:focus, table select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent2); }
+table input.bad { border-color: var(--warn); background: var(--warnbg); }
+/* Kein Fehler, sondern eine Auffälligkeit: mehr bezahlt als kalkuliert. */
+table input.warnfeld { border-color: var(--warn); }
+td.w1 { width: 1%; white-space: nowrap; }
+
+.bar { height: 5px; border-radius: 3px; background: var(--accent); min-width: 1px; }
+.barcell { width: 100px; }
+
+/* ---------------------------------------------------------------- Hinweise */
+
+#warnbar { padding: 0 20px; }
+.hinweis {
+  display: flex; gap: 9px; align-items: flex-start; padding: 8px 12px; border-radius: 6px;
+  font-size: 12.5px; margin-top: 10px; border: 1px solid;
+}
+.hinweis .ic { font-weight: 700; flex: none; }
+.hinweis.warn { background: var(--warnbg); border-color: #edd6a8; color: #7a4b00; }
+.hinweis.ziel { background: #fdf0ef; border-color: #f3cdc9; color: #8c2b23; }
+.hinweis.info { background: #eef4fd; border-color: #cfe0f8; color: #1a4a9c; }
+.hinweis.ok   { background: #edf7f1; border-color: #c6e5d4; color: #0d5c34; }
+
+.tag { display: inline-block; padding: 1px 7px; border-radius: 20px; font-size: 10.5px; background: var(--panel2); border: 1px solid var(--line2); color: var(--muted); }
+.tag.pos { background: #edf7f1; border-color: #c6e5d4; color: var(--pos); }
+.tag.neg { background: #fdf0ef; border-color: #f3cdc9; color: var(--neg); }
+.tag.warn { background: var(--warnbg); border-color: #edd6a8; color: var(--warn); }
+
+/* ---------------------------------------------------------------- Ergebnis */
+
+.kachel { background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; }
+.kachel .k { font-size: 10px; letter-spacing: .07em; text-transform: uppercase; color: var(--kopf); font-weight: 640; }
+.kachel .v { font-family: var(--mono); font-size: 19px; font-weight: 640; letter-spacing: -.02em; margin-top: 1px; }
+.kachel .s { font-size: 11px; color: var(--muted); }
+.kachel .v.pos { color: var(--pos); } .kachel .v.neg { color: var(--neg); }
+
+svg { display: block; max-width: 100%; }
+svg text { font-family: var(--sans); }
+svg text.n { font-family: var(--mono); }
+
+.legende { display: flex; flex-wrap: wrap; gap: 12px; font-size: 11.5px; color: var(--muted); margin-top: 8px; }
+.legende i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+
+/* ---------------------------------------------------------------- Modal */
+
+.modal-bg { position: fixed; inset: 0; background: rgba(16,21,28,.45); z-index: 100; display: flex; align-items: center; justify-content: center; padding: 20px; }
+.modal { background: var(--panel); border-radius: 9px; max-width: 560px; width: 100%; max-height: 84vh; overflow: auto; box-shadow: 0 18px 50px rgba(16,21,28,.28); }
+.modal h3 { padding: 14px 16px; border-bottom: 1px solid var(--line); font-size: 14px; }
+.modal .mb { padding: 14px 16px; }
+.modal .mf { padding: 12px 16px; border-top: 1px solid var(--line); display: flex; gap: 8px; justify-content: flex-end; background: var(--panel2); }
+textarea { width: 100%; border: 1px solid var(--line2); border-radius: 5px; padding: 8px; font-family: var(--mono); font-size: 11.5px; min-height: 150px; resize: vertical; }
+textarea:focus { outline: none; border-color: var(--accent); }
+
+/* ---------------------------------------------------------------- Filterchips */
+
+.chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.chip {
+  border: 1px solid var(--line2); background: var(--panel); color: var(--muted);
+  border-radius: 20px; padding: 4px 12px; font-size: 12px; cursor: pointer;
+  transition: background .12s, border-color .12s, color .12s; user-select: none;
+}
+.chip:hover { border-color: var(--muted); color: var(--ink); background: var(--panel2); }
+.chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.chip.on:hover { background: #1a51b4; color: #fff; }
+.chip .zahl { opacity: .7; margin-left: 5px; font-family: var(--mono); font-size: 11px; }
+
+/* ---------------------------------------------------------------- Anmeldung */
+
+.anmelde-bg {
+  position: fixed; inset: 0; z-index: 500; background: #131a24;
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+  background-image: radial-gradient(circle at 30% 20%, #1d2a3c 0%, #131a24 60%);
+}
+.anmelde {
+  background: var(--panel); border-radius: 10px; width: 100%; max-width: 380px;
+  padding: 26px 26px 20px; box-shadow: 0 22px 60px rgba(0,0,0,.4);
+}
+.anmelde-kopf { margin-bottom: 18px; }
+.anmelde-marke {
+  font-size: 10.5px; letter-spacing: .18em; text-transform: uppercase;
+  color: var(--accent); font-weight: 640; margin-bottom: 7px;
+}
+.anmelde-kopf h1 { font-size: 21px; font-weight: 640; letter-spacing: -.02em; }
+.anmelde-kopf p { color: var(--muted); font-size: 12.5px; margin-top: 3px; }
+.anmelde-felder .f { margin-bottom: 12px; }
+.anmelde-meldung { margin: 0 0 12px; }
+.anmelde-fuss { font-size: 12px; color: var(--muted); margin-top: 12px; text-align: center; }
+.anmelde-fuss button { font-size: 12px; }
+
+.konto { padding: 10px 12px; border-top: 1px solid #232c39; }
+.konto-name { color: #dce4ee; font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+.konto-rolle { color: #6b7c93; font-size: 11px; margin-top: 1px; }
+.konto-rolle button { background: none !important; border: none !important; }
+.konto-rolle button:hover { color: #fff !important; text-decoration: underline; }
+
+/* Nur-Lese-Modus */
+.nurlesen input, .nurlesen select, .nurlesen textarea { pointer-events: none; background: var(--panel2); color: var(--muted); }
+.nurlesen .q { display: none; }
+.nurlesen button.schreibend { display: none; }
+
+.syncstatus { font-size: 11px; }
+.syncstatus.warten { color: var(--warn); }
+.syncstatus.gut { color: var(--pos); }
+.syncstatus.fehler { color: var(--neg); font-weight: 600; }
+
+/* ---------------------------------------------------------------- Druck */
+
+@media print {
+  #nav, #kpibar .kpi-actions, .noprint { display: none !important; }
+  #app { grid-template-columns: 1fr; }
+  body { background: #fff; font-size: 10.5px; }
+  #inhalt { padding: 0; max-width: none; }
+  .panel { break-inside: avoid; box-shadow: none; border-color: #ccc; margin-bottom: 9px; }
+  #kpibar { position: static; box-shadow: none; }
+  thead th { position: static; }
+  .druckseite { break-after: page; }
+
+  /* Eingabefelder sind auf Papier keine Eingabefelder. Ohne diese Regel
+     steht jeder Wert in einem Kästchen und das Blatt wirkt wie ein
+     Formular statt wie ein Dokument. */
+  input, select, textarea {
+    border: 0 !important; background: transparent !important;
+    padding: 1px 0 !important; color: var(--ink); resize: none;
+    -webkit-appearance: none; appearance: none;
+  }
+  .inp { border: 0; border-bottom: 1px solid #e6e6e6; border-radius: 0; }
+  textarea { overflow: visible; height: auto; }
+  input[type="checkbox"] { -webkit-appearance: checkbox; appearance: checkbox; }
+
+  /* Kalenderfelder zeigen je nach Browsersprache 05/12/2026. Auf Papier
+     steht stattdessen die ausgeschriebene Fassung. */
+  .nichtdrucken { display: none !important; }
+  /* Gedruckt wird die Textfassung neben dem mehrzeiligen Feld, nicht
+     das Feld selbst: Eine textarea gibt auf Papier nur her, was in
+     ihre Höhe passt — ein langer Eintrag wäre nach zwei Wörtern zu
+     Ende. */
+  .zellenarea { display: none !important; }
+
+  .nurdruck { display: inline !important; }
+  div.nurdruck { display: block !important; }
+
+  /* Ein Protokoll geht nach aussen. Kennzahlen des Projekts und
+     Projektwarnungen haben darauf nichts verloren. */
+  body.seite-protokolle #kpibar,
+  body.seite-protokolle #warnbar,
+  body.seite-protokolle #meldungen,
+  body.seite-protokolle .seitenkopf,
+  /* Der Druckkopf trägt Sitzung, Datum und Ort bereits — das
+     Eingabepanel darunter wäre eine Wiederholung. */
+  body.seite-protokolle .panel.sitzungskopf { display: none !important; }
+  body.seite-protokolle .panel { border-color: #d8dde4; }
+  body.seite-protokolle textarea { resize: none !important; }
+
+  /* Die Spaltenbreiten der Traktandentabelle sind für den Bildschirm
+     bemessen; zusammen sind sie breiter als ein A4-Blatt, und was
+     rechts übersteht, wird abgeschnitten — «warten auf Rückmeldung»
+     endete als «warten auf Rückmeldun». Auf Papier verteilt der
+     Browser die Breite selbst, nach Inhalt. */
+  body.seite-protokolle table { table-layout: auto; width: 100%; }
+  body.seite-protokolle th, body.seite-protokolle td { width: auto !important; }
+  body.seite-protokolle td, body.seite-protokolle th {
+    overflow-wrap: break-word; padding: 4px 5px;
+  }
+  /* Der waagrechte Rollbalken der Tabelle ist am Bildschirm nützlich;
+     auf Papier schneidet er die letzte Spalte ab. */
+  .tw { overflow: visible !important; }
+
+  /* Der Briefkopf gehört auf jede Seite des Protokolls, nicht nur auf
+     die erste — sonst weiss man auf Blatt drei nicht mehr, wozu die
+     Punkte gehören. */
+  .protokollkopf { break-after: avoid; page-break-after: avoid; }
+  .protokollkopf img { max-height: 42px; }
+}
+
+/* Am Bildschirm gilt das Umgekehrte */
+.nurdruck { display: none; }
+
+/* ---------------------------------------------------------------- Kanban */
+
+.kanban { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+@media (max-width: 900px) { .kanban { grid-template-columns: 1fr; } }
+
+.kanban-spalte { background: var(--panel2); border: 1px solid var(--line); border-radius: 7px; }
+.kanban-kopf {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 11px; border-bottom: 1px solid var(--line);
+  font-size: 11px; letter-spacing: .06em; text-transform: uppercase;
+  font-weight: 700; color: var(--kopf);
+}
+.kanban-kopf .zahl {
+  margin-left: auto; font-family: var(--mono); font-size: 11px;
+  color: var(--muted); background: #fff; border: 1px solid var(--line);
+  border-radius: 10px; padding: 0 7px;
+}
+/* Die Ablagefläche behält eine Mindesthöhe, sonst kann man in eine
+   leere Spalte nichts ziehen. */
+.kanban-feld { padding: 9px; display: grid; gap: 8px; min-height: 120px; }
+.kanban-feld.ueber { background: var(--accent2); border-radius: 0 0 7px 7px; }
+.kanban-leer { color: var(--muted); font-size: 11.5px; text-align: center; padding: 14px 0; }
+
+.kanban-karte {
+  background: #fff; border: 1px solid var(--line2);
+  border-left: 4px solid var(--line2); border-radius: 5px;
+  padding: 8px 10px; cursor: grab; position: relative;
+  box-shadow: 0 1px 2px rgba(16,21,28,.05);
+}
+.kanban-karte:hover { border-color: var(--muted); }
+.kanban-karte.zieht { opacity: .45; cursor: grabbing; }
+.kanban-karte.spaet { background: #fdf6f5; }
+.kanban-karte .ktext { font-size: 12.5px; line-height: 1.35; margin-bottom: 6px; }
+.kanban-karte .kmarken { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 6px; }
+.kanban-karte .kmarken .tag { font-size: 10px; padding: 1px 6px; }
+.kanban-karte .kfuss {
+  display: flex; justify-content: space-between; gap: 8px;
+  font-size: 10.5px; color: var(--muted); font-family: var(--mono);
+}
+.kanban-karte .kfuss .spaet { color: var(--neg); font-weight: 600; }
+.kanban-karte .kherkunft { font-size: 10px; color: #aab2bd; margin-top: 3px; }
+.kanban-karte .kknoepfe {
+  position: absolute; top: 4px; right: 4px; display: none; gap: 2px;
+}
+.kanban-karte:hover .kknoepfe { display: flex; }
+.kanban-karte .kknoepfe button { padding: 0 6px; font-size: 13px; line-height: 1.5; }
+
+/* Überschrift eines Traktandums im Protokoll. Die Farbe kommt vom
+   Thema und wird am Element gesetzt; hier steht nur die Form. */
+.traktandenkopf {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 10px; margin-bottom: 7px;
+  border: 1px solid var(--line); border-left: 4px solid var(--line2);
+  border-radius: 5px;
+}
+.traktandenkopf .tnr {
+  font-family: var(--mono); font-size: 12px; font-weight: 700;
+  color: var(--kopf); min-width: 16px;
+}
+.traktandenkopf .tlabel {
+  font-weight: 640; font-size: 13px; color: var(--kopf);
+  letter-spacing: -.01em;
+}
+
+/* Eine abgeschlossene Aufgabe tritt zurück, bleibt aber lesbar: Sie
+   ist Chronik, nicht Arbeitsvorrat. Erkennbar bleiben muss sie —
+   deshalb kein Durchstreichen, sondern gedämpfte Farbe. */
+tr.aufgabezu td { color: var(--muted); }
+tr.aufgabezu td .tag { opacity: .7; }
+
+/* --- Rückmeldungen zu einer Aufgabe ------------------------------- */
+
+/* Was aus einer Aufgabe geworden ist, steht eingerückt unter ihr —
+   sichtbar zugehörig, aber dem Aufgabentext untergeordnet. */
+.antwortblock { margin-top: 6px; }
+.antworten {
+  display: grid; gap: 3px;
+  border-left: 2px solid var(--line2); padding-left: 8px;
+}
+.antwort { font-size: 12px; color: var(--ink2); line-height: 1.4; }
+.antwort .adatum {
+  font-family: var(--mono); font-size: 11px; color: var(--muted);
+  margin-right: 6px; white-space: nowrap;
+}
+.antwort .avon { color: var(--muted); font-size: 11px; margin-left: 6px; }
+.antwort .avon::before { content: "· "; }
+
+.antwortplus {
+  margin-top: 4px; padding-left: 0; font-size: 11.5px;
+}
+.antwortfeld { margin-top: 6px; display: grid; gap: 6px; }
+.antwortknoepfe { display: flex; gap: 6px; }
+
+@media print {
+  /* Der Verlauf gehört ins versendete Protokoll — er ist die Antwort
+     auf «und was ist daraus geworden?». Der Eintragknopf nicht. */
+  .antworten { border-left-color: #d8dde4; }
+  .antwort .avon { display: inline; }
+}
+
+/* --- Aufgaben nach Zuständigkeit --------------------------------- */
+
+/* Kopfzeile je Person. Sie trennt die Blöcke deutlicher als ein
+   blosser Zwischentitel, weil darunter jedes Mal eine Tabelle mit
+   eigener Kopfzeile folgt. */
+.personenkopf {
+  display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap;
+  padding: 8px 0 6px; margin-top: 14px;
+  border-bottom: 1px solid var(--line2);
+}
+.personenkopf:first-child { margin-top: 0; }
+.personenkopf .pname { font-weight: 640; font-size: 13.5px; color: var(--kopf); }
+/* Aufgaben, für die sich niemand zuständig fühlt — die auffälligsten. */
+.personenkopf .pname.herrenlos { color: var(--warn); }
+.personenkopf .sp { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+
+/* Themenbild: der Aufklappknopf ist ein Text im SVG */
+.mehrknopf:hover { text-decoration: underline; }
+
+/* Farbpunkt des Themas — in einer langen Traktandenliste findet das
+   Auge damit zusammengehörende Punkte, ohne zu lesen. */
+.themenpunkt {
+  display: inline-block; width: 9px; height: 9px; border-radius: 50%;
+  flex: none; vertical-align: middle;
+}
+
+/* ---------------------------------------------------------------
+   Baurecht-Check
+   --------------------------------------------------------------- */
+
+/* Zwischentitel innerhalb eines Panels — trennt die Prüfgruppen in
+   der Verwaltung, ohne dass jede ein eigenes Panel bräuchte. */
+.zt {
+  font-size: 12px; font-weight: 660; letter-spacing: .02em;
+  text-transform: uppercase; color: var(--muted);
+  margin: 4px 0 7px;
+}
+
+/* Der Balken zeigt, wie weit die Prüfung gediehen ist. */
+.brbalken {
+  height: 7px; margin-top: 12px; border-radius: 4px;
+  background: var(--panel2); border: 1px solid var(--line);
+  overflow: hidden;
+}
+.brbalken-in {
+  height: 100%; background: var(--warn); border-radius: 3px;
+  transition: width .18s ease;
+}
+.brbalken-in.voll { background: var(--pos); }
+
+/* Ein Prüfpunkt, der hier nicht zutrifft, bleibt sichtbar, tritt aber
+   zurück — er ist beantwortet, nur eben mit «nein». */
+tr.brentfaellt td { opacity: .55; }
+tr.brentfaellt input { color: var(--muted); }
+
+/* Der gerechnete Wert steht klein unter dem Eintrag. Läuft er dem
+   Baurecht davon, wird aus der Notiz eine Warnung. */
+.brweicht { color: var(--warn); font-weight: 600; }
+
+.brtabelle input, .brtabelle textarea { width: 100%; }
+.brtabelle td { vertical-align: top; }
+
+@media print {
+  /* Ein Baurechtsblatt geht nach aussen — an den Architekten, den
+     Juristen, die Gemeinde. Anlagekosten und Marge haben darauf so
+     wenig verloren wie auf einem Protokoll. */
+  body.seite-baurecht #kpibar,
+  body.seite-baurecht #warnbar,
+  body.seite-baurecht #meldungen { display: none !important; }
+
+  /* Der Balken sagt auf Papier nichts, was die Zahl daneben nicht
+     schon sagt. Die Kacheln bleiben nebeneinander: Auf Blattbreite
+     würde sonst die Regel für schmale Bildschirme greifen. */
+  body.seite-baurecht .brbalken { display: none; }
+  body.seite-baurecht .cols.c3 { grid-template-columns: repeat(3, 1fr); }
+
+  /* Eine Gruppe darf über die Seite hinauslaufen — bei 22 Prüfpunkten
+     bliebe sonst ein halbes Blatt leer. Eine einzelne Zeile nicht. */
+  body.seite-baurecht .panel { break-inside: auto; }
+  body.seite-baurecht tr { break-inside: avoid; }
+}
+
+/* ---------------------------------------------------------------
+   Gantt — Vorgangstabelle links, Balken rechts
+
+   Beide Seiten teilen dieselbe Zeilenhöhe (30 px); nur so fluchten
+   Tabellenzeile und Balken. Die rechte Seite rollt waagrecht, die
+   linke bleibt stehen.
+   --------------------------------------------------------------- */
+
+.gantt { display: flex; align-items: flex-start; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.gtab { flex: none; background: var(--panel); border-right: 1px solid var(--line2); }
+.gscroll { flex: 1; min-width: 0; overflow-x: auto; }
+.gplan { position: relative; }
+
+.gzeile { display: flex; align-items: center; height: 30px; border-bottom: 1px solid var(--line); font-size: 12px; }
+.gzeile:last-child { border-bottom: 0; }
+.gzeile.gkopf {
+  height: 38px; background: var(--kopfbg); border-bottom: 1px solid var(--line2);
+  font-size: 10px; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--kopf); font-weight: 700;
+}
+/* Ein erledigter Vorgang tritt zurück — erkennbar bleiben muss er. */
+.gzeile.zu input, .gzeile.zu select { color: var(--muted); }
+.gzeile.zu .gc-label input { text-decoration: line-through; }
+/* Eine Abhängigkeit, die im Kreis läuft */
+.gzeile.ring { box-shadow: inset 2px 0 0 var(--neg); }
+
+.gc { flex: none; padding: 0 4px; display: flex; align-items: center; gap: 3px; overflow: hidden; }
+.gc input, .gc select {
+  width: 100%; border: 1px solid transparent; background: transparent;
+  border-radius: 3px; padding: 3px 4px; font-size: 12px; font-family: var(--sans);
+  color: var(--ink); min-width: 0;
+}
+.gc input:hover, .gc select:hover { border-color: var(--line2); }
+.gc input:focus, .gc select:focus { outline: none; border-color: var(--accent); background: #fff; }
+.gc input.mittig { text-align: center; font-family: var(--mono); }
+.gc input[type=number] { font-family: var(--mono); }
+.gc input[type=date] { font-family: var(--mono); font-size: 11px; }
+.gc input:disabled { color: var(--line2); }
+
+.gc-nr     { width: 38px; justify-content: flex-end; font-family: var(--mono); color: var(--muted); font-size: 11px; }
+.gc-label  { width: 190px; }
+.gc-abh    { width: 48px; }
+.gc-verz   { width: 52px; }
+.gc-datum  { width: 116px; }
+.gc-tage   { width: 58px; }
+.gc-haken  { width: 32px; justify-content: center; }
+.gc-haken input { width: auto; }
+.gc-farbe  { width: 118px; }
+.gc-weg    { width: 78px; gap: 1px; }
+.farbtupfer { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+
+/* Zeitachse */
+.gachse { position: sticky; top: 0; z-index: 2; background: var(--kopfbg); border-bottom: 1px solid var(--line2); }
+.gjahre, .gmonate { display: flex; }
+.gjahr {
+  flex: none; font-size: 11px; font-weight: 640; color: var(--kopf);
+  padding: 3px 5px; border-right: 1px solid var(--line2); height: 20px;
+  overflow: hidden; white-space: nowrap;
+}
+.gmonat {
+  flex: none; font-size: 9.5px; color: var(--muted); text-align: center;
+  padding: 2px 0; border-right: 1px solid var(--line); height: 18px;
+  overflow: hidden; white-space: nowrap;
+}
+
+/* Balkenfläche */
+.graster { position: relative; }
+.glinie { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--line); }
+.glinie.jahr { background: var(--line2); }
+.gheute { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--neg); z-index: 3; opacity: .8; }
+/* Beschriftet wird die Linie nicht — sie sässe auf den
+   Monatsbuchstaben. Die rote Senkrechte spricht für sich; was sie
+   bedeutet, sagt der Tooltip. */
+
+.gbalken {
+  position: absolute; height: 16px; border-radius: 3px;
+  box-shadow: 0 1px 2px rgba(16,21,28,.12); z-index: 1;
+}
+.gbalken.zu { background: #dfe3e8 !important; box-shadow: none; opacity: .8; }
+.gbalken.punkt { border-radius: 2px; }
+
+/* Die Pfeilebene liegt über den Balken und fängt keine Klicks ab. */
+.gpfeile { position: absolute; left: 0; top: 38px; pointer-events: none; z-index: 2; }
+
+/* Meilenstein: ein Datum, kein Zeitraum. Die Hülle wird nicht
+   gedreht — sonst stünde die Beschriftung schief; gekippt wird allein
+   das Quadrat darin. */
+.gmstein {
+  position: absolute; display: flex; align-items: center; gap: 7px;
+  height: 14px; z-index: 1; white-space: nowrap;
+}
+.gmraute {
+  width: 14px; height: 14px; flex: none;
+  transform: rotate(45deg); border-radius: 2px;
+  box-shadow: 0 1px 2px rgba(16,21,28,.18);
+}
+.gmstein.zu .gmraute { background: #dfe3e8 !important; box-shadow: none; }
+.gmstein.zu { opacity: .8; }
+
+/* Die Beschriftung wiederholt, was links in der Tabelle steht — ein
+   einzelner Punkt auf einer langen Achse ist sonst nicht zuzuordnen. */
+.gmstein .mtext {
+  font-size: 11px; color: var(--ink2); line-height: 1;
+  text-shadow: 0 0 3px #fff, 0 0 3px #fff;
+}
+.gmstein.zu .mtext { color: var(--muted); text-decoration: line-through; }
+/* Am rechten Rand steht die Beschriftung vor der Raute. */
+.gmstein.links { flex-direction: row-reverse; }
+
+/* Dieselbe Raute klein, für Tabelle und Farbwahl. */
+.mraute {
+  display: inline-block; width: 9px; height: 9px; flex: none;
+  transform: rotate(45deg); border-radius: 1px;
+}
+.mraute.klein { width: 8px; height: 8px; }
+
+/* --- Ziehen ------------------------------------------------------- */
+
+/* Der Balken ist anfassbar: in der Mitte zum Verschieben, am rechten
+   Rand zum Verlängern. Den Cursor setzt das Skript, weil er vom Ort
+   innerhalb des Balkens abhängt. */
+.gbalken, .gmstein { touch-action: none; }
+.gmstein:not(.zu) { cursor: grab; }
+.gmstein.zieht { opacity: .75; }
+.gbalken.zu { cursor: default; }
+.gbalken.zieht { opacity: .75; box-shadow: 0 2px 8px rgba(16,21,28,.28); }
+/* Der Griff zum Verlängern, nur beim Überfahren sichtbar. */
+.gbalken:not(.zu):hover::after {
+  content: ""; position: absolute; right: 0; top: 0; bottom: 0; width: 6px;
+  background: rgba(255,255,255,.55); border-radius: 0 3px 3px 0;
+}
+
+/* Das Datum, das beim Ziehen entsteht — über dem Balken, weil die
+   Tabelle erst nach dem Loslassen nachgeführt wird. */
+.gzieher {
+  position: absolute; z-index: 500; pointer-events: none;
+  background: var(--ink); color: #fff; font-size: 11px;
+  font-family: var(--mono); padding: 3px 7px; border-radius: 4px;
+  white-space: nowrap; box-shadow: 0 2px 8px rgba(16,21,28,.3);
+}
+
+/* Die Nummer ist der Griff zum Umsortieren. */
+.gc-nr[draggable="true"] { cursor: grab; }
+.gc-nr[draggable="true"]:hover { color: var(--ink); background: var(--accent2); border-radius: 3px; }
+.gzeile.nimmt { opacity: .45; }
+/* Wohin die Zeile fällt */
+.gzeile.ueber-oben  { box-shadow: inset 0  2px 0 var(--accent); }
+.gzeile.ueber-unten { box-shadow: inset 0 -2px 0 var(--accent); }
+
+/* Schmale Tabelle: nur was man beim Lesen des Plans braucht. */
+.gantt.schmal .gc-abh,
+.gantt.schmal .gc-verz,
+.gantt.schmal .gc-farbe,
+.gantt.schmal .gc-weg { display: none; }
+.gantt.schmal .gc-label { width: 230px; }
+
+/* Der Terminplan braucht Breite — auf dieser Seite bekommt der
+   Inhaltsbereich den ganzen Bildschirm. */
+body.seite-termine #inhalt { max-width: none; }
+
+@media print {
+  /* Auf Papier zählt das Bild, nicht die Eingabe: Die schmalen Spalten
+     für Abhängigkeit, Verzögerung und Farbe entfallen, und die Tafel
+     rollt nicht, sondern steht ganz da. */
+  .gscroll { overflow: visible !important; }
+  .gc-abh, .gc-verz, .gc-farbe, .gc-weg { display: none; }
+  /* Die Datumsspalten brauchen auf Papier kein Kalendersymbol und
+     damit weniger Platz — der geht an das Diagramm. */
+  .gc-datum { width: 86px; }
+  .gc-label { width: 170px; }
+  .gantt { border-color: #ccc; }
+  .gzeile { border-color: #e4e4e4; }
+  .gc input, .gc select { border-color: transparent !important; }
+}

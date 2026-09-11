@@ -1,0 +1,903 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Projektrechner · Selbsttest Rechenkern</title>
+<style>
+  body { font-family: system-ui, sans-serif; background: #f4f6f8; color: #10151c; padding: 24px; font-size: 14px; }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  p.sub { color: #6b7484; margin-bottom: 18px; }
+  table { border-collapse: collapse; width: 100%; max-width: 1000px; background: #fff;
+          border: 1px solid #e2e6ec; border-radius: 7px; overflow: hidden; }
+  th, td { padding: 7px 11px; border-bottom: 1px solid #eef1f5; text-align: left; }
+  th { background: #fafbfc; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: #6b7484; }
+  td.n { text-align: right; font-family: ui-monospace, monospace; }
+  .ok { color: #0d7a45; font-weight: 600; }
+  .no { color: #c02e26; font-weight: 600; }
+  tr.no td { background: #fdf0ef; }
+  #summe { margin: 16px 0; padding: 11px 14px; border-radius: 7px; font-weight: 600; max-width: 1000px; }
+</style>
+</head>
+<body>
+<h1>Selbsttest Rechenkern</h1>
+<p class="sub">Prüft die Kernrechnungen gegen von Hand nachvollziehbare Referenzwerte.</p>
+<div id="summe"></div>
+<table><thead><tr>
+  <th>Prüfung</th><th class="n">erwartet</th><th class="n">berechnet</th><th>Ergebnis</th>
+</tr></thead><tbody id="tb"></tbody></table>
+
+<script src="../app/model.js"></script>
+<script src="../app/engine.js"></script>
+<script src="../app/ui.js"></script>
+<script src="../app/karte.js"></script>
+<script>
+(function () {
+  var A = window.APP, E = A.engine, tb = document.getElementById('tb');
+  var gut = 0, schlecht = 0;
+
+  function pruefe(name, erwartet, ist, toleranz) {
+    toleranz = toleranz === undefined ? 0.5 : toleranz;
+    var ok = Math.abs(erwartet - ist) <= toleranz;
+    ok ? gut++ : schlecht++;
+    var tr = document.createElement('tr');
+    if (!ok) tr.className = 'no';
+    tr.innerHTML = '<td>' + name + '</td>' +
+      '<td class="n">' + A.fmt(erwartet, 2) + '</td>' +
+      '<td class="n">' + A.fmt(ist, 2) + '</td>' +
+      '<td class="' + (ok ? 'ok' : 'no') + '">' + (ok ? 'bestanden' : 'ABWEICHUNG') + '</td>';
+    tb.appendChild(tr);
+  }
+
+  /* ---- Flächenkaskade ------------------------------------------- */
+  var p = A.defaultProject();
+  p.grundstueck.flaeche = 2500; p.grundstueck.az = 0.90; p.grundstueck.geschosse = 4;
+  var r = E.compute(p);
+  pruefe('zulässige aGF = 2500 × 0.90', 2250, r.flaechen.agf_zulaessig);
+  pruefe('Gebäudegrundfläche = aGF ÷ 4 Vollgeschosse', 562.5, r.flaechen.total.grundflaeche, 0.01);
+  pruefe('GF oberirdisch = aGF × 1.00', 2250, r.flaechen.teile.neubau.gf_oi);
+  pruefe('Untergeschoss = Grundfläche × 80 %', 450, r.flaechen.total.gf_ug, 0.01);
+  pruefe('NWF = GF o.i. × 78 %', 1755, r.flaechen.total.nwf, 0.01);
+  pruefe('Umgebung = Grundstück − Grundfläche', 1937.5, r.flaechen.umgebung, 0.01);
+  pruefe('Höhe o.i. = 4 × 3.00 (Attika anrechenbar)', 12.0, r.flaechen.teile.neubau.hoehe_oi, 0.001);
+  pruefe('Volumen o.i. = Grundfläche × 4 × 3.00', 562.5 * 4 * 3, r.flaechen.total.gv_oi, 0.1);
+
+  /* Ausnutzungsbonus und nicht anrechenbares Attikageschoss */
+  var pb = A.defaultProject();
+  pb.grundstueck.flaeche = 2500; pb.grundstueck.az = 0.90; pb.grundstueck.az_bonus = 10;
+  pb.grundstueck.geschosse = 4;
+  pb.grundstueck.attika_anrechenbar = false; pb.grundstueck.attika_pct = 60;
+  var rbn = E.compute(pb), ob = rbn.flaechen.teile.neubau;
+  pruefe('aGF mit 10 % Bonus = 2500 × 0.90 × 1.10', 2475, rbn.flaechen.agf_zulaessig, 0.01);
+  pruefe('Gebäudegrundfläche ohne Attika = aGF ÷ 4', 618.75, ob.grundflaeche, 0.01);
+  pruefe('Attika = Grundfläche × 60 %', 371.25, ob.attika, 0.01);
+  pruefe('GF o.i. = aGF + Attika', 2475 + 371.25, ob.gf_oi, 0.01);
+  pruefe('Umgebung bleibt ohne Attika', 2500 - 618.75, rbn.flaechen.umgebung, 0.01);
+  pruefe('Höhe o.i. = 4 × 3.00 + 3.20', 15.2, ob.hoehe_oi, 0.001);
+  pruefe('Volumen o.i. = Vollgeschosse + Attika',
+    618.75 * 4 * 3 + 371.25 * 3.2, ob.gv_oi, 0.5);
+
+  /* Phasendauern in Monaten */
+  var pz = A.defaultProject();
+  pz.zeit.dauer_entwicklung = 18; pz.zeit.dauer_bewilligung = 12;
+  pz.zeit.dauer_vorbereitung = 3; pz.zeit.dauer_bau = 24;
+  var Z = E.zeitachse(pz);
+  pruefe('18 Monate Entwicklung = 1.5 Jahre', 1.5, Z.t_baueingabe, 0.001);
+  pruefe('Baubewilligung nach 30 Monaten', 2.5, Z.t_bb, 0.001);
+  pruefe('Bauende nach 57 Monaten', 57 / 12, Z.t_bauende, 0.001);
+
+  /* aGF direkt statt über die Ziffer */
+  var pa = A.defaultProject();
+  pa.grundstueck.az_modus = 'agf'; pa.grundstueck.agf_direkt = 1800;
+  pruefe('aGF direkt eingetragen', 1800, E.compute(pa).flaechen.agf_zulaessig);
+
+  /* Einstellhalle über Fläche je Parkplatz */
+  var pp = A.defaultProject();
+  pp.teile.neubau.pp = 20; pp.teile.neubau.flaeche_pro_pp = 30;
+  var rp = E.compute(pp);
+  pruefe('Einstellhalle = 20 PP × 30 m²', 600, rp.flaechen.total.f_aeh);
+  pruefe('Volumen Einstellhalle = 600 × 3.40', 2040, rp.flaechen.total.gv_aeh, 0.1);
+
+  /* ---- Erwerbsnebenkosten --------------------------------------- */
+  var q = A.defaultProject();
+  q.erwerb.preis_modus = 'total'; q.erwerb.preis_total = 4000000;
+  q.erwerb.handaenderung = 2.00; q.erwerb.handaenderung_anteil = 50;
+  q.erwerb.courtage = 2.00; q.erwerb.notariat = 0.20;
+  var rq = E.compute(q);
+  function pos(res, id) {
+    var z = res.erwerb.zeilen.find(function (x) { return x.id === id; });
+    return z ? z.betrag : 0;
+  }
+  pruefe('Handänderungssteuer 2 % × 50 % von 4 Mio.', 40000, pos(rq, 'handaenderung'));
+  pruefe('Courtage 2 % von 4 Mio.', 80000, pos(rq, 'courtage'));
+  /* Neue Vorgabe: Bezugsgrösse sind die Erwerbskosten ohne dieses Honorar
+     zuzüglich der Baukosten ohne Projektmanagement- und Dritthonorar. */
+  pruefe('Entwicklungshonorar = 2.50 % der Bezugsgrösse',
+    rq.erwerb.entwicklung_basis_betrag * 0.025, pos(rq, 'entwicklung'), 1);
+  pruefe('Bezugsgrösse = Erwerbskosten ohne Honorar + Baukosten ohne PM-Honorar',
+    rq.erwerb.total - pos(rq, 'entwicklung') + rq.bau.ohne_pm,
+    rq.erwerb.entwicklung_basis_betrag, 1);
+
+  /* ---- Kaufpreiseingabearten ------------------------------------ */
+  var m = A.defaultProject();
+  m.grundstueck.flaeche = 2000; m.grundstueck.az = 1.0;
+  m.erwerb.preis_modus = 'm2_land'; m.erwerb.preis_m2_land = 1500;
+  pruefe('Kaufpreis über CHF/m² Land', 3000000, E.compute(m).erwerb.kaufpreis);
+  m.erwerb.preis_modus = 'm2_agf'; m.erwerb.preis_m2_agf = 1800;
+  pruefe('Kaufpreis über CHF/m² aGF', 3600000, E.compute(m).erwerb.kaufpreis);
+
+  /* ---- Baukosten: Kostengruppen und Prozentkette ---------------- */
+  var b = A.defaultProject();
+  b.grundstueck.geschosse = 4;
+  var t = b.teile.neubau;
+  t.pp = 20;
+  t.nutzungen = [
+    A.defNutzung({ bezeichnung: 'Wohnen STWE', art: 'wohnen', anteil: 60, preis: 10000, verwertung: 'stwe' }),
+    A.defNutzung({ bezeichnung: 'Wohnen Miete', art: 'wohnen', anteil: 25, miete: 300, verwertung: 'halten_vermietet' }),
+    A.defNutzung({ bezeichnung: 'Gewerbe', art: 'gewerbe', anteil: 15, miete: 200, verwertung: 'halten_vermietet' }),
+    A.defNutzung({ bezeichnung: 'PP Verkauf', art: 'parkplatz', anteil: 100, preis: 45000, verwertung: 'stwe' })
+  ];
+  var rb = E.compute(b), bl = rb.bau.bloecke.neubau, gfoi = rb.flaechen.teile.neubau.gf_oi;
+  pruefe('Kostengruppe STWE = GF o.i. × 60 %', gfoi * 0.60, rb.flaechen.gruppen.oi_stwe, 0.1);
+  pruefe('Kostengruppe Miete = GF o.i. × 25 %', gfoi * 0.25, rb.flaechen.gruppen.oi_miete, 0.1);
+  pruefe('Kostengruppe Gewerbe = GF o.i. × 15 %', gfoi * 0.15, rb.flaechen.gruppen.oi_gewerbe, 0.1);
+
+  function zeile(res, bid, id) {
+    var z = res.bau.bloecke[bid].zeilen.find(function (x) { return x.id === id; });
+    return z || { betrag: 0, menge: 0 };
+  }
+  /* Standardbezug der BKP 20–29 ist neu die Kubatur (CHF/m³). */
+  pruefe('BKP 20–29 STWE = Kubatur STWE × Kennwert',
+    rb.flaechen.teile.neubau.gruppen_gv.oi_stwe * 1050,
+    zeile(rb, 'neubau', 'b2_oi_stwe').betrag, 1);
+  pruefe('Kubatur STWE = Kubatur o.i. × Flächenanteil STWE',
+    rb.flaechen.teile.neubau.gv_oi *
+      (rb.flaechen.teile.neubau.gruppen.oi_stwe / rb.flaechen.teile.neubau.gf_oi),
+    rb.flaechen.teile.neubau.gruppen_gv.oi_stwe, 0.1);
+  /* Prozentsatz aus dem Projekt lesen, nicht fest verdrahten — der
+     Standardkennwert der Bibliothek darf sich ändern. */
+  var pctReserve = b.bau.neubau.zeilen.b2_reserve.wert / 100;
+  var pctVorb = b.bau.neubau.zeilen.b1_vorbereitung.wert / 100;
+  pruefe('BKP 202 Reserve = Prozentsatz × Bezugsgrösse',
+    zeile(rb, 'neubau', 'b2_reserve').menge * pctReserve,
+    zeile(rb, 'neubau', 'b2_reserve').betrag, 1);
+  /* Die Vorbereitungsarbeiten beziehen sich auf die fünf Gebäudezeilen. */
+  var fuenf = ['b2_oi_stwe', 'b2_oi_miete', 'b2_oi_gewerbe', 'b2_ug', 'b2_aeh']
+    .reduce(function (s2, id) { return s2 + zeile(rb, 'neubau', id).betrag; }, 0);
+  pruefe('BKP 1 Vorbereitung: Basis = fünf Zeilen BKP 20–29',
+    fuenf, zeile(rb, 'neubau', 'b1_vorbereitung').menge, 1);
+  /* Die Reserve rechnet die Vorbereitungsarbeiten mit — die gewollte
+     Dopplung des Prozentwertes. */
+  pruefe('Reservebasis = fünf Zeilen BKP 20–29 + Vorbereitungsarbeiten',
+    fuenf + zeile(rb, 'neubau', 'b1_vorbereitung').betrag,
+    zeile(rb, 'neubau', 'b2_reserve').menge, 1);
+  pruefe('BKP 558.1 Dritthonorare = % von BKP 1–4 inkl. Reserve',
+    bl.bkp1 + bl.bkp2 + bl.bkp3 + bl.bkp4, zeile(rb, 'neubau', 'b5_dritt').menge, 1);
+  /* Baunebenkosten neu ausschliesslich auf BKP 20–29 inklusive Reserve. */
+  pruefe('BKP 5 Baunebenkosten = % von BKP 20–29 inkl. Reserve',
+    bl.bkp2, zeile(rb, 'neubau', 'b5_bnk').menge, 1);
+  pruefe('Baukosten ohne PM-Honorar = Total abzüglich BKP 599',
+    rb.bau.total - zeile(rb, 'neubau', 'b5_pm').betrag, rb.bau.ohne_pm, 1);
+  pruefe('BKP 599 PM = Prozentsatz × BKP 1–5 ohne sich selbst',
+    zeile(rb, 'neubau', 'b5_pm').menge * b.bau.neubau.zeilen.b5_pm.wert / 100,
+    zeile(rb, 'neubau', 'b5_pm').betrag, 1);
+  pruefe('Blocksumme = Summe der Gruppen',
+    bl.bkp1 + bl.bkp2 + bl.bkp3 + bl.bkp4 + bl.bkp5 + bl.bkp9, bl.summe, 1);
+
+  /* ---- Verwertung: keine Sollmiete auf verkauften Flächen -------- */
+  var nwf = rb.flaechen.total.nwf;
+  pruefe('Sollmiete nur aus Miet-/Exit-Flächen',
+    nwf * 0.25 * 300 + nwf * 0.15 * 200, rb.ertraege.sollmiete, 1);
+  pruefe('STWE-Erlös = Fläche × Preis + Parkplätze',
+    nwf * 0.60 * 10000 + 20 * 45000, rb.ertraege.stwe_erloes, 1);
+  pruefe('Ertragsflächenanteil = 40 % der NWF', 0.40, rb.kpi.anteil_ertrag, 0.001);
+
+  /* ---- Baukosten effektiv zuordnen statt nach Fläche -------------- */
+  var zp = A.defaultProject();
+  zp.grundstueck.geschosse = 4;
+  zp.teile.neubau.nutzungen = [
+    A.defNutzung({ bezeichnung: 'Wohnen STWE', art: 'wohnen', anteil: 50, preis: 10000, verwertung: 'stwe' }),
+    A.defNutzung({ bezeichnung: 'Wohnen Miete', art: 'wohnen', anteil: 30, miete: 300, verwertung: 'halten_vermietet' }),
+    A.defNutzung({ bezeichnung: 'Gewerbe Exit', art: 'gewerbe', anteil: 20, miete: 200, verwertung: 'exit' })
+  ];
+  var rz0 = E.compute(zp);
+  function bauzeile(res, id) {
+    return res.bau.bloecke.neubau.zeilen.find(function (x) { return x.id === id; });
+  }
+  /* Die Kostengruppe «o.i. Stockwerkeigentum» enthält nur verkaufte
+     Wohnungen — ihre Baukosten gehören ganz in den STWE-Block, ohne dass
+     jemand das von Hand setzen müsste. */
+  var zStwe = bauzeile(rz0, 'b2_oi_stwe').betrag;
+  var zMiete = bauzeile(rz0, 'b2_oi_miete').betrag;
+  var zGew = bauzeile(rz0, 'b2_oi_gewerbe').betrag;
+  pruefe('BKP 20–29 Stockwerkeigentum geht von selbst ganz auf STWE',
+    zStwe, bauzeile(rz0, 'b2_oi_stwe').schluessel.anteile.stwe * zStwe, 1);
+  pruefe('BKP 20–29 Miete geht von selbst ganz auf Miete',
+    zMiete, bauzeile(rz0, 'b2_oi_miete').schluessel.anteile.miete * zMiete, 1);
+  /* Das Gewerbe ist hier zum Exit bestimmt — die Zeile folgt dem. */
+  pruefe('BKP 20–29 Gewerbe folgt der Verwertung seiner Nutzungen',
+    zGew, bauzeile(rz0, 'b2_oi_gewerbe').schluessel.anteile.exit * zGew, 1);
+  pruefe('die drei Gruppenzeilen zusammen sind der zugeordnete Betrag',
+    zStwe + zMiete + zGew, rz0.bau.zuo.total, 1);
+  /* Untergeschoss und Einstellhalle dienen allen — sie bleiben ungeschlüsselt. */
+  pruefe('Untergeschoss bleibt ohne Schlüssel', true, !bauzeile(rz0, 'b2_ug').schluessel);
+  pruefe('Einstellhalle bleibt ohne Schlüssel', true, !bauzeile(rz0, 'b2_aeh').schluessel);
+  pruefe('die drei Blöcke ergeben die Gesamtinvestition',
+    rz0.kpi.gesamtinvestition, rz0.kpi.gi_stwe + rz0.kpi.gi_miete + rz0.kpi.gi_exit, 1);
+
+  /* Eine gemischte Kostengruppe: Wohnen zum Exit zählt in die Gruppe
+     «o.i. Miete», gehört im Ergebnis aber in den Exit-Block. */
+  var zm = A.defaultProject();
+  zm.grundstueck.geschosse = 4;
+  zm.teile.neubau.nutzungen = [
+    A.defNutzung({ bezeichnung: 'Wohnen Miete', art: 'wohnen', anteil: 60, miete: 300, verwertung: 'halten_vermietet' }),
+    A.defNutzung({ bezeichnung: 'Wohnen Exit', art: 'wohnen', anteil: 40, miete: 300, verwertung: 'exit' })
+  ];
+  var rzm = E.compute(zm), sm = bauzeile(rzm, 'b2_oi_miete').schluessel;
+  pruefe('gemischte Kostengruppe: 60 % auf Miete', 0.60, sm.anteile.miete, 0.001);
+  pruefe('gemischte Kostengruppe: 40 % auf Exit', 0.40, sm.anteile.exit, 0.001);
+
+  /* Eine ausdrückliche Zuordnung geht der Automatik vor. */
+  zp.bau.neubau.zeilen.b2_oi_stwe.zuo = 'miete';
+  var rz1 = E.compute(zp);
+  pruefe('die gesetzte Zuordnung schlägt die Automatik',
+    zStwe, rz1.bau.zuo.miete - rz0.bau.zuo.miete, 1);
+  /* «nach Fläche» schaltet die Automatik für diese Zeile ab. */
+  zp.bau.neubau.zeilen.b2_oi_stwe.zuo = 'flaeche';
+  var rz2 = E.compute(zp);
+  pruefe('«nach Fläche» nimmt die Zeile aus der Zuordnung',
+    rz0.bau.zuo.total - zStwe, rz2.bau.zuo.total, 1);
+  pruefe('sie fällt dann in den Flächentopf zurück',
+    rz2.kpi.anlagekosten - rz2.bau.zuo.total, rz2.kpi.ak_rest, 1);
+  pruefe('die Zuordnung verschiebt nur, sie verändert den Gewinn nicht',
+    rz0.kpi.gewinn, rz2.kpi.gewinn, 1);
+
+  /* Nur BKP 20–29 tragen die Zuordnung — BKP 5 baut prozentual darauf auf. */
+  var zn = A.defaultProject();
+  zn.bau.neubau.zeilen.b5_bnk.zuo = 'stwe';
+  var rzn = E.compute(zn);
+  pruefe('BKP 5 lässt sich nicht zuordnen', true, !bauzeile(rzn, 'b5_bnk').schluessel);
+
+  /* Die Teuerung hebt zugeordnete Beträge wie alle übrigen Baukosten. */
+  var zt = A.defaultProject();
+  zt.bau.teuerung_aktiv = true; zt.bau.teuerung_pct = 3;
+  var rzt = E.compute(zt);
+  pruefe('auch mit Teuerung geht die Aufteilung auf',
+    rzt.kpi.gesamtinvestition, rzt.kpi.gi_stwe + rzt.kpi.gi_miete + rzt.kpi.gi_exit, 1);
+
+  /* Die Prüfansicht «Tracking · Aufteilung» muss Position für Position
+     dasselbe ergeben wie die Kalkulation — sonst prüft sie nichts. */
+  var pa = A.defaultProject();
+  pa.grundstueck.geschosse = 4;
+  pa.teile.neubau.pp = 20;
+  pa.teile.neubau.nutzungen = [
+    A.defNutzung({ bezeichnung: 'Wohnen STWE', art: 'wohnen', anteil: 50, preis: 10000, verwertung: 'stwe' }),
+    A.defNutzung({ bezeichnung: 'Wohnen Miete', art: 'wohnen', anteil: 30, miete: 300, verwertung: 'halten_vermietet' }),
+    A.defNutzung({ bezeichnung: 'Gewerbe Exit', art: 'gewerbe', anteil: 20, miete: 200, verwertung: 'exit' })
+  ];
+  pa.bau.neubau.zeilen.b2_oi_stwe.zuo = 'stwe';
+  pa.bau.neubau.zeilen.b2_oi_gewerbe.zuo = 'exit';
+  pa.bau.teuerung_aktiv = true; pa.bau.teuerung_pct = 2.5;
+  pa.finanzierung.bauzinsen_aktivieren = true;
+  var rpa = E.compute(pa), apa = E.aufteilung(rpa);
+  pruefe('Prüfansicht: Summe aller Positionen = Gesamtinvestition',
+    rpa.kpi.gesamtinvestition, apa.total.betrag, 1);
+  pruefe('Prüfansicht: Spalte STWE = Kachel STWE', rpa.kpi.gi_stwe, apa.total.stwe, 1);
+  pruefe('Prüfansicht: Spalte Miete = Kachel Miete', rpa.kpi.gi_miete, apa.total.miete, 1);
+  pruefe('Prüfansicht: Spalte Exit = Kachel Exit', rpa.kpi.gi_exit, apa.total.exit, 1);
+
+  /* Ohne aktivierte Bauzinsen gehören sie nicht zu den Anlagekosten und
+     dürfen in der Aufstellung auch nicht erscheinen. */
+  pa.finanzierung.bauzinsen_aktivieren = false;
+  var rpb = E.compute(pa), apb = E.aufteilung(rpb);
+  pruefe('Prüfansicht ohne aktivierte Bauzinsen geht ebenso auf',
+    rpb.kpi.gesamtinvestition, apb.total.betrag, 1);
+
+  /* Die Ueberleitung von den drei Blockgewinnen zum Projektgewinn — sie
+     muss in jeder Konstellation auf den Franken stimmen. */
+  pruefe('Gewinnbrücke bei aktivierten Bauzinsen',
+    rpa.kpi.gewinn, E.gewinnbruecke(rpa).errechnet, 1);
+  pruefe('Gewinnbrücke ohne aktivierte Bauzinsen',
+    rpb.kpi.gewinn, E.gewinnbruecke(rpb).errechnet, 1);
+  pa.steuern.aktiv = true; pa.steuern.satz = 15;
+  var rpc = E.compute(pa);
+  pruefe('Gewinnbrücke mit Steuern', rpc.kpi.gewinn, E.gewinnbruecke(rpc).errechnet, 1);
+  /* Nicht aktivierte Finanzierungskosten trägt kein Block — genau das
+     ist der Abstand zwischen der Summe der EBT und der Marge. */
+  pruefe('nicht aktivierte Finanzierungskosten fehlen in den Blöcken',
+    rpb.kpi.finanzierungskosten, E.gewinnbruecke(rpb).bloecke - rpb.kpi.gewinn, 1);
+
+  var h = A.defaultProject();
+  h.teile.neubau.nutzungen = [A.defNutzung({ bezeichnung: 'Gewerbe Exit', art: 'gewerbe',
+    anteil: 100, miete: 400, verwertung: 'exit', exit_rendite: 4.00 })];
+  var rh = E.compute(h);
+  pruefe('Exit-Wert = Sollmiete / 4 %', rh.flaechen.total.nwf * 400 / 0.04, rh.ertraege.exit_wert, 5);
+  pruefe('Exit zählt nicht zum STWE-Erlös', 0, rh.ertraege.stwe_erloes);
+
+  /* ---- Betrieb ohne gehaltene Flächen ---------------------------- */
+  var s0 = A.defaultProject();
+  pruefe('kein Betriebsaufwand ohne gehaltene Fläche', 0, E.compute(s0).betrieb.total_a);
+
+  /* ---- Zeitverteilung -------------------------------------------- */
+  var summe = E.spread(1000000, 1.0, 3.0, 6, 's').reduce(function (a, c) { return a + c; }, 0);
+  pruefe('S-Kurve verteilt den Betrag vollständig', 1000000, summe, 0.01);
+  pruefe('lineare Verteilung: erstes Jahr = 25 %', 250000, E.spread(1000000, 0, 4, 6, 'linear')[0], 0.01);
+
+  /* ---- Finanzierung ---------------------------------------------- */
+  var f = A.defaultProject();
+  f.finanzierung.vorverkauf_quote = 55;
+  pruefe('Zinsrabatt bei 55 % Vorverkauf', 50, E.compute(f).fin.rabatt_bp);
+  f.finanzierung.vorverkauf_quote = 10;
+  pruefe('kein Rabatt bei 10 % Vorverkauf', 0, E.compute(f).fin.rabatt_bp);
+
+  /* Eigenkapitalquote je Phase: vor der Baubewilligung gilt die eine,
+     danach die andere. Das erste Jahr liegt vor der Bewilligung. */
+  var g = A.defaultProject();
+  g.finanzierung.ek_einsatz = 'proportional';
+  g.finanzierung.ek_quote_vor_bb = 60; g.finanzierung.ek_quote_nach_bb = 30;
+  var rg = E.compute(g), j0 = rg.fin.jahre[0];
+  pruefe('Eigenkapital im ersten Jahr = 60 % (vor Baubewilligung)', j0.saldo * 0.60, j0.ek, 1);
+  var jLetzt = rg.fin.jahre[rg.fin.jahre.length - 1];
+  pruefe('Eigenkapitalquote im letzten Jahr = 30 %', 30, jLetzt.ek_quote, 0.01);
+  /* Gleiche Quoten müssen sich wie früher verhalten */
+  g.finanzierung.ek_quote_vor_bb = 30;
+  var rg2 = E.compute(g);
+  pruefe('Gleiche Quoten ergeben durchgehend 30 %',
+    rg2.fin.jahre[0].saldo * 0.30, rg2.fin.jahre[0].ek, 1);
+
+  /* ---- Kalkulatorischer Eigenkapitalzins als Kosten --------------- */
+  var ez = A.defaultProject();
+  ez.finanzierung.ek_zins_aktiv = false;
+  var rezAus = E.compute(ez);
+  ez.finanzierung.ek_zins_aktiv = true;
+  var rezEin = E.compute(ez);
+  pruefe('EK-Zins erhöht die Finanzierungskosten',
+    rezAus.kpi.finanzierungskosten + rezEin.fin.ek_zins_kalk,
+    rezEin.kpi.finanzierungskosten, 20000);
+  pruefe('EK-Zins mindert den Gewinn',
+    1, rezEin.kpi.gewinn < rezAus.kpi.gewinn ? 1 : 0);
+  pruefe('EK-Zins mindert die Rendite auf Eigenkapital',
+    1, rezEin.kpi.roe < rezAus.kpi.roe ? 1 : 0);
+  pruefe('EK-Zins mindert den internen Zinsfuss',
+    1, rezEin.kpi.irr < rezAus.kpi.irr ? 1 : 0);
+
+  /* ---- Betriebskosten als Jahrespauschale ------------------------- */
+  var bp = A.defaultProject();
+  bp.teile.neubau.nutzungen = [
+    A.defNutzung({ bezeichnung: 'Wohnen Miete', art: 'wohnen', anteil: 100,
+      miete: 320, verwertung: 'halten_vermietet' })
+  ];
+  bp.betrieb.verwaltung = { basis: 'pauschal', wert: 45000 };
+  var rbp = E.compute(bp);
+  pruefe('Pauschale Bewirtschaftung zählt mit ihrem Betrag',
+    45000, rbp.betrieb.zeilen.find(function (x) { return x.id === 'verwaltung'; }).betrag, 1);
+
+  /* ---- Durchschnittliche Höhe oberirdisch ------------------------- */
+  var hh = A.defaultProject();
+  hh.grundstueck.geschosse = 5;
+  hh.grundstueck.attika_anrechenbar = false; hh.grundstueck.attika_pct = 60;
+  var ohh = E.compute(hh).flaechen.teile.neubau;
+  pruefe('Ø Höhe o.i. = Volumen ÷ Geschossfläche o.i.',
+    ohh.gv_oi / ohh.gf_oi, ohh.h_oi_mittel, 0.001);
+
+  pruefe('IRR von −1000 → 1331 nach 3 Jahren ≈ 10 %', 10, E.irr([-1000, 0, 0, 1331]), 0.6);
+
+  /* ---- Residualwert ---------------------------------------------- */
+  var res = A.engine.residualwert(A.defaultProject(), 15);
+  var probe = A.defaultProject();
+  probe.erwerb.preis_modus = 'total'; probe.erwerb.preis_total = res.preis;
+  pruefe('beim Residualpreis wird die Zielmarge erreicht', 15,
+    E.compute(probe).kpi.marge_ak, 0.15);
+
+  /* ---- Gewinnidentität -------------------------------------------- */
+  var k = E.compute(A.defaultProject()).kpi;
+  pruefe('Erlöse − alle Kosten − Steuern = Gewinn',
+    k.erloese + k.mietertrag_projekt - k.erwerbskosten - k.baukosten -
+    k.finanzierungskosten - k.vermarktung - k.steuern, k.gewinn, 2);
+
+  /* ---- Wohnungsspiegel speist die Nutzungszeilen ------------------- */
+  var ps = A.defaultProject();
+  var zStwe = A.defNutzung({ bezeichnung: 'Wohnen STWE', art: 'wohnen', anteil: 70,
+    preis: 9000, verwertung: 'stwe' });
+  var zMiete = A.defNutzung({ bezeichnung: 'Wohnen Miete', art: 'wohnen', anteil: 30,
+    miete: 300, verwertung: 'halten_vermietet' });
+  ps.teile.neubau.nutzungen = [zStwe, zMiete];
+  ps.spiegel.aktiv = true; ps.spiegel.teil = 'neubau';
+  ps.spiegel.einheiten = [
+    { nr: '1', flaeche: 100, preis: 1000000, zeile: zStwe.id },
+    { nr: '2', flaeche: 120, preis: 1160000, zeile: zStwe.id },
+    { nr: '3', flaeche: 80,  preis: 0,       zeile: zMiete.id }
+  ];
+  var rs = E.compute(ps), os = rs.flaechen.teile.neubau;
+  pruefe('Spiegel setzt Fläche der STWE-Zeile', 220, os.nutzungen[zStwe.id], 0.01);
+  pruefe('Spiegel setzt Fläche der Mietzeile', 80, os.nutzungen[zMiete.id], 0.01);
+  pruefe('Durchschnittspreis der STWE-Zeile aus dem Spiegel',
+    2160000 / 220, os.spiegel[zStwe.id].preis_m2, 0.01);
+  pruefe('STWE-Erlös folgt dem Spiegel', 2160000, rs.ertraege.stwe_erloes, 1);
+  pruefe('Mietzeile bleibt Sollmiete', 80 * 300, rs.ertraege.sollmiete, 1);
+
+  /* ---- Kapitalbedarf: Verteilung ---------------------------------- */
+  var pv = A.defaultProject();
+  var rv0 = E.compute(pv);
+  var summeBau = function (res) {
+    return res.reihen.det.bau.reduce(function (s2, x) { return s2 + x; }, 0);
+  };
+  pruefe('Automatische Verteilung trifft die Baukosten genau',
+    rv0.bau.total, summeBau(rv0), 1);
+
+  pv.zeit.verteilung_modus = 'phasen';
+  pv.zeit.verteilung = { entwicklung: 0, bewilligung: 10, vorbereitung: 20, bau: 70 };
+  var rv1 = E.compute(pv);
+  pruefe('Phasenverteilung trifft die Baukosten genau', rv1.bau.total, summeBau(rv1), 1);
+  var phBau = rv1.reihen.phasen.find(function (x) { return x.id === 'bau'; });
+  pruefe('Anteil der Bauphase = 70 %', 0.70, phBau.anteil, 0.0001);
+
+  /* Nicht auf 100 normierte Eingabe darf nichts verschlucken */
+  pv.zeit.verteilung = { entwicklung: 0, bewilligung: 20, vorbereitung: 40, bau: 140 };
+  var rv2 = E.compute(pv);
+  pruefe('Summe über 100 % wird normiert', rv2.bau.total, summeBau(rv2), 1);
+  pruefe('Anteil der Bauphase nach Normierung = 70 %', 0.70,
+    rv2.reihen.phasen.find(function (x) { return x.id === 'bau'; }).anteil, 0.0001);
+
+  /* ---- Kapitalisierungssatz Exit: Vorgabe und Ausnahme ------------- */
+  var pe = A.defaultProject();
+  pe.bewertung.exit_rendite = 3.50;
+  pe.teile.neubau.nutzungen = [
+    A.defNutzung({ bezeichnung: 'Miete Exit', art: 'wohnen', anteil: 100,
+      miete: 300, verwertung: 'exit' })
+  ];
+  var re1 = E.compute(pe);
+  var posE = re1.ertraege.positionen.find(function (x) { return x.kategorie === 'exit'; });
+  pruefe('Exit ohne eigenen Satz nutzt die Vorgabe 3.50 %',
+    posE.sollmiete / 0.035, posE.wert, 1);
+  pe.teile.neubau.nutzungen[0].exit_rendite = 4.25;
+  var re2 = E.compute(pe);
+  var posE2 = re2.ertraege.positionen.find(function (x) { return x.kategorie === 'exit'; });
+  pruefe('Eigener Satz der Zeile geht vor', posE2.sollmiete / 0.0425, posE2.wert, 1);
+
+  /* ---- Wohnungsspiegel: Anzahl gleichwertiger Wohnungen ------------ */
+  var ps = A.defaultProject();
+  var zid = ps.teile.neubau.nutzungen[0].id;
+  ps.spiegel.aktiv = true; ps.spiegel.teil = 'neubau';
+  ps.spiegel.einheiten = [
+    { nr: '1', anzahl: 4, geschoss: 1, zimmer: 3.5, flaeche: 90, preis: 800000, zeile: zid }
+  ];
+  var rsp = E.compute(ps).flaechen.teile.neubau.spiegel[zid];
+  pruefe('4 gleiche Wohnungen ergeben 360 m²', 360, rsp.flaeche, 0.01);
+  pruefe('4 gleiche Wohnungen ergeben 3.2 Mio. Erlös', 3200000, rsp.erloes, 1);
+  pruefe('Anzahl Einheiten wird mitgezählt', 4, rsp.anzahl);
+  pruefe('Preis je m² bleibt der Preis der Einheit', 800000 / 90, rsp.preis_m2, 0.01);
+
+  /* ---- Verkaufsstand aus der Verkaufsübersicht -------------------- */
+  var vk = A.defaultProject();
+  vk.startdatum = '2026-01-01'; vk.stichtag = '2027-01-01';
+  vk.finanzierung.vorverkauf_quote = 40;
+  var rvk0 = E.compute(vk);
+  var stweV = rvk0.ertraege.stwe_erloes;
+  vk.verkauf.modus = 'uebersicht';
+  vk.verkauf.projekt_id = 'testprojekt';
+  vk.verkauf.stand = { datum: '2026-08-19', geholt: '2026-08-20', name: 'Test', einheiten: [
+    { id: 'A1', gruppe: 'Haus A', zimmer: 4.5, flaeche: 120, geschoss: '1', art: 'unit', status: 'sold', preis: 0 },
+    { id: 'A2', gruppe: 'Haus A', zimmer: 3.5, flaeche: 95, geschoss: '2', art: 'unit', status: 'sold', preis: 0 },
+    { id: 'A3', gruppe: 'Haus A', zimmer: 3.5, flaeche: 95, geschoss: '2', art: 'unit', status: 'reserved', preis: 900000 },
+    { id: 'A4', gruppe: 'Haus A', zimmer: 2.5, flaeche: 70, geschoss: '3', art: 'unit', status: 'available', preis: 700000 }
+  ] };
+  vk.verkauf.preise = { A1: stweV * 0.35, A2: stweV * 0.25 };
+  /* Ohne Übergabedatum fliesst die Übergaberate nicht — für die
+     Summenprüfung werden die Daten deshalb erfasst. */
+  vk.verkauf.uebergaben = { A1: '2030-03-01', A2: '2030-03-01' };
+  var rvk1 = E.compute(vk);
+  pruefe('Echte Vorverkaufsquote = erfasster Erlös ÷ STWE-Erlös',
+    60, rvk1.fin.vorverkauf_wirksam, 0.1);
+  pruefe('Echte Quote schaltet die Zinsstaffel (50 bp ab 50 %)',
+    50, rvk1.fin.rabatt_bp);
+  pruefe('Verkaufsstand verschiebt Erlöse, ändert die Summe nicht',
+    rvk0.reihen.det.verkauf.reduce(function (s2, x) { return s2 + x; }, 0),
+    rvk1.reihen.det.verkauf.reduce(function (s2, x) { return s2 + x; }, 0), 1);
+  pruefe('Frühere Erlöse senken die Bauzinsen',
+    1, rvk1.fin.bauzinsen < rvk0.fin.bauzinsen ? 1 : 0);
+  pruefe('Reservierte zählen nicht als Erlös',
+    Math.round(stweV * 0.6), Math.round(rvk1.verkauf.verkauft_chf), 1);
+  pruefe('Zählung: 2 verkauft, 1 reserviert, 1 frei',
+    211, rvk1.verkauf.verkauft_n * 100 + rvk1.verkauf.reserviert_n * 10 + rvk1.verkauf.frei_n);
+
+  /* Verkaufte Einheit ohne erfassten Erlös: zählt 0 und warnt */
+  delete vk.verkauf.preise.A2;
+  var rvk2 = E.compute(vk);
+  pruefe('Ohne Erlös zählt die Einheit mit 0 CHF',
+    Math.round(stweV * 0.35), Math.round(rvk2.verkauf.verkauft_chf), 1);
+  pruefe('Verkaufte ohne Erlös erzeugen eine Warnung',
+    1, rvk2.warnungen.some(function (w) { return /ohne erfassten Erlös/.test(w.text); }) ? 1 : 0);
+
+  /* Ohne Zuordnung bleibt alles bei der Planannahme */
+  vk.verkauf.modus = ''; vk.verkauf.projekt_id = '';
+  pruefe('Ohne Zuordnung gilt die Planquote',
+    40, E.compute(vk).fin.vorverkauf_wirksam, 0.1);
+
+  /* Eigene Liste für Projekte ohne öffentliche Verkaufsseite — gleiche
+     Struktur, gleiche Wirkung wie die zentrale Übersicht. */
+  var mv = A.defaultProject();
+  mv.startdatum = '2026-01-01'; mv.stichtag = '2027-01-01';
+  mv.finanzierung.vorverkauf_quote = 40;
+  var rmv0 = E.compute(mv);
+  var stweM = rmv0.ertraege.stwe_erloes;
+  mv.verkauf.modus = 'manuell';
+  mv.verkauf.uebergaben = { W1: '2030-03-01', W2: '2030-03-01' };
+  mv.verkauf.manuell = [
+    { id: 'W1', gruppe: 'Haus A', zimmer: 4.5, flaeche: 120, geschoss: '1', art: 'unit', status: 'sold', preis: stweM * 0.35 },
+    { id: 'W2', gruppe: 'Haus A', zimmer: 3.5, flaeche: 95, geschoss: '2', art: 'unit', status: 'sold', preis: stweM * 0.25 },
+    { id: 'W3', gruppe: 'Haus A', zimmer: 3.5, flaeche: 95, geschoss: '2', art: 'unit', status: 'reserved', preis: 900000 },
+    { id: 'W4', gruppe: 'Haus A', zimmer: 2.5, flaeche: 70, geschoss: '3', art: 'unit', status: 'available', preis: 700000 }
+  ];
+  var rmv1 = E.compute(mv);
+  pruefe('Eigene Liste ergibt dieselbe Quote wie die Übersicht',
+    60, rmv1.fin.vorverkauf_wirksam, 0.1);
+  pruefe('Eigene Liste schaltet die Zinsstaffel', 50, rmv1.fin.rabatt_bp);
+  pruefe('Eigene Liste verschiebt Erlöse, ändert die Summe nicht',
+    rmv0.reihen.det.verkauf.reduce(function (s2, x) { return s2 + x; }, 0),
+    rmv1.reihen.det.verkauf.reduce(function (s2, x) { return s2 + x; }, 0), 1);
+  pruefe('Eigene Liste: reservierte zählen nicht als Erlös',
+    Math.round(stweM * 0.6), Math.round(rmv1.verkauf.verkauft_chf), 1);
+  pruefe('Eigene Liste wird als Modus ausgewiesen',
+    1, rmv1.verkauf.modus === 'manuell' ? 1 : 0);
+  /* Erfasster Erlös in p.verkauf.preise geht dem Betrag der Zeile vor */
+  mv.verkauf.preise = { W1: stweM * 0.10 };
+  pruefe('Von Hand erfasster Erlös geht dem Listenbetrag vor',
+    Math.round(stweM * 0.35), Math.round(rmv1.verkauf.verkauft_chf - E.compute(mv).verkauf.verkauft_chf + stweM * 0.10), 1);
+  /* Ein Eintrag ohne Betrag zählt 0 und warnt */
+  mv.verkauf.preise = {};
+  mv.verkauf.manuell[1].preis = 0;
+  var rmv2 = E.compute(mv);
+  pruefe('Eigene Liste: Einheit ohne Betrag zählt 0',
+    Math.round(stweM * 0.35), Math.round(rmv2.verkauf.verkauft_chf), 1);
+  pruefe('Eigene Liste: fehlender Betrag warnt',
+    1, rmv2.warnungen.some(function (w) { return /ohne erfassten Erlös/.test(w.text); }) ? 1 : 0);
+
+  /* ---- Freigabe der Raten und Vertragsdaten ----------------------- */
+  /* Vertragstermine (Beurkundung, Tagebuch, Übergabe) sind Fakten der
+     Einheit und fliessen zu ihrem Datum. Bautermine (Baustart, Rohbau,
+     Decke UG, Unterlagsboden) fliessen frühestens am Stichtag, solange
+     sie nicht freigegeben sind. */
+  var fz = A.defaultProject();
+  fz.startdatum = '2026-01-01'; fz.stichtag = '2028-01-01';
+  var rfz0 = E.compute(fz);
+  var stweF = rfz0.ertraege.stwe_erloes;
+  var summeVk = function (res) {
+    return res.reihen.det.verkauf.reduce(function (s2, x) { return s2 + x; }, 0);
+  };
+  fz.verkauf.modus = 'manuell';
+  fz.verkauf.manuell = [
+    { id: 'W1', gruppe: 'A', zimmer: 4.5, flaeche: 120, art: 'unit', status: 'sold', preis: stweF * 0.30 },
+    { id: 'W2', gruppe: 'A', zimmer: 3.5, flaeche: 95, art: 'unit', status: 'sold', preis: stweF * 0.30 },
+    { id: 'W3', gruppe: 'A', zimmer: 2.5, flaeche: 70, art: 'unit', status: 'available', preis: stweF * 0.40 }
+  ];
+  fz.verkauf.daten = { W1: '2026-06-01', W2: '2027-06-01' };
+  fz.verkauf.uebergaben = { W1: '2030-03-01', W2: '2030-03-01' };
+  var rfz1 = E.compute(fz);
+  pruefe('Verkaufsstand verteilt weiterhin genau den Erlös', stweF, summeVk(rfz1), 1);
+
+  /* Jahre, die vor dem Stichtag beginnen. Der Stichtag liegt selten genau
+     auf einer Jahresgrenze — das 365.25-Tage-Jahr lässt einen kleinen Rest
+     in das Jahr fallen, in dem der Stichtag liegt. */
+  var vorStichtag = function (res) {
+    var t = res.zeit.t_stichtag, s2 = 0;
+    res.reihen.det.verkauf.forEach(function (x, j) { if (j < t) s2 += x; });
+    return s2;
+  };
+  /* Die Anzahlung ist ein Vertragstermin: sie fliesst zum Beurkundungs-
+     datum, ohne dass etwas freigegeben werden müsste. */
+  pruefe('Anzahlung folgt dem Beurkundungsdatum je Einheit',
+    stweF * 0.60 * 0.20, vorStichtag(rfz1), stweF * 0.01);
+
+  /* Die Baustartrate dagegen ist ein Bautermin. Baustart liegt hier vor
+     dem Stichtag; ohne Freigabe wird sie auf den Stichtag geschoben. */
+  var bt = A.migrate(A.clone(fz));
+  bt.zeit.dauer_entwicklung = 6; bt.zeit.dauer_bewilligung = 3; bt.zeit.dauer_vorbereitung = 1;
+  var rbt1 = E.compute(bt);
+  bt.vermarktung.zahlungsplan[1].frei = true;      // Baustart erreicht
+  var rbt2 = E.compute(bt);
+  pruefe('Freigabe zieht die Baustartrate vor',
+    1, rbt2.fin.bauzinsen < rbt1.fin.bauzinsen ? 1 : 0);
+  pruefe('Freigabe lässt die Erlössumme unberührt', summeVk(rbt1), summeVk(rbt2), 1);
+
+  /* Ein erfasstes Zahlungsdatum geht dem Plan vor */
+  bt.vermarktung.zahlungsplan[1].datum = '2026-07-15';
+  var rbt3 = E.compute(bt);
+  pruefe('Zahlungsdatum zieht die Rate weiter vor',
+    1, rbt3.fin.bauzinsen < rbt2.fin.bauzinsen ? 1 : 0);
+  pruefe('Zahlungsdatum lässt die Erlössumme unberührt', summeVk(rbt2), summeVk(rbt3), 1);
+
+  /* ---- Neue Fälligkeiten ------------------------------------------ */
+  var nf = A.defaultProject();
+  nf.startdatum = '2026-01-01'; nf.stichtag = '2028-01-01';
+  var rnf0 = E.compute(nf);
+  var stweN = rnf0.ertraege.stwe_erloes;
+  var summeN = function (res) {
+    return res.reihen.det.verkauf.reduce(function (s2, x) { return s2 + x; }, 0);
+  };
+  pruefe('Ohne Verkaufsstand fliesst der ganze Erlös', stweN, summeN(rnf0), 1);
+
+  nf.verkauf.modus = 'manuell';
+  nf.verkauf.manuell = [
+    { id: 'W1', gruppe: 'A', zimmer: 4.5, flaeche: 120, art: 'unit', status: 'sold', preis: stweN * 0.30 },
+    { id: 'W2', gruppe: 'A', zimmer: 3.5, flaeche: 95, art: 'unit', status: 'sold', preis: stweN * 0.30 },
+    { id: 'W3', gruppe: 'A', zimmer: 2.5, flaeche: 70, art: 'unit', status: 'available', preis: stweN * 0.40 }
+  ];
+  nf.verkauf.daten = { W1: '2026-06-01', W2: '2026-09-01' };
+
+  /* «bei Übergabe» ohne Datum: der Anteil der verkauften Einheiten fliesst
+     nicht — 20 % des Plans auf 60 % verkauften Erlös. */
+  var rnf1 = E.compute(nf);
+  pruefe('Übergaberate ohne Datum fliesst nicht',
+    stweN * 0.60 * 0.20, rnf1.reihen.ohne_uebergabe, 1);
+  pruefe('Sie fehlt genau im Zahlungsstrom',
+    stweN - stweN * 0.60 * 0.20, summeN(rnf1), 1);
+  pruefe('Zwei Einheiten ohne Übergabedatum', 2, rnf1.reihen.ohne_uebergabe_n);
+  pruefe('Der Erlös selbst bleibt unberührt', stweN, rnf1.ertraege.stwe_erloes, 1);
+  pruefe('Vor Bauende ist es ein Hinweis, keine Warnung',
+    1, rnf1.warnungen.some(function (w) {
+      return /Übergabedatum/.test(w.text) && w.art === 'info'; }) ? 1 : 0);
+
+  /* Mit Übergabedaten fliesst wieder alles */
+  nf.verkauf.uebergaben = { W1: '2029-03-01', W2: '2029-06-01' };
+  var rnf2 = E.compute(nf);
+  pruefe('Mit Übergabedatum fliesst der ganze Erlös', stweN, summeN(rnf2), 1);
+  pruefe('Nichts bleibt liegen', 0, rnf2.reihen.ohne_uebergabe, 1);
+
+  /* Nach Bauende ohne Datum wird daraus eine Warnung */
+  var spaet = A.migrate(A.clone(nf));
+  spaet.verkauf.uebergaben = {};
+  spaet.stichtag = '2033-01-01';
+  var rspaet = E.compute(spaet);
+  pruefe('Nach Bauende wird daraus eine Warnung',
+    1, rspaet.warnungen.some(function (w) {
+      return /Übergabedatum/.test(w.text) && w.art === 'warn'; }) ? 1 : 0);
+
+  /* «3 Tage nach Tagebucheintrag» = Beurkundung + 10 + 3 Tage */
+  var tgb = A.defaultProject();
+  tgb.startdatum = '2026-01-01'; tgb.stichtag = '2028-01-01';
+  tgb.vermarktung.zahlungsplan = [
+    { label: 'Tagebuch', anteil: 100, bezug: 'tagebuch', frei: false, datum: '' }
+  ];
+  var stweT = E.compute(tgb).ertraege.stwe_erloes;
+  tgb.verkauf.modus = 'manuell';
+  tgb.verkauf.manuell = [
+    { id: 'T1', gruppe: 'A', zimmer: 4.5, flaeche: 120, art: 'unit', status: 'sold', preis: stweT }
+  ];
+  tgb.verkauf.daten = { T1: '2026-06-01' };
+  var rtgb = E.compute(tgb);
+  pruefe('Tagebuchrate verteilt den ganzen Erlös', stweT, summeN(rtgb), 1);
+  /* Beurkundung 0.4137 J + 13 Tage = 0.4493 J — die Zahlung liegt im
+     ersten Projektjahr, nicht erst am Stichtag. */
+  pruefe('Tagebuchrate liegt im ersten Projektjahr',
+    1, rtgb.reihen.det.verkauf[0] > stweT * 0.9 ? 1 : 0);
+  /* Längere Frist verschiebt den Zufluss nach hinten */
+  tgb.vermarktung.fristen = { eigen: true, tagebuch_tage: 200, nach_tagebuch_tage: 3,
+    decke_ug_pct: 20, unterlagsboden_pct: 75 };
+  var rtgb2 = E.compute(tgb);
+  pruefe('Längere Frist verschiebt den Zufluss',
+    1, rtgb2.reihen.det.verkauf[0] < rtgb.reihen.det.verkauf[0] ? 1 : 0);
+
+  /* Decke UG: Schätzung aus der Bauzeit, bis ein Datum erfasst ist */
+  var du = A.defaultProject();
+  du.startdatum = '2026-01-01'; du.stichtag = '2026-02-01';
+  du.vermarktung.zahlungsplan = [
+    { label: 'Decke UG', anteil: 100, bezug: 'decke_ug', frei: true, datum: '' }
+  ];
+  var rdu1 = E.compute(du);
+  du.vermarktung.fristen = { eigen: true, tagebuch_tage: 10, nach_tagebuch_tage: 3,
+    decke_ug_pct: 90, unterlagsboden_pct: 95 };
+  var rdu2 = E.compute(du);
+  pruefe('Späterer Schätzwert verschiebt die Decke-UG-Rate',
+    1, summeN(rdu2) > 0 && rdu2.fin.bauzinsen > rdu1.fin.bauzinsen ? 1 : 0);
+  pruefe('Decke-UG-Rate verteilt den ganzen Erlös',
+    rdu2.ertraege.stwe_erloes, summeN(rdu2), 1);
+
+  /* ---- Firmenvorgabe Zahlungsmodalitäten ------------------------- */
+  /* Der Rechenkern kennt nur den Plan im Projekt; die Vorgabe wird beim
+     Öffnen eingesetzt. Geprüft wird deshalb beides: dass der Plan wirkt
+     und dass die Übernahme das Richtige tut. */
+  function vorgabeAnwenden(zp, plan) {
+    if (!zp.vermarktung.zahlungsplan_eigen && plan) zp.vermarktung.zahlungsplan = A.clone(plan);
+    return zp;
+  }
+  var zpA = A.defaultProject();
+  pruefe('Neues Projekt folgt der Firmenvorgabe',
+    0, zpA.vermarktung.zahlungsplan_eigen ? 1 : 0);
+  var rzpA = E.compute(zpA);
+  var vorgabe = [{ label: 'Anzahlung', anteil: 60, bezug: 'beurkundung' },
+                 { label: 'Übergabe', anteil: 40, bezug: 'fertigstellung' }];
+  vorgabeAnwenden(zpA, vorgabe);
+  pruefe('Vorgabe wird übernommen', 2, zpA.vermarktung.zahlungsplan.length);
+  var rzpB = E.compute(zpA);
+  pruefe('Ein früherer Zahlungsplan ändert die Bauzinsen',
+    1, Math.abs(rzpB.fin.bauzinsen - rzpA.fin.bauzinsen) > 1 ? 1 : 0);
+  pruefe('Der Zahlungsplan ändert die Erlössumme nicht',
+    rzpA.reihen.det.verkauf.reduce(function (s2, x) { return s2 + x; }, 0),
+    rzpB.reihen.det.verkauf.reduce(function (s2, x) { return s2 + x; }, 0), 1);
+
+  /* Ein eigener Plan bleibt von der Vorgabe unberührt */
+  zpA.vermarktung.zahlungsplan_eigen = true;
+  zpA.vermarktung.zahlungsplan = [{ label: 'Alles bei Übergabe', anteil: 100, bezug: 'fertigstellung' }];
+  vorgabeAnwenden(zpA, vorgabe);
+  pruefe('Eigener Plan bleibt bei geänderter Vorgabe stehen',
+    1, zpA.vermarktung.zahlungsplan.length);
+  pruefe('Eigener Plan behält seinen Anteil',
+    100, zpA.vermarktung.zahlungsplan[0].anteil);
+
+  /* Bestehende Projekte gelten als eigener Plan, damit eine Vorgabe sie
+     nicht rückwirkend umstellt. */
+  var altZp = A.defaultProject();
+  altZp.schema = 9;
+  pruefe('Altprojekt behält seinen Plan als eigenen',
+    1, A.migrate(JSON.parse(JSON.stringify(altZp))).vermarktung.zahlungsplan_eigen ? 1 : 0);
+
+  /* ---- Soll bleibt der gerechnete Wert, auch beim Kaufpreis ------- */
+  var kp = A.defaultProject();
+  kp.erwerb.preis_modus = 'total'; kp.erwerb.preis_total = 3500000;
+  kp.ist['erwerb.kaufpreis'] = 3800000;
+  var zkp = E.compute(kp).erwerb.zeilen.find(function (x) { return x.id === 'kaufpreis'; });
+  pruefe('Kaufpreis: Soll bleibt der gerechnete Betrag', 3500000, zkp.soll, 1);
+  pruefe('Kaufpreis: wirksam ist der Ist-Wert', 3800000, zkp.betrag, 1);
+
+  /* ---- Zahlungsstand: bereits bezahlt ----------------------------- */
+  var zp = A.defaultProject();
+  zp.startdatum = '2024-01-01'; zp.stichtag = '2026-01-01';
+  var rzp0 = E.compute(zp);
+  pruefe('Stichtag liegt 2 Jahre nach Erwerb', 2, rzp0.zeit.t_stichtag, 0.02);
+  var summeBau2 = function (res) {
+    return res.reihen.det.bau.reduce(function (s2, x) { return s2 + x; }, 0);
+  };
+  zp.bezahlt['bau.neubau.b2_oi_stwe'] = 4000000;
+  var rzp1 = E.compute(zp);
+  pruefe('Bezahltes verschiebt nur den Zeitpunkt, nicht die Summe',
+    rzp1.bau.total, summeBau2(rzp1), 1);
+  pruefe('Früher gebundenes Kapital kostet mehr Bauzinsen',
+    1, rzp1.fin.bauzinsen > rzp0.fin.bauzinsen ? 1 : 0);
+  pruefe('Bezahltes liegt vor dem Stichtag',
+    1, rzp1.reihen.det.bau[0] + rzp1.reihen.det.bau[1] >= 4000000 - 1 ? 1 : 0);
+  pruefe('Zahlungsstand weist den bezahlten Betrag aus',
+    4000000, rzp1.zahlungsstand.bezahlt, 1);
+
+  /* Nachträge: mehr bezahlt als kalkuliert ist der Normalfall und zählt
+     voll in den Kapitalbedarf — ohne Begrenzung nach oben. */
+  var kalkuliert = rzp1.bau.bloecke.neubau.zeilen
+    .find(function (x) { return x.id === 'b2_oi_stwe'; }).betrag;
+  zp.bezahlt['bau.neubau.b2_oi_stwe'] = kalkuliert + 1500000;
+  var rzp2 = E.compute(zp);
+  pruefe('Nachtrag erhöht den Kapitalbedarf um seinen Betrag',
+    rzp2.bau.total + 1500000, summeBau2(rzp2), 1);
+  pruefe('Nachtrag wird als Überzahlung ausgewiesen',
+    1500000, rzp2.zahlungsstand.ueberzahlt, 1);
+  pruefe('Nachtrag erzeugt keine Rückerstattung in der Zukunft',
+    1, rzp2.reihen.det.bau.every(function (x) { return x >= -0.5; }) ? 1 : 0);
+  pruefe('Nachtrag lässt den kalkulierten Gewinn unberührt',
+    rzp1.bau.total, rzp2.bau.total, 1);
+  pruefe('Nachtrag erzeugt eine Warnung',
+    1, rzp2.warnungen.some(function (w) { return /mehr\s*bezahlt/.test(w.text); }) ? 1 : 0);
+
+  /* Vertragskennzeichen ist reine Dokumentation */
+  var vp = A.defaultProject();
+  var rvp0 = E.compute(vp);
+  vp.vertrag['bau.neubau.b2_oi_stwe'] = true;
+  var rvp1 = E.compute(vp);
+  pruefe('Vertragskennzeichen ändert den Gewinn nicht',
+    rvp0.kpi.gewinn, rvp1.kpi.gewinn, 1);
+  pruefe('Vertragskennzeichen wird summiert',
+    rvp1.bau.bloecke.neubau.zeilen.find(function (x) { return x.id === 'b2_oi_stwe'; }).betrag,
+    rvp1.zahlungsstand.vertraglich, 1);
+
+  /* Ohne Zahlungsstand bleibt alles wie zuvor */
+  var op = A.defaultProject();
+  op.startdatum = '2024-01-01'; op.stichtag = '2026-01-01';
+  pruefe('Ohne erfasste Zahlung bleibt die Verteilung unverändert',
+    E.compute(op).fin.bauzinsen, rzp0.fin.bauzinsen, 1);
+
+  /* ---- Ist-Werte ersetzen den Soll-Betrag -------------------------- */
+  var pi = A.defaultProject();
+  pi.grundstueck.geschosse = 4;
+  var ri0 = E.compute(pi);
+  var sollRohbau = zeile(ri0, 'neubau', 'b2_oi_stwe').betrag;
+  var sollReserve = zeile(ri0, 'neubau', 'b2_reserve').betrag;
+
+  pi.ist['bau.neubau.b2_oi_stwe'] = sollRohbau + 500000;
+  var ri1 = E.compute(pi);
+  pruefe('Ist-Wert ersetzt den Betrag der Zeile',
+    sollRohbau + 500000, zeile(ri1, 'neubau', 'b2_oi_stwe').betrag, 1);
+  /* Der Ist-Wert erhöht zuerst die Vorbereitungsarbeiten, und beides
+     zusammen trägt die Reserve. */
+  var pvI = pi.bau.neubau.zeilen.b1_vorbereitung.wert / 100;
+  var prI = pi.bau.neubau.zeilen.b2_reserve.wert / 100;
+  pruefe('Reserve zieht mit dem Ist-Wert nach',
+    sollReserve + (500000 + 500000 * pvI) * prI,
+    zeile(ri1, 'neubau', 'b2_reserve').betrag, 1);
+  pruefe('Anlagekosten steigen um mehr als den Ist-Zuschlag (Folgekosten)',
+    1, ri1.kpi.anlagekosten - ri0.kpi.anlagekosten > 500000 ? 1 : 0);
+  pruefe('Zahl der übernommenen Positionen', 1, ri1.ist_anzahl);
+  pruefe('Marge sinkt gegenüber dem Soll', 1, ri1.kpi.marge_ak < ri0.kpi.marge_ak ? 1 : 0);
+
+  /* Umschalter: nur vergleichen, nicht rechnen */
+  pi.ist_uebernehmen = false;
+  var ri2 = E.compute(pi);
+  pruefe('ohne Übernahme bleibt der Soll-Betrag stehen',
+    sollRohbau, zeile(ri2, 'neubau', 'b2_oi_stwe').betrag, 1);
+  pruefe('ohne Übernahme keine übernommenen Positionen', 0, ri2.ist_anzahl);
+  pi.ist_uebernehmen = true;
+
+  /* Ist-Kaufpreis wirkt auf die Nebenkosten, blockiert aber nicht die
+     Rückwärtsrechnung des Landwerts. */
+  var pk = A.defaultProject();
+  pk.erwerb.preis_modus = 'total'; pk.erwerb.preis_total = 3000000;
+  pk.erwerb.courtage = 2.0;
+  pk.ist['erwerb.kaufpreis'] = 4000000;
+  var rk = E.compute(pk);
+  pruefe('Ist-Kaufpreis wird übernommen', 4000000, rk.erwerb.kaufpreis, 1);
+  pruefe('Courtage rechnet auf dem Ist-Kaufpreis', 80000, pos(rk, 'courtage'), 1);
+  var rwk = A.engine.residualwert(pk, 15);
+  pruefe('Rückwärtsrechnung ignoriert den Ist-Kaufpreis', 1,
+    rwk.erreichbar && Math.abs(rwk.preis - 4000000) > 1 ? 1 : 0);
+
+  /* ---- Migration Schema 1 -> 2 ------------------------------------ */
+  var altprojekt = {
+    schema: 1, id: 'palt', name: 'Alt', stufe: 'standard', szenario: 'neubau',
+    erwerbsart: 'kauf', meta: {}, startjahr: 2024,
+    grundstueck: { flaeche: 3000, az: 1.0, umgebung_anteil: 50 },
+    teile: { neubau: { aktiv: true, modus: 'ausnutzung', gf_ug: 400, pp: 10,
+        pp_miete: 150, pp_preis: 40000, pp_verwertung: 'stwe', faktor_gf: 1.1, hnf_quote: 78,
+        nutzungen: { wohnen: { anteil: 100, miete: 320, preis: 9800, verwertung: 'stwe' } } },
+      bestand: { aktiv: false }, erweiterung: { aktiv: false } },
+    bau: { neubau: { aktiv: true, reserve: 5, zeilen: { b2_rohbau: { aktiv: true, basis: 'gf', wert: 1150 } } } },
+    snapshots: [], ist: {}
+  };
+  var mig = A.migrate(JSON.parse(JSON.stringify(altprojekt)));
+  pruefe('Migration: Nutzungen sind eine Liste', 1, Array.isArray(mig.teile.neubau.nutzungen) ? 1 : 0);
+  pruefe('Migration: Wohnen + Parkplätze übernommen', 2, mig.teile.neubau.nutzungen.length);
+  pruefe('Migration: Startdatum aus Startjahr', 2024, parseInt(mig.startdatum.slice(0, 4), 10));
+  pruefe('Migration: Umgebungsfläche festgeschrieben', 1500, mig.grundstueck.umgebung_manuell);
+  pruefe('Migration: Projekt rechnet weiterhin', 1, E.compute(mig).kpi.anlagekosten > 0 ? 1 : 0);
+
+  /* ---- Standorte und Markerfarben --------------------------------- */
+  var kp = A.defaultProject();
+  pruefe('Neues Projekt hat noch keinen Standort',
+    0, A.karte.hatStandort(kp) ? 1 : 0);
+  kp.geo = { lat: 47.39, lon: 8.05, bezeichnung: 'Aarau', gesucht: 'Aarau' };
+  pruefe('Mit Koordinaten ist es verortet', 1, A.karte.hatStandort(kp) ? 1 : 0);
+
+  /* Die Farbregel deckt jeden Status ab — sonst fiele einer still auf Grau. */
+  var abgedeckt = A.STATUS.filter(function (st) {
+    return A.karte.FARBEN.some(function (g) { return g.status.indexOf(st) >= 0; });
+  });
+  pruefe('Jeder Projektstatus hat eine Markerfarbe', A.STATUS.length, abgedeckt.length);
+  pruefe('Idee ist hellblau', 1, A.karte.farbeFuer('Idee') === '#7fb3e8' ? 1 : 0);
+  pruefe('Entwicklung ist dunkelblau', 1, A.karte.farbeFuer('Entwicklung') === '#1f5fd0' ? 1 : 0);
+  pruefe('Baubewilligung ist orange', 1, A.karte.farbeFuer('Baubewilligung') === '#e08327' ? 1 : 0);
+  pruefe('Vermarktung ist ebenfalls orange',
+    1, A.karte.farbeFuer('Vermarktung') === A.karte.farbeFuer('Baubewilligung') ? 1 : 0);
+  pruefe('Unbekannter Status ergibt Grau', 1, A.karte.farbeFuer('Fantasie') === '#9aa3ae' ? 1 : 0);
+
+  /* Der Suchtext ergänzt den Kanton, damit Ortsnamen eindeutiger werden */
+  var sk = A.defaultProject();
+  sk.ort = 'Aarau'; sk.kanton = 'AG';
+  pruefe('Suchtext nennt Ort und Kanton',
+    1, A.karte.suchtext(sk) === 'Aarau, Aargau' ? 1 : 0);
+  sk.kanton = 'XX';
+  pruefe('Ohne Kantonszuordnung bleibt der Ort allein',
+    1, A.karte.suchtext(sk) === 'Aarau' ? 1 : 0);
+  sk.ort = 'Lörrach, Deutschland'; sk.kanton = 'AG';
+  pruefe('Bei einer Auslandadresse bleibt der Kanton draussen',
+    1, A.karte.suchtext(sk) === 'Lörrach, Deutschland' ? 1 : 0);
+
+  /* Projektnamen landen im Markup der Kartenkarte */
+  pruefe('Freitext wird für HTML entschärft',
+    1, A.escape('<img src=x onerror=1>') === '&lt;img src=x onerror=1&gt;' ? 1 : 0);
+
+  /* ---- Zusammenfassung -------------------------------------------- */
+  var box = document.getElementById('summe');
+  box.textContent = gut + ' von ' + (gut + schlecht) + ' Prüfungen bestanden' +
+    (schlecht ? ' — ' + schlecht + ' Abweichung(en)' : '');
+  box.style.background = schlecht ? '#fdf0ef' : '#edf7f1';
+  box.style.color = schlecht ? '#8c2b23' : '#0d5c34';
+})();
+</script>
+</body>
+</html>

@@ -382,55 +382,504 @@ window.APP = window.APP || {};
   /* Sortiermodus und Filter überleben den Seitenwechsel */
   var Z = { modus: 'phasen', erledigte: false };
   T.ansicht = Z;
+  /* ---------------------------------------------------------------
+     Die Seite «Phasen & Termine»
+
+     Oben das Gantt: links die Vorgangstabelle, rechts die Balken auf
+     einer Monatsachse, dazwischen Pfeile für die Abhängigkeiten.
+     Darunter die Termine aus den Protokollen als Meilensteine — sie
+     haben keine Dauer und keine Abhängigkeit und gehören deshalb nicht
+     in dieselbe Tabelle.
+     --------------------------------------------------------------- */
+
+  /* Ansichtszustand, überlebt den Seitenwechsel */
+  /* Ein Terminplan über fünf Jahre hat sechzig Monate; bei mittlerer
+     Breite sähe man davon ein Jahr. Deshalb beginnt die Achse eng. */
+  var Z = { modus: 'fristen', erledigte: false, zoom: 0, schmal: false };
+  T.ansicht = Z;
+
+  /* Breite eines Monats in Pixeln je Zoomstufe. Stufe 0 rechnet sich
+     aus der Plandauer: So passt der ganze Verlauf ins Bild und aufs
+     Blatt — ein quer gedrucktes A4 fasst rund 950 Pixel. */
+  var MONATSBREITE = [0, 26, 40, 62];
+  var PASSEND_BREITE = 950;
+
+  function monatsbreite(anzahl) {
+    var b = MONATSBREITE[Z.zoom];
+    if (b) return b;
+    return Math.max(7, Math.min(62, Math.floor(PASSEND_BREITE / Math.max(1, anzahl))));
+  }
+  var ZEILE = 30;          // Höhe einer Gantt-Zeile
+  var KOPF = 38;           // Höhe der Zeitachse
 
   T.panels = function (p) {
     var box = el('div', {});
 
     /* Die Protokolle liegen in einer eigenen Tabelle — ohne sie fehlen
-       dem Plan die Aufgaben. Einmal nachladen, aber nicht nach einem
-       Fehlschlag: Laden ruft render, render riefe wieder laden. */
+       dem Plan die Termine aus den Sitzungen. Einmal nachladen, aber
+       nicht nach einem Fehlschlag: Laden ruft render, render riefe
+       wieder laden. */
     var ps = A.protokolle && A.protokolle.stand;
     if (ps && !ps.laedt && !ps.fehler && (ps.projekt !== p.id || !ps.geladen)) {
       A.protokolle.laden(p.id);
     }
     if (ps && ps.fehler) {
-      /* Derselbe Hinweis wie auf der Protokollseite — samt Knopf zum
-         Nachprüfen. Ohne Protokolle fehlen dem Plan die Aufgaben, die
-         Phasen und eigenen Termine stehen aber. */
-      box.appendChild(U.panel('Aufgaben aus Protokollen fehlen',
-        'der Rest des Terminplans steht trotzdem', [A.protokolle.fehlerhinweis()]));
+      box.appendChild(U.panel('Termine aus Protokollen fehlen',
+        'der Terminplan selbst steht trotzdem', [A.protokolle.fehlerhinweis()]));
     }
 
-    var alle = T.balken(p);
-    var sichtbar = Z.erledigte ? alle : alle.filter(function (b) {
-      return b.art === 'phase' || b.status !== 'erledigt';
-    });
-
-    box.appendChild(planPanel(p, sichtbar, alle));
-    box.appendChild(phasenPanel(p));
-    box.appendChild(eigenePanel(p));
+    box.appendChild(ganttPanel(p));
+    box.appendChild(meilensteinPanel(p));
     return box;
   };
 
-  function planPanel(p, sichtbar, alle) {
-    var koerper = [];
+  /* ---------------------------------------------------------------
+     Das Gantt
+     --------------------------------------------------------------- */
 
-    /* Umschalter */
-    var wahl = el('div', { class: 'seg', style: 'display:flex;gap:0' });
-    [{ id: 'phasen', label: 'nach Phasen' },
-     { id: 'themen', label: 'nach Themen' },
-     { id: 'fristen', label: 'nach Fristen' }]
-      .forEach(function (m) {
-        var b = el('button', { class: Z.modus === m.id ? 'on' : '', text: m.label });
-        b.addEventListener('click', function () { Z.modus = m.id; A.render(); });
-        wahl.appendChild(b);
-      });
+  function ganttPanel(p) {
+    var liste = A.vorgaenge(p);
+    var gerechnet = A.terminplanRechnen(p);
+
+    var koerper = [werkzeugleiste(p, liste, gerechnet)];
+
+    if (!liste.length) {
+      koerper.push(el('div', { class: 'panelbody' }, [
+        el('div', { class: 'muted', style: 'padding:10px 0',
+          text: 'Noch kein Vorgang erfasst. «SIA-Phasen einsetzen» legt die zehn ' +
+                'Phasen als verkettete Zeilen an, «+ Vorgang» eine einzelne.' })
+      ]));
+    } else {
+      koerper.push(el('div', { class: 'panelbody ganttbody' },
+        [ganttTafel(p, liste, gerechnet)]));
+    }
+
+    if (gerechnet.ringe.length) {
+      koerper.push(el('div', { class: 'panelbody noprint' }, [
+        U.hinweis('warn', 'Bei ' + gerechnet.ringe.length + ' Vorgang/Vorgängen läuft die ' +
+          'Abhängigkeit im Kreis. Sie stehen auf ihrem eigenen Startdatum, bis die Kette ' +
+          'aufgelöst ist — betroffene Zeilen sind rot umrandet.')
+      ]));
+    }
+
+    koerper.push(el('div', { class: 'panelbody noprint' }, [
+      U.hinweis('info', 'Ein Vorgang mit <b>Abhängigkeit</b> beginnt am Tag nach dem Ende ' +
+        'seines Vorgängers; die <b>Verzögerung</b> schiebt ihn um weitere Tage. Sein ' +
+        'Startdatum wird dann gerechnet und ist nicht mehr eingebbar. Die <b>Dauer</b> zählt ' +
+        'Kalendertage, nicht Arbeitstage. Verschiebt sich ein Vorgang, wandert die ganze ' +
+        'Kette mit.')
+    ]));
+
+    return U.panel('Terminplan', liste.length + (liste.length === 1
+      ? ' Vorgang' : ' Vorgänge'), koerper);
+  }
+
+  function werkzeugleiste(p, liste, gerechnet) {
+    var zoom = el('div', { class: 'seg noprint', style: 'display:flex;gap:0' });
+    ['passend', 'eng', 'mittel', 'weit'].forEach(function (label, i) {
+      var b = el('button', { class: Z.zoom === i ? 'on' : '', text: label });
+      b.addEventListener('click', function () { Z.zoom = i; A.render(); });
+      zoom.appendChild(b);
+    });
+
+    return el('div', { class: 'panelbody noprint',
+      style: 'display:flex;gap:10px;align-items:center;flex-wrap:wrap' }, [
+      el('button', { class: 'primary schreibend', text: '+ Vorgang',
+        onclick: function () { vorgangAnlegen(p); } }),
+      el('button', { class: 'schreibend', text: 'SIA-Phasen einsetzen',
+        title: 'Die zehn SIA-Phasen als verkettete Vorgänge anlegen',
+        onclick: function () { siaEinsetzen(p); } }),
+      el('button', { text: 'Dauern in die Rechnung übernehmen …',
+        title: 'Ändert Kapitalbedarf, Zinsen und damit die Marge',
+        disabled: liste.length ? null : '',
+        onclick: function () { uebernehmen(p, gerechnet); } }),
+      (function () {
+        /* Die Tabelle nimmt viel Breite; wer den Zeitverlauf sehen
+           will, blendet die Eingabespalten weg. Bearbeiten lässt sich
+           dann nur noch Bezeichnung, Start, Dauer und der Haken. */
+        var c = el('input', { type: 'checkbox', style: 'width:auto',
+          checked: Z.schmal ? '' : null });
+        c.addEventListener('change', function () { Z.schmal = c.checked; A.render(); });
+        return el('label', { style: 'display:flex;gap:6px;align-items:center;font-size:12px',
+          title: 'Abhängigkeit, Verzögerung, Ende und Farbe ausblenden' }, [
+          c, el('span', { text: 'schmale Tabelle' })
+        ]);
+      })(),
+      el('span', { class: 'muted', style: 'font-size:11px;letter-spacing:.06em;' +
+        'text-transform:uppercase;margin-left:auto', text: 'Achse' }),
+      zoom
+    ]);
+  }
+
+  function vorgangAnlegen(p) {
+    var liste = A.vorgaenge(p);
+    var letzter = liste[liste.length - 1];
+    liste.push(A.defVorgang({
+      label: '',
+      /* Ein neuer Vorgang hängt sich hinten an — das ist der Fall, den
+         man fast immer meint. Lösen lässt er sich mit einem Handgriff. */
+      abh: letzter ? letzter.id : '',
+      start: letzter ? '' : (p.startdatum || A.heute()),
+      tage: 20
+    }));
+    p.termine.vorgaenge = liste;
+    A.markDirty(); A.render();
+  }
+
+  function siaEinsetzen(p) {
+    var da = A.vorgaenge(p).length;
+    if (da && !confirm('Die zehn SIA-Phasen als Vorgänge anlegen?\n\n' +
+        'Die ' + da + ' bereits erfassten Zeilen bleiben stehen; die Phasen kommen ' +
+        'darunter dazu.')) return;
+    p.termine.vorgaenge = A.vorgaenge(p).concat(A.vorgaengeAusSia(p, A.state.r));
+    A.markDirty(); A.render();
+    A.meldung('ok', 'SIA-Phasen eingesetzt — Dauern aus dem Bauzeitmodell, verkettet.');
+  }
+
+  /* ---------------------------------------------------------------
+     Tabelle und Balken nebeneinander
+     --------------------------------------------------------------- */
+
+  function ganttTafel(p, liste, gerechnet) {
+    /* Zeitraum: vom frühesten Start bis zum spätesten Ende, auf ganze
+       Monate gerundet, mit einem Monat Luft auf jeder Seite. */
+    var von = null, bis = null;
+    liste.forEach(function (v) {
+      var g = gerechnet.byId[v.id];
+      if (!g) return;
+      if (!von || g.start < von) von = g.start;
+      if (!bis || g.ende > bis) bis = g.ende;
+    });
+    if (!von) { von = p.startdatum || A.heute(); bis = von; }
+
+    var m0 = new Date(von.slice(0, 8) + '01');
+    m0.setMonth(m0.getMonth() - 1);
+    var m1 = new Date(bis.slice(0, 8) + '01');
+    m1.setMonth(m1.getMonth() + 2);
+
+    var monate = [];
+    var lauf = new Date(m0);
+    while (lauf < m1) {
+      monate.push(new Date(lauf));
+      lauf.setMonth(lauf.getMonth() + 1);
+    }
+    var breite = monatsbreite(monate.length);
+    var tagBreite = breite / 30.44;
+    var gesamt = monate.length * breite;
+
+    function x(iso) {
+      var t = A.tageZwischen(m0.toISOString().slice(0, 10), iso);
+      return t === null ? 0 : t * tagBreite;
+    }
+
+    /* --- linke Seite: die Tabelle --- */
+    var tabelle = el('div', { class: 'gtab' });
+    tabelle.appendChild(kopfzeile());
+    liste.forEach(function (v, i) {
+      tabelle.appendChild(vorgangZeile(p, v, i, liste, gerechnet));
+    });
+
+    /* --- rechte Seite: Achse und Balken --- */
+    var flaeche = el('div', { class: 'gplan', style: 'width:' + gesamt + 'px' });
+    flaeche.appendChild(zeitachse(monate, breite));
+
+    var raster = el('div', { class: 'graster',
+      style: 'height:' + (liste.length * ZEILE) + 'px' });
+    monate.forEach(function (m, i) {
+      raster.appendChild(el('div', { class: 'glinie' + (m.getMonth() === 0 ? ' jahr' : ''),
+        style: 'left:' + (i * breite) + 'px' }));
+    });
+
+    /* Heute-Linie */
+    var xh = x(A.heute());
+    if (xh >= 0 && xh <= gesamt) {
+      raster.appendChild(el('div', { class: 'gheute', style: 'left:' + xh + 'px',
+        title: 'heute — ' + A.datum(A.heute()) }));
+    }
+
+    liste.forEach(function (v, i) {
+      var g = gerechnet.byId[v.id];
+      if (!g) return;
+      var x0 = x(g.start), x1 = x(A.datumPlusTage(g.ende, 1));
+      var balken = el('div', {
+        class: 'gbalken' + (v.erledigt ? ' zu' : '') + (g.tage === 1 ? ' punkt' : ''),
+        style: 'left:' + x0 + 'px;top:' + (i * ZEILE + 7) + 'px;' +
+               'width:' + Math.max(4, x1 - x0) + 'px;' +
+               (v.erledigt ? '' : 'background:' + A.ganttFarbe(v.farbe) + ';'),
+        title: (v.label || 'ohne Bezeichnung') + '\n' +
+               A.datum(g.start) + ' – ' + A.datum(g.ende) + ' · ' + g.tage + ' Tage' +
+               (v.erledigt ? '\nerledigt' : '') });
+      raster.appendChild(balken);
+    });
+
+    flaeche.appendChild(raster);
+    flaeche.appendChild(pfeile(liste, gerechnet, x, function (id) {
+      return liste.findIndex(function (v) { return v.id === id; });
+    }, gesamt));
+
+    /* Beim Öffnen dorthin rollen, wo gearbeitet wird: Die Heute-Linie
+       kommt ins linke Drittel, sonst steht man am Planbeginn und sucht
+       die Gegenwart. */
+    var scroll = el('div', { class: 'gscroll' }, [flaeche]);
+    setTimeout(function () {
+      if (!scroll.isConnected) return;
+      var ziel = xh - scroll.clientWidth / 3;
+      if (ziel > 0) scroll.scrollLeft = ziel;
+    }, 0);
+
+    return el('div', { class: 'gantt' + (Z.schmal ? ' schmal' : '') }, [tabelle, scroll]);
+  }
+
+  function kopfzeile() {
+    return el('div', { class: 'gzeile gkopf' }, [
+      el('span', { class: 'gc gc-nr', text: 'Nr.' }),
+      el('span', { class: 'gc gc-label', text: 'Vorgang' }),
+      el('span', { class: 'gc gc-abh', text: 'Abh.', title: 'Nummer des Vorgängers' }),
+      el('span', { class: 'gc gc-verz', text: 'Verz.', title: 'Verzögerung in Tagen' }),
+      el('span', { class: 'gc gc-datum', text: 'Start' }),
+      el('span', { class: 'gc gc-tage', text: 'Tage' }),
+      el('span', { class: 'gc gc-datum', text: 'Ende' }),
+      el('span', { class: 'gc gc-haken', text: '✓', title: 'erledigt' }),
+      el('span', { class: 'gc gc-farbe', text: 'Farbe' }),
+      el('span', { class: 'gc gc-weg' })
+    ]);
+  }
+
+  function vorgangZeile(p, v, i, liste, gerechnet) {
+    var g = gerechnet.byId[v.id] || { start: '', ende: '', tage: v.tage, ring: false };
+    var zeile = el('div', { class: 'gzeile' + (v.erledigt ? ' zu' : '') +
+      (g.ring ? ' ring' : '') });
+
+    function geaendert() { A.markDirty(); A.render(); }
+
+    zeile.appendChild(el('span', { class: 'gc gc-nr', text: String(i + 1) }));
+
+    /* Bezeichnung */
+    var name = el('input', { type: 'text', value: v.label || '',
+      placeholder: 'Vorgang' });
+    name.addEventListener('input', function () { v.label = name.value; A.markDirty(); });
+    zeile.appendChild(el('span', { class: 'gc gc-label' }, [name]));
+
+    /* Abhängigkeit — eingetragen wird die Nummer, gespeichert die Id.
+       Nummern verschieben sich beim Umsortieren, Ids nicht. */
+    var abh = el('input', { type: 'text', class: 'mittig',
+      value: v.abh ? String(A.vorgangNummer(p, v.abh)) : '', placeholder: '–' });
+    abh.addEventListener('change', function () {
+      var roh = abh.value.trim();
+      if (!roh) { v.abh = ''; geaendert(); return; }
+      var ziel = A.vorgangNachNummer(p, roh);
+      if (!ziel) {
+        A.meldung('warn', 'Es gibt keinen Vorgang mit der Nummer ' + roh + '.');
+        A.render(); return;
+      }
+      if (!A.abhaengigkeitErlaubt(p, v.id, ziel.id)) {
+        A.meldung('warn', 'Das ergäbe einen Ringschluss: Vorgang ' + (i + 1) +
+          ' hängt bereits — über Umwege — an Nummer ' + roh + '.');
+        A.render(); return;
+      }
+      v.abh = ziel.id;
+      geaendert();
+    });
+    zeile.appendChild(el('span', { class: 'gc gc-abh' }, [abh]));
+
+    /* Verzögerung */
+    var verz = el('input', { type: 'number', class: 'mittig', value: String(v.verz || 0),
+      disabled: v.abh ? null : '' });
+    verz.addEventListener('change', function () {
+      v.verz = Math.round(parseFloat(verz.value) || 0); geaendert();
+    });
+    zeile.appendChild(el('span', { class: 'gc gc-verz' }, [verz]));
+
+    /* Start — bei Abhängigkeit gerechnet und nur zum Lesen */
+    if (v.abh) {
+      zeile.appendChild(el('span', { class: 'gc gc-datum gerechnet',
+        text: A.datum(g.start), title: 'gerechnet aus der Abhängigkeit' }));
+    } else {
+      var st = el('input', { type: 'date', value: v.start || '' });
+      st.addEventListener('change', function () { v.start = st.value; geaendert(); });
+      zeile.appendChild(el('span', { class: 'gc gc-datum' }, [st]));
+    }
+
+    /* Dauer */
+    var tage = el('input', { type: 'number', class: 'mittig', min: '1',
+      value: String(v.tage || 1) });
+    tage.addEventListener('change', function () {
+      v.tage = Math.max(1, Math.round(parseFloat(tage.value) || 1)); geaendert();
+    });
+    zeile.appendChild(el('span', { class: 'gc gc-tage' }, [tage]));
+
+    /* Ende — immer gerechnet. Wer es ändert, ändert die Dauer. */
+    var en = el('input', { type: 'date', value: g.ende || '' });
+    en.addEventListener('change', function () {
+      var t = A.tageZwischen(g.start, en.value);
+      if (t === null || t < 0) {
+        A.meldung('warn', 'Das Ende liegt vor dem Start.');
+        A.render(); return;
+      }
+      v.tage = t + 1;
+      geaendert();
+    });
+    zeile.appendChild(el('span', { class: 'gc gc-datum' }, [en]));
+
+    /* Erledigt */
+    var hk = el('input', { type: 'checkbox', checked: v.erledigt ? '' : null });
+    hk.addEventListener('change', function () { v.erledigt = hk.checked; geaendert(); });
+    zeile.appendChild(el('span', { class: 'gc gc-haken' }, [hk]));
+
+    /* Farbe */
+    var fw = el('select');
+    A.GANTT_FARBEN.forEach(function (f) {
+      fw.appendChild(el('option', { value: f.id, text: f.label,
+        selected: v.farbe === f.id ? '' : null }));
+    });
+    fw.addEventListener('change', function () { v.farbe = fw.value; geaendert(); });
+    zeile.appendChild(el('span', { class: 'gc gc-farbe' }, [
+      el('span', { class: 'farbtupfer', style: 'background:' + A.ganttFarbe(v.farbe) }),
+      fw
+    ]));
+
+    /* Verschieben und Löschen */
+    zeile.appendChild(el('span', { class: 'gc gc-weg' }, [
+      el('button', { class: 'ghost sm schreibend', text: '↑', title: 'nach oben',
+        disabled: i === 0 ? '' : null,
+        onclick: function () { verschieben(p, i, -1); } }),
+      el('button', { class: 'ghost sm schreibend', text: '↓', title: 'nach unten',
+        disabled: i === liste.length - 1 ? '' : null,
+        onclick: function () { verschieben(p, i, 1); } }),
+      el('button', { class: 'ghost sm schreibend', text: '×', title: 'Vorgang löschen',
+        onclick: function () { loeschen(p, v); } })
+    ]));
+
+    return zeile;
+  }
+
+  function verschieben(p, i, richtung) {
+    var liste = A.vorgaenge(p);
+    var j = i + richtung;
+    if (j < 0 || j >= liste.length) return;
+    var h = liste[i]; liste[i] = liste[j]; liste[j] = h;
+    A.markDirty(); A.render();
+  }
+
+  function loeschen(p, v) {
+    var liste = A.vorgaenge(p);
+    var haengt = liste.filter(function (x) { return x.abh === v.id; });
+    if (!confirm('Vorgang «' + (v.label || 'ohne Bezeichnung') + '» löschen?' +
+        (haengt.length ? '\n\n' + haengt.length + ' Vorgang/Vorgänge hängen daran und ' +
+         'bekommen ihr eigenes Startdatum.' : ''))) return;
+    /* Wer am Gelöschten hing, erbt dessen Startdatum — sonst spränge
+       die halbe Kette an den Projektanfang. */
+    var g = A.terminplanRechnen(p).byId[v.id];
+    haengt.forEach(function (x) {
+      x.abh = v.abh;
+      if (!x.abh && g) x.start = g.start;
+    });
+    p.termine.vorgaenge = liste.filter(function (x) { return x.id !== v.id; });
+    A.markDirty(); A.render();
+  }
+
+  /* ---------------------------------------------------------------
+     Zeitachse, Pfeile
+     --------------------------------------------------------------- */
+
+  function zeitachse(monate, breite) {
+    var jahre = el('div', { class: 'gjahre' });
+    var mon = el('div', { class: 'gmonate' });
+
+    var i = 0;
+    while (i < monate.length) {
+      var jahr = monate[i].getFullYear(), n = 0;
+      while (i + n < monate.length && monate[i + n].getFullYear() === jahr) n++;
+      jahre.appendChild(el('div', { class: 'gjahr', style: 'width:' + (n * breite) + 'px',
+        text: String(jahr) }));
+      i += n;
+    }
+    monate.forEach(function (m) {
+      /* Bei enger Achse nur der Anfangsbuchstabe — sonst überlappen
+         die Beschriftungen. */
+      var name = m.toLocaleDateString('de-CH', { month: 'short' }).replace('.', '');
+      mon.appendChild(el('div', { class: 'gmonat', style: 'width:' + breite + 'px',
+        text: breite < 34 ? name.slice(0, 1) : name,
+        title: m.toLocaleDateString('de-CH', { month: 'long', year: 'numeric' }) }));
+    });
+    return el('div', { class: 'gachse', style: 'height:' + KOPF + 'px' }, [jahre, mon]);
+  }
+
+  /* Die Abhängigkeitspfeile liegen als eigene Ebene über den Balken.
+     Geführt werden sie vom Ende des Vorgängers zum Anfang des
+     Nachfolgers, mit einem Knick — gerade Linien quer über die Tafel
+     wären nicht zu verfolgen. */
+  function pfeile(liste, gerechnet, x, stelle, gesamt) {
+    /* U.s setzt den dritten Parameter als Text — Kinder gehören
+       angehängt, nicht übergeben. */
+    function sk(tag, attrs, kinder) {
+      var e = s(tag, attrs);
+      (kinder || []).forEach(function (k) { e.appendChild(k); });
+      return e;
+    }
+
+    var kinder = [sk('defs', {}, [
+      sk('marker', { id: 'gpfeilspitze', markerWidth: '7', markerHeight: '6',
+        refX: '6', refY: '3', orient: 'auto' }, [
+        s('polygon', { points: '0 0, 7 3, 0 6', fill: '#8a929e' })
+      ])
+    ])];
+
+    liste.forEach(function (v) {
+      if (!v.abh) return;
+      var vonI = stelle(v.abh), bisI = stelle(v.id);
+      var gv = gerechnet.byId[v.abh], gb = gerechnet.byId[v.id];
+      if (vonI < 0 || bisI < 0 || !gv || !gb) return;
+
+      var x0 = x(A.datumPlusTage(gv.ende, 1));
+      var y0 = vonI * ZEILE + ZEILE / 2;
+      var x1 = x(gb.start);
+      var y1 = bisI * ZEILE + ZEILE / 2;
+
+      /* Rückwärts laufende Pfeile (der Nachfolger beginnt links vom
+         Vorgänger) bekommen eine Schlaufe aussen herum. */
+      var d;
+      if (x1 >= x0 + 8) {
+        d = 'M' + x0 + ' ' + y0 + ' H' + (x1 - 6) + ' V' + y1 + ' H' + (x1 - 2);
+      } else {
+        var aus = x0 + 8;
+        d = 'M' + x0 + ' ' + y0 + ' H' + aus +
+            ' V' + (y1 - ZEILE / 2 + 3) + ' H' + (x1 - 8) +
+            ' V' + y1 + ' H' + (x1 - 2);
+      }
+      kinder.push(s('path', { d: d, fill: 'none', stroke: '#8a929e',
+        'stroke-width': '1.2', 'marker-end': 'url(#gpfeilspitze)',
+        opacity: v.erledigt ? '0.35' : '0.75' }));
+    });
+
+    return sk('svg', { class: 'gpfeile', width: gesamt,
+      height: liste.length * ZEILE,
+      viewBox: '0 0 ' + gesamt + ' ' + (liste.length * ZEILE) }, kinder);
+  }
+
+  /* ---------------------------------------------------------------
+     Meilensteine aus den Protokollen
+     --------------------------------------------------------------- */
+
+  function meilensteinPanel(p) {
+    var alle = T.balken(p).filter(function (b) { return b.art !== 'phase'; });
+    var sichtbar = Z.erledigte ? alle : alle.filter(function (b) {
+      return b.status !== 'erledigt' && b.status !== A.STATUS_UEBERNOMMEN;
+    });
+
+    var wahl = el('div', { class: 'seg noprint', style: 'display:flex;gap:0' });
+    [{ id: 'fristen', label: 'nach Datum' },
+     { id: 'themen', label: 'nach Themen' }].forEach(function (m) {
+      var b = el('button', { class: Z.modus === m.id ? 'on' : '', text: m.label });
+      b.addEventListener('click', function () { Z.modus = m.id; A.render(); });
+      wahl.appendChild(b);
+    });
 
     var erl = el('input', { type: 'checkbox', style: 'width:auto',
       checked: Z.erledigte ? '' : null });
     erl.addEventListener('change', function () { Z.erledigte = erl.checked; A.render(); });
 
-    koerper.push(el('div', { class: 'panelbody noprint',
+    var koerper = [el('div', { class: 'panelbody noprint',
       style: 'display:flex;gap:14px;align-items:center;flex-wrap:wrap' }, [
       wahl,
       el('label', { style: 'display:flex;gap:6px;align-items:center;font-size:12px' }, [
@@ -438,166 +887,70 @@ window.APP = window.APP || {};
       ]),
       el('span', { class: 'muted', style: 'font-size:11.5px;margin-left:auto',
         text: alle.filter(function (b) { return b.quelle === 'protokoll'; }).length +
-              ' aus Protokollen · ' +
-              alle.filter(function (b) { return b.quelle === 'eigen'; }).length + ' eigene' })
-    ]));
+              ' aus Protokollen' })
+    ])];
 
-    /* Zeilen aufbauen */
     var zeilen = [];
     if (Z.modus === 'themen') {
       T.nachThemen(p, sichtbar).forEach(function (g) {
         zeilen.push({ tiefe: 0, gruppe: true,
-          label: (g.nr ? g.nr + ' · ' : '') + g.thema.label,
-          balken: [] });
+          label: (g.nr ? g.nr + ' · ' : '') + g.thema.label, balken: [] });
         g.eintraege.forEach(function (b) {
-          zeilen.push({ tiefe: 1,
-            label: b.text + (b.person ? '  (' + (b.person.kuerzel || b.person.name) + ')' : ''),
-            balken: [b] });
-        });
-      });
-    } else if (Z.modus === 'phasen') {
-      T.nachPhasen(p, sichtbar).forEach(function (g) {
-        zeilen.push({ tiefe: 0, gruppe: true,
-          label: (g.phase.sia ? g.phase.sia + ' · ' : '') + g.phase.label,
-          balken: g.kopf ? [g.kopf] : [] });
-        g.planer.forEach(function (pl) {
-          zeilen.push({ tiefe: 1, gruppe: false, label: pl.label, balken: [] });
-          pl.eintraege.forEach(function (b) {
-            zeilen.push({ tiefe: 2, label: b.text, balken: [b] });
-          });
+          zeilen.push({ tiefe: 1, balken: [b],
+            label: b.text + (b.person ? '  (' + (b.person.kuerzel || b.person.name) + ')' : '') });
         });
       });
     } else {
       T.nachFristen(sichtbar).forEach(function (b) {
-        zeilen.push({ tiefe: 0,
+        zeilen.push({ tiefe: 0, balken: [b],
           label: A.datum(b.bis) + '  ' + b.text +
-                 (b.person ? '  (' + (b.person.kuerzel || b.person.name) + ')' : ''),
-          balken: [b] });
+                 (b.person ? '  (' + (b.person.kuerzel || b.person.name) + ')' : '') });
       });
     }
 
     koerper.push(el('div', { class: 'panelbody' }, [
-      T.zeichnen(p, zeilen, {}),
-      T.legende()
+      zeilen.length
+        ? T.zeichnen(p, zeilen, {})
+        : el('div', { class: 'muted', text: 'Keine Termine aus den Protokollen.' })
     ]));
 
     koerper.push(el('div', { class: 'panelbody noprint' }, [
-      U.hinweis('info', 'Aufgaben und Entscheide stammen aus den <b>Protokollen</b> und werden ' +
-        'dort geändert. Der Balken läuft vom Sitzungsdatum bis zum Termin; überfällige ' +
-        'Aufgaben sind rot. <b>Nach Fristen</b> zeigt alle Termine ohne Phasenbalken, nach ' +
-        'Enddatum sortiert.')
+      U.hinweis('info', 'Diese Termine stammen aus den <b>Protokollen</b> und werden dort ' +
+        'geändert. Sie haben weder Dauer noch Abhängigkeit und stehen deshalb nicht im ' +
+        'Gantt darüber. Der Balken läuft vom Sitzungsdatum bis zum Termin; überfällige ' +
+        'Aufgaben sind rot.')
     ]));
 
-    var untertitel = Z.modus === 'phasen' ? 'Phase → Zuständigkeit → Termine'
-      : Z.modus === 'themen' ? 'Thema → Termine · wie im Protokoll'
-      : 'alle Termine nach Enddatum';
-    return U.panel('Terminplan', untertitel, koerper);
+    return U.panel('Termine aus den Protokollen',
+      sichtbar.length + (sichtbar.length === 1 ? ' Termin' : ' Termine'), koerper);
   }
 
-  /* Phasen mit Von/Bis und der Markierung fürs Portfolio */
-  function phasenPanel(p) {
-    var zeilen = A.SIA_PHASEN.map(function (ph) {
-      var e = T.phase(p, ph.id) || { id: ph.id, von: '', bis: '', dashboard: false };
-      var gesetzt = !!(e.von && e.bis);
-      return el('tr', { style: gesetzt ? '' : 'opacity:.62' }, [
-        el('td', { class: 'muted n', style: 'width:52px', text: ph.sia || '—' }),
-        el('td', { text: ph.label }),
-        el('td', { style: 'width:150px' }, [datumZelle(p, ph.id, 'von')]),
-        el('td', { style: 'width:150px' }, [datumZelle(p, ph.id, 'bis')]),
-        el('td', { class: 'n muted', style: 'width:100px',
-          text: gesetzt ? dauerText(e.von, e.bis) : '—' }),
-        el('td', { style: 'width:110px' }, [(function () {
-          var c = el('input', { type: 'checkbox', style: 'width:auto',
-            checked: e.dashboard ? '' : null,
-            title: 'Diese Phase zusätzlich im Portfolio-Terminplan zeigen' });
-          c.addEventListener('change', function () {
-            T.phaseSetzen(p, ph.id, { dashboard: c.checked });
-            A.markDirty(); A.render();
-          });
-          return c;
-        })()]),
-        el('td', { class: 'muted', style: 'width:130px',
-          text: rechenLabel(ph.rechen) })
-      ]);
-    });
+  /* ---------------------------------------------------------------
+     Dauern in die Rechnung übernehmen
 
-    var koerper = [el('div', { class: 'panelbody' }, [U.tabelle([
-      { label: 'SIA', n: true }, { label: 'Phase' }, { label: 'von' }, { label: 'bis' },
-      { label: 'Dauer', n: true }, { label: 'im Portfolio' }, { label: 'Rechenphase' }
-    ], zeilen)])];
+     Der Plan rechnet für sich; die Kalkulation kennt nur Monatsdauern.
+     Übertragen wird auf Knopfdruck und mit Anzeige dessen, was sich
+     ändert — ein verschobener Termin darf die Marge nie still
+     verändern.
+     --------------------------------------------------------------- */
 
-    koerper.push(el('div', { class: 'panelbody noprint',
-      style: 'display:flex;gap:10px;flex-wrap:wrap;align-items:center' }, [
-      el('button', { class: 'schreibend', text: 'Phasen aus Bauzeitmodell vorschlagen',
-        onclick: function () {
-          if (!p.startdatum) {
-            A.meldung('warn', 'Ohne Startdatum gibt es keinen Nullpunkt — bitte auf der ' +
-              'Seite «Projekt» eintragen.');
-            return;
-          }
-          var belegt = (p.termine.phasen || []).some(function (x) { return x.von || x.bis; });
-          if (belegt && !window.confirm('Die vorhandenen Phasendaten werden überschrieben. ' +
-              'Fortfahren?')) return;
-          var n = T.vorschlagen(p, A.state.r);
-          A.markDirty(); A.render();
-          A.meldung('ok', n + ' Phasen aus den Dauern abgeleitet — bitte prüfen und anpassen.');
-        } }),
-      el('button', { class: 'schreibend', text: 'Dauern aus Terminplan übernehmen',
-        title: 'Schreibt die Phasendaten zurück in die Rechnung',
-        onclick: function () { uebernehmen(p); } }),
-      el('span', { class: 'muted', style: 'font-size:11.5px',
-        text: 'Der Terminplan wirkt nicht von selbst auf die Rechnung.' })
-    ]));
-
-    return U.panel('Phasen nach SIA 102',
-      'Kalendertermine der Planungs- und Bauphasen', koerper);
-  }
-
-  function rechenLabel(id) {
-    var m = { entwicklung: 'Entwicklung', bewilligung: 'Bewilligung',
-              vorbereitung: 'Vorbereitung', bau: 'Bau' };
-    return m[id] || id;
-  }
-
-  function dauerText(von, bis) {
-    var tage = A.tageZwischen(von, bis);
-    if (tage === null) return '—';
-    if (tage < 0) return 'negativ';
-    var monate = tage / 30.44;
-    return monate >= 1.5 ? A.fmt(monate, 1) + ' Mte.' : tage + ' Tage';
-  }
-
-  function datumZelle(p, phaseId, feld) {
-    var e = T.phase(p, phaseId) || {};
-    var i = el('input', { type: 'date', value: e[feld] || '', style: 'width:100%',
-      class: 'nichtdrucken' });
-    var t = el('span', { class: 'nurdruck', text: e[feld] ? A.datum(e[feld]) : '—' });
-    i.addEventListener('change', function () {
-      var werte = {}; werte[feld] = i.value;
-      T.phaseSetzen(p, phaseId, werte);
-      A.markDirty(); A.render();
-    });
-    return el('span', {}, [i, t]);
-  }
-
-  /* Phasendaten zurück in die Rechendauern. Nur die vier Rechenphasen
-     lassen sich abbilden — der Rechenkern kennt nicht mehr. Gerechnet
-     wird über die äusseren Ränder der zugeordneten SIA-Phasen. */
-  function uebernehmen(p) {
+  function uebernehmen(p, gerechnet) {
     var raender = {};
-    A.SIA_PHASEN.forEach(function (ph) {
-      var e = T.phase(p, ph.id);
-      if (!e || !e.von || !e.bis) return;
-      var r = raender[ph.rechen] || (raender[ph.rechen] = { von: e.von, bis: e.bis });
-      if (e.von < r.von) r.von = e.von;
-      if (e.bis > r.bis) r.bis = e.bis;
+    A.vorgaenge(p).forEach(function (v) {
+      if (!v.sia) return;
+      var ph = A.SIA_PHASEN.find(function (x) { return x.id === v.sia; });
+      var g = gerechnet.byId[v.id];
+      if (!ph || !g) return;
+      var r = raender[ph.rechen] || (raender[ph.rechen] = { von: g.start, bis: g.ende });
+      if (g.start < r.von) r.von = g.start;
+      if (g.ende > r.bis) r.bis = g.ende;
     });
 
     var fehlt = ['entwicklung', 'bewilligung', 'vorbereitung', 'bau']
       .filter(function (k) { return !raender[k]; });
     if (fehlt.length) {
       A.meldung('warn', 'Für ' + fehlt.map(rechenLabel).join(', ') +
-        ' fehlen Termine — diese Dauern bleiben unverändert.');
+        ' fehlen Vorgänge mit SIA-Zuordnung — diese Dauern bleiben unverändert.');
     }
 
     var monate = function (a, b) {
@@ -612,18 +965,11 @@ window.APP = window.APP || {};
       var m = monate(p.startdatum || raender.entwicklung.von, raender.entwicklung.bis);
       if (m !== null) neu.dauer_entwicklung = m;
     }
-    if (raender.bewilligung) {
-      var mb = monate(raender.bewilligung.von, raender.bewilligung.bis);
-      if (mb !== null) neu.dauer_bewilligung = mb;
-    }
-    if (raender.vorbereitung) {
-      var mv = monate(raender.vorbereitung.von, raender.vorbereitung.bis);
-      if (mv !== null) neu.dauer_vorbereitung = mv;
-    }
-    if (raender.bau) {
-      var mba = monate(raender.bau.von, raender.bau.bis);
-      if (mba !== null) neu.dauer_bau = mba;
-    }
+    ['bewilligung', 'vorbereitung', 'bau'].forEach(function (k) {
+      if (!raender[k]) return;
+      var mm = monate(raender[k].von, raender[k].bis);
+      if (mm !== null) neu['dauer_' + k] = mm;
+    });
 
     var zeilen = Object.keys(neu).map(function (k) {
       return el('tr', {}, [
@@ -637,7 +983,8 @@ window.APP = window.APP || {};
     });
 
     if (!zeilen.length) {
-      A.meldung('warn', 'Keine vollständige Phase gefunden — es gibt nichts zu übernehmen.');
+      A.meldung('warn', 'Kein Vorgang trägt eine SIA-Zuordnung — es gibt nichts zu ' +
+        'übernehmen. «SIA-Phasen einsetzen» legt solche Vorgänge an.');
       return;
     }
 
@@ -662,112 +1009,17 @@ window.APP = window.APP || {};
     ]);
   }
 
+  function rechenLabel(id) {
+    return { entwicklung: 'Entwicklung', bewilligung: 'Bewilligung',
+             vorbereitung: 'Vorbereitung', bau: 'Bau' }[id] || id;
+  }
+
   var LABELS = {
     dauer_entwicklung: 'Erwerb → Baueingabe',
     dauer_bewilligung: 'Baueingabe → Bewilligung',
     dauer_vorbereitung: 'Bewilligung → Baustart',
     dauer_bau: 'Bauzeit'
   };
-
-  /* Eigene Termine und Meilensteine */
-  function eigenePanel(p) {
-    var beteiligte = A.beteiligteListe(p);
-
-    var zeilen = (p.termine.eigene || []).map(function (e, i) {
-      return el('tr', {}, [
-        el('td', {}, [U.zelleTxt(e, 'text', { platzhalter: 'Bezeichnung' })]),
-        el('td', { style: 'width:120px' }, [(function () {
-          var c = el('input', { type: 'checkbox', style: 'width:auto',
-            checked: e.meilenstein ? '' : null });
-          c.addEventListener('change', function () {
-            e.meilenstein = c.checked; A.markDirty(); A.render();
-          });
-          return c;
-        })()]),
-        el('td', { style: 'width:150px' }, [eigenDatum(e, 'von', !e.meilenstein)]),
-        el('td', { style: 'width:150px' }, [eigenDatum(e, 'bis', true)]),
-        el('td', { style: 'width:170px' }, [(function () {
-          var sel = el('select');
-          sel.appendChild(el('option', { value: '', text: '— ohne Phase —' }));
-          A.SIA_PHASEN.forEach(function (ph) {
-            sel.appendChild(el('option', { value: ph.id,
-              text: ph.sia ? ph.sia + ' · ' + ph.label : ph.label,
-              selected: e.phase === ph.id ? '' : null }));
-          });
-          sel.addEventListener('change', function () {
-            e.phase = sel.value; A.markDirty(); A.render();
-          });
-          return sel;
-        })()]),
-        el('td', { style: 'width:160px' }, [(function () {
-          var sel = el('select');
-          sel.appendChild(el('option', { value: '', text: '— ohne —' }));
-          beteiligte.forEach(function (b) {
-            sel.appendChild(el('option', { value: b.id,
-              text: [b.kuerzel, b.name].filter(Boolean).join(' · '),
-              selected: e.beteiligter === b.id ? '' : null }));
-          });
-          sel.addEventListener('change', function () {
-            e.beteiligter = sel.value; A.markDirty(); A.render();
-          });
-          return sel;
-        })()]),
-        el('td', { style: 'width:110px' }, [(function () {
-          var c = el('input', { type: 'checkbox', style: 'width:auto',
-            checked: e.dashboard ? '' : null,
-            title: 'Im Portfolio-Terminplan zeigen' });
-          c.addEventListener('change', function () {
-            e.dashboard = c.checked; A.markDirty(); A.render();
-          });
-          return c;
-        })()]),
-        el('td', { class: 'w1' }, [el('button', { class: 'ghost sm schreibend', text: '×',
-          onclick: function () {
-            p.termine.eigene.splice(i, 1); A.markDirty(); A.render();
-          } })])
-      ]);
-    });
-
-    if (!zeilen.length) {
-      zeilen.push(el('tr', {}, [el('td', { colspan: 8, class: 'muted',
-        text: 'Kein eigener Termin erfasst.' })]));
-    }
-
-    return U.panel('Eigene Termine und Meilensteine',
-      'was nicht aus einem Protokoll kommt', [
-      el('div', { class: 'panelbody' }, [U.tabelle([
-        { label: 'Bezeichnung' }, { label: 'Meilenstein' }, { label: 'von' }, { label: 'bis' },
-        { label: 'Phase' }, { label: 'Zuständig' }, { label: 'im Portfolio' }, { label: '' }
-      ], zeilen)]),
-      el('div', { class: 'panelbody noprint' }, [
-        el('button', { class: 'schreibend', text: '+ Termin', onclick: function () {
-          p.termine.eigene.push({ id: A.uid(), text: '', von: A.heute(), bis: A.heute(),
-            phase: '', beteiligter: '', meilenstein: false, dashboard: false, status: 'offen' });
-          A.markDirty(); A.render();
-        } }),
-        el('button', { class: 'schreibend', style: 'margin-left:8px', text: '+ Meilenstein',
-          onclick: function () {
-            p.termine.eigene.push({ id: A.uid(), text: '', von: '', bis: A.heute(),
-              phase: '', beteiligter: '', meilenstein: true, dashboard: true, status: 'offen' });
-            A.markDirty(); A.render();
-          } }),
-        U.hinweis('info', 'Ein <b>Meilenstein</b> hat nur ein Datum und erscheint als Raute. ' +
-          'Mit <b>im Portfolio</b> markierte Phasen und Meilensteine erscheinen zusätzlich im ' +
-          'Terminplan der Portfolioübersicht — dort bleiben sonst nur die groben Phasen.')
-      ])
-    ]);
-  }
-
-  function eigenDatum(e, feld, aktiv) {
-    if (!aktiv) return el('span', { class: 'muted', text: '—' });
-    var i = el('input', { type: 'date', value: e[feld] || '', style: 'width:100%',
-      class: 'nichtdrucken' });
-    var t = el('span', { class: 'nurdruck', text: e[feld] ? A.datum(e[feld]) : '—' });
-    i.addEventListener('change', function () {
-      e[feld] = i.value; A.markDirty(); A.render();
-    });
-    return el('span', {}, [i, t]);
-  }
 
   T.legende = function () {
     var eintraege = [

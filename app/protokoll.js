@@ -542,10 +542,34 @@ window.APP = window.APP || {};
           erl, el('span', { class: S.ansicht === 'kanban' || S.ansicht === 'themen'
             ? 'muted' : '', text: 'erledigte zeigen' })
         ]),
+        sortwahl(),
         el('button', { class: 'schreibend', style: 'margin-left:auto',
           text: '+ Aufgabe ohne Protokoll', onclick: function () { neueAufgabe(p); } })
       ]),
       inhalt
+    ]);
+  }
+
+  /* Wonach geordnet wird. Zwei Zustände genügen: das Übliche und die
+     reine Terminfolge für den Fall, dass man den Kalender ohne
+     Gewichtung sehen will. */
+  function sortwahl() {
+    var seg = el('div', { class: 'seg noprint', style: 'display:flex;gap:0' });
+    [{ id: 'dringend', label: 'Dringlichkeit',
+       titel: 'Überfälliges zuerst; bei gleichem Termin die höhere Priorität oben' },
+     { id: 'termin', label: 'Termin',
+       titel: 'Rein nach Datum, ohne Rücksicht auf die Priorität' }].forEach(function (o) {
+      var b = el('button', { class: S.sortierung === o.id ? 'on' : '',
+        text: o.label, title: o.titel });
+      b.addEventListener('click', function () {
+        S.sortierung = o.id; sortierungMerken(o.id); A.render();
+      });
+      seg.appendChild(b);
+    });
+    return el('div', { style: 'display:flex;gap:7px;align-items:center' }, [
+      el('span', { class: 'muted', style: 'font-size:11px;letter-spacing:.06em;' +
+        'text-transform:uppercase', text: 'sortiert nach' }),
+      seg
     ]);
   }
 
@@ -743,12 +767,8 @@ window.APP = window.APP || {};
       sp.karten.push(o);
     });
 
-    /* Innerhalb der Spalte: überfällige zuerst, dann nach Termin */
-    spalten.forEach(function (sp) {
-      sp.karten.sort(function (a, b) {
-        return String(a.punkt.termin || '9999').localeCompare(String(b.punkt.termin || '9999'));
-      });
-    });
+    /* Innerhalb der Spalte dieselbe Ordnung wie in der Liste. */
+    spalten.forEach(function (sp) { sp.karten.sort(sortierung); });
 
     var tafel = el('div', { class: 'kanban' });
 
@@ -935,9 +955,8 @@ window.APP = window.APP || {};
      aufklappt: Wer auf «erledigt» stellt, nimmt sie ja aus den offenen
      heraus. */
   function offeneUndGefragte() {
-    var liste = S.zeigeErledigte
-      ? P.allePunkte('aufgabe').slice().sort(sortierung)
-      : P.offenePunkte(null);
+    var liste = (S.zeigeErledigte ? P.allePunkte('aufgabe') : P.offenePunkte(null))
+      .slice().sort(sortierung);
     if (!S.fragtNach) return liste;
     if (liste.some(function (o) { return o.punkt.id === S.fragtNach; })) return liste;
     var dazu = P.allePunkte('aufgabe').find(function (o) {
@@ -946,15 +965,51 @@ window.APP = window.APP || {};
     return dazu ? liste.concat([dazu]) : liste;
   }
 
-  /* Offenes zuerst, darin das früher Fällige — abgeschlossene Aufgaben
-     stehen hinten, nach Abschlussdatum absteigend: Was zuletzt erledigt
-     wurde, sucht man am ehesten. */
+  /* Wonach die Aufgaben geordnet sind. «Dringlichkeit» wiegt Termin
+     und Priorität gegeneinander ab, «Termin» ist die reine Datumsfolge
+     wie bisher. Wieder eine Vorliebe des Betrachters, also lokal
+     gemerkt. */
+  var SORT_KEY = 'projektrechner.aufgabensortierung';
+
+  S.sortierung = (function () {
+    try { return localStorage.getItem(SORT_KEY) === 'termin' ? 'termin' : 'dringend'; }
+    catch (e) { return 'dringend'; }
+  })();
+
+  function sortierungMerken(wert) {
+    try {
+      if (wert === 'termin') localStorage.setItem(SORT_KEY, 'termin');
+      else localStorage.removeItem(SORT_KEY);
+    } catch (e) { /* privater Modus */ }
+  }
+
+  /* Die Dringlichkeit einer Aufgabe als Zahl — kleiner heisst
+     eiliger. Grundlage sind die Tage bis zum Termin; die Priorität
+     verschiebt sie um bis zu zehn Tage. Eine hoch priorisierte Aufgabe
+     rückt damit vor eine gleich terminierte ohne Priorität, aber nie
+     vor eine, die zwei Wochen früher fällig ist — sonst stünde die
+     Priorität über dem Kalender, und das Feld würde zum Notausgang.
+     Ohne Termin gibt es keine Dringlichkeit: Solche Aufgaben stehen
+     am Schluss, nach Priorität geordnet. */
+  function dringlichkeit(pt) {
+    var schub = { hoch: -10, mittel: -4, tief: 3 }[pt.prio] || 0;
+    if (!pt.termin) return 99999 + schub;
+    return tageBis(pt.termin) + schub;
+  }
+
+  /* Offenes zuerst, darin nach der gewählten Ordnung — abgeschlossene
+     Aufgaben stehen hinten, nach Abschlussdatum absteigend: Was zuletzt
+     erledigt wurde, sucht man am ehesten. */
   function sortierung(a, b) {
     var oa = A.statusOffen(a.punkt.status) ? 0 : 1;
     var ob = A.statusOffen(b.punkt.status) ? 0 : 1;
     if (oa !== ob) return oa - ob;
     if (oa === 1) {
       return String(b.punkt.erledigt_am || '').localeCompare(String(a.punkt.erledigt_am || ''));
+    }
+    if (S.sortierung === 'dringend') {
+      var d = dringlichkeit(a.punkt) - dringlichkeit(b.punkt);
+      if (d) return d;
     }
     return String(a.punkt.termin || '9999').localeCompare(String(b.punkt.termin || '9999'));
   }

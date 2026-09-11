@@ -177,6 +177,24 @@ Protokoll stehen, nur der Status wechselt. Liste und Zuständigkeit zeigen von
 sich aus nur Offenes; der Haken **erledigte zeigen** holt die abgeschlossenen
 dazu — gedämpft und ans Ende gestellt, mit Abschlussdatum statt Termin.
 
+**Terminplan** Ein Gantt-Diagramm: links die Vorgangstabelle mit Bezeichnung,
+Abhängigkeit, Verzögerung, Start, Dauer in Kalendertagen, Ende, Erledigt-Haken
+und Farbe; rechts die Balken auf einer Monatsachse, dazwischen Pfeile für die
+Abhängigkeiten. Ein Vorgang mit Abhängigkeit beginnt am Tag nach dem Ende seines
+Vorgängers — sein Startdatum wird gerechnet, und verschiebt sich etwas, wandert
+die ganze Kette mit. Ringschlüsse werden abgewiesen, bevor sie entstehen.
+
+Ein neues Projekt füllt der Knopf **SIA-Phasen einsetzen** mit den zehn Phasen,
+verkettet und mit Dauern aus dem Bauzeitmodell; danach ist jede Zeile frei.
+Erledigtes wird grau und durchgestrichen. Die Zeitachse lässt sich zwischen
+*passend* (der ganze Plan im Bild, auch auf dem Ausdruck) und drei festen
+Massstäben umschalten.
+
+Die **Dauern in die Kalkulation zu übernehmen** bleibt ein eigener Knopf mit
+Vorschau: Ein verschobener Termin darf Kapitalbedarf, Zinsen und damit die Marge
+nicht still verändern. Termine aus den Protokollen stehen als eigener Block
+darunter — sie haben weder Dauer noch Abhängigkeit.
+
 **Baurecht-Check** Eine Sammlung des für das Grundstück geltenden Baurechts:
 75 Prüfpunkte in fünf Gruppen (Grundstück, Ziffern und Boni, Abstände und
 Begrenzungen, Weiteres, Grundbuch), je Punkt ein Eintrag, eine Bemerkung —
@@ -438,7 +456,7 @@ app/results.js        Ergebnis, Analyse, Bericht
 app/portfolio.js      Portfolio, Tracking, Archivieren, Import und Export
 app/protokoll.js      Sitzungsprotokolle, Aufgaben in vier Ansichten
 app/baurecht.js       Baurecht-Check: geltendes Baurecht je Grundstück
-app/termine.js        Terminplan: SIA-Phasen, Aufgaben, Meilensteine
+app/termine.js        Terminplan: Gantt mit Abhängigkeiten, Meilensteine
 app/admin.js          Verwaltung, Änderungsverlauf, Anmerkungen
 app/main.js           Zustand, Navigation, Kennzahlenleiste, Rollen
 db/schema.sql         Tabellen, Rechteregeln, Auslöser

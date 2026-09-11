@@ -497,22 +497,20 @@ window.APP = window.APP || {};
        als eigene Zeile dazu. */
     function marken(p) {
       var raus = [];
-      ((p.termine && p.termine.phasen) || []).forEach(function (e) {
-        if (!e.dashboard || !e.von || !e.bis) return;
-        var t0 = jahrDez(e.von), t1 = jahrDez(e.bis);
+      /* Die Vorgänge des Terminplans, soweit sie fürs Portfolio
+         markiert sind. Start und Ende kommen aus derselben Rechnung
+         wie im Plan selbst — auch die Abhängigkeiten. */
+      var ber = A.terminplanRechnen(p).byId;
+      A.vorgaenge(p).forEach(function (v) {
+        if (!v.dashboard) return;
+        var g = ber[v.id];
+        if (!g) return;
+        var t0 = jahrDez(g.start), t1 = jahrDez(g.ende);
         if (t0 === null || t1 === null) return;
-        raus.push({ t0: t0, t1: t1, meilenstein: false,
-          label: A.phaseLabel(e.id) + ' · ' + A.datum(e.von) + ' – ' + A.datum(e.bis) });
-      });
-      ((p.termine && p.termine.eigene) || []).forEach(function (e) {
-        if (!e.dashboard) return;
-        var ende = jahrDez(e.bis || e.von);
-        if (ende === null) return;
-        var anfang = e.meilenstein ? ende : (jahrDez(e.von || e.bis) || ende);
-        raus.push({ t0: anfang, t1: ende, meilenstein: !!e.meilenstein,
-          label: (e.text || 'Termin') + ' · ' +
-                 (e.meilenstein ? A.datum(e.bis || e.von)
-                                : A.datum(e.von) + ' – ' + A.datum(e.bis)) });
+        raus.push({ t0: t0, t1: t1, meilenstein: g.tage <= 1,
+          label: (v.label || 'Vorgang') + ' · ' +
+                 (g.tage <= 1 ? A.datum(g.start)
+                              : A.datum(g.start) + ' – ' + A.datum(g.ende)) });
       });
       return raus;
     }

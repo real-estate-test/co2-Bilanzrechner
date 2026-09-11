@@ -6,7 +6,7 @@ window.APP = window.APP || {};
 (function (A) {
   'use strict';
 
-  A.SCHEMA = 20;
+  A.SCHEMA = 21;
 
   /* ---------------------------------------------------------------
      Stammlisten
@@ -1235,6 +1235,181 @@ window.APP = window.APP || {};
     return Math.round((b - a) / 86400000);
   };
 
+  /* ---------------------------------------------------------------
+     Terminplan — Vorgänge, Abhängigkeiten, Dauern
+
+     Ein Vorgang ist eine Zeile des Gantt-Diagramms: Beschriftung,
+     Startdatum, Dauer in Kalendertagen. Hängt er an einem anderen,
+     rechnet sich sein Start aus dessen Ende plus einer Verzögerung —
+     das getippte Startdatum tritt dann zurück.
+
+     Die Verkettung wird für den ganzen Plan auf einmal aufgelöst
+     (A.terminplanRechnen). Das ist schneller als rekursive
+     Einzelabfragen und erlaubt es, Ringschlüsse zu erkennen: «A nach B,
+     B nach A» darf die Oberfläche nicht aufhängen.
+     --------------------------------------------------------------- */
+
+  A.GANTT_FARBEN = [
+    { id: 'blau',       label: 'Blau',       hex: '#2a52be' },
+    { id: 'dunkelblau', label: 'Dunkelblau', hex: '#1a3a6b' },
+    { id: 'gruen',      label: 'Grün',       hex: '#27ae60' },
+    { id: 'tuerkis',    label: 'Türkis',     hex: '#16a085' },
+    { id: 'gelb',       label: 'Gelb',       hex: '#e0a400' },
+    { id: 'orange',     label: 'Orange',     hex: '#e67e22' },
+    { id: 'rot',        label: 'Rot',        hex: '#c0392b' },
+    { id: 'rosa',       label: 'Rosa',       hex: '#c0568a' },
+    { id: 'lila',       label: 'Lila',       hex: '#7c4dbe' },
+    { id: 'braun',      label: 'Braun',      hex: '#795548' },
+    { id: 'grau',       label: 'Grau',       hex: '#7f8c8d' },
+    { id: 'anthrazit',  label: 'Anthrazit',  hex: '#2c3e50' }
+  ];
+
+  A.ganttFarbe = function (id) {
+    var f = A.GANTT_FARBEN.find(function (x) { return x.id === id; });
+    return f ? f.hex : A.GANTT_FARBEN[0].hex;
+  };
+
+  /* Welche Farbe eine aus einer SIA-Phase abgeleitete Zeile bekommt —
+     dieselbe Ordnung wie die Rechenphasen im Portfolio. */
+  var PHASENFARBE = {
+    entwicklung: 'dunkelblau', bewilligung: 'gelb',
+    vorbereitung: 'grau', bau: 'blau'
+  };
+
+  A.defVorgang = function (vorgabe) {
+    var v = {
+      id: A.uid(),
+      label: '',
+      abh: '',            // Id des Vorgängers, leer = eigener Starttermin
+      verz: 0,            // Tage zwischen Vorgängerende und eigenem Start
+      start: '',          // nur wirksam ohne Abhängigkeit
+      tage: 10,
+      farbe: 'blau',
+      erledigt: false,
+      dashboard: false,   // im Portfolio zeigen
+      sia: ''             // Herkunft, falls aus einer SIA-Phase entstanden
+    };
+    Object.keys(vorgabe || {}).forEach(function (k) { v[k] = vorgabe[k]; });
+    v.tage = Math.max(1, Math.round(num0(v.tage)) || 1);
+    v.verz = Math.round(num0(v.verz));
+    return v;
+  };
+
+  A.vorgaenge = function (p) {
+    var liste = (p && p.termine && p.termine.vorgaenge) || [];
+    return Array.isArray(liste) ? liste : [];
+  };
+
+  /* Die Startbelegung eines neuen Plans: die zehn SIA-Phasen der Reihe
+     nach verkettet. Sammelrubriken (Gewicht 0) bleiben draussen — sie
+     laufen quer durchs Projekt und wären als Balken irreführend. */
+  A.vorgaengeAusSia = function (p, r) {
+    var raus = [], vorher = null;
+    A.SIA_PHASEN.forEach(function (ph) {
+      if (!ph.gewicht) return;
+      var tage = 30;
+      if (r && r.zeit && p && p.startdatum) {
+        /* Dauer aus dem Bauzeitmodell: Die Phasen einer Rechenphase
+           teilen sich deren Zeitraum nach Gewicht. */
+        var Z = r.zeit;
+        var grenzen = {
+          entwicklung:  [0, Z.t_baueingabe], bewilligung: [Z.t_baueingabe, Z.t_bb],
+          vorbereitung: [Z.t_bb, Z.t_baustart], bau: [Z.t_baustart, Z.t_bauende]
+        }[ph.rechen];
+        if (grenzen) {
+          var summe = A.SIA_PHASEN.reduce(function (a, x) {
+            return a + (x.rechen === ph.rechen ? x.gewicht : 0); }, 0);
+          if (summe > 0) {
+            tage = Math.max(1, Math.round((grenzen[1] - grenzen[0]) *
+                                          ph.gewicht / summe * 365.25));
+          }
+        }
+      }
+      var v = A.defVorgang({
+        label: ph.sia ? ph.label + ' (SIA ' + ph.sia + ')' : ph.label,
+        sia: ph.id, tage: tage, farbe: PHASENFARBE[ph.rechen] || 'blau',
+        abh: vorher ? vorher.id : '',
+        start: vorher ? '' : (p && p.startdatum) || A.heute()
+      });
+      raus.push(v);
+      vorher = v;
+    });
+    return raus;
+  };
+
+  /* Start- und Enddatum aller Vorgänge in einem Durchgang.
+
+     Rückgabe: { byId: { id: { start, ende, ring } }, ringe: [id, …] }
+     «ring» markiert einen Vorgang, dessen Abhängigkeit im Kreis läuft;
+     er fällt dann auf sein eigenes Startdatum zurück, damit der Plan
+     trotzdem darstellbar bleibt. */
+  A.terminplanRechnen = function (p) {
+    var liste = A.vorgaenge(p);
+    var nach = {};
+    liste.forEach(function (v) { nach[v.id] = v; });
+
+    var erg = {}, ringe = [], laeuft = {};
+
+    function rechne(v) {
+      if (erg[v.id]) return erg[v.id];
+      if (laeuft[v.id]) {                       // Ringschluss
+        if (ringe.indexOf(v.id) < 0) ringe.push(v.id);
+        return null;
+      }
+      laeuft[v.id] = true;
+
+      var start = v.start || (p && p.startdatum) || A.heute();
+      var ring = false;
+      if (v.abh && nach[v.abh]) {
+        var vor = rechne(nach[v.abh]);
+        if (vor) {
+          start = A.datumPlusTage(vor.ende, (Math.round(num0(v.verz)) || 0) + 1);
+        } else {
+          ring = true;
+          if (ringe.indexOf(v.id) < 0) ringe.push(v.id);
+        }
+      }
+      var tage = Math.max(1, Math.round(num0(v.tage)) || 1);
+      /* Ein Vorgang von einem Tag beginnt und endet am selben Datum. */
+      var ende = A.datumPlusTage(start, tage - 1);
+
+      laeuft[v.id] = false;
+      erg[v.id] = { start: start, ende: ende, tage: tage, ring: ring };
+      return erg[v.id];
+    }
+
+    liste.forEach(rechne);
+    return { byId: erg, ringe: ringe };
+  };
+
+  /* Die Nummer eines Vorgangs ist seine Stelle in der Liste — so wie
+     man sie in der Spalte «Abh.» einträgt. */
+  A.vorgangNummer = function (p, id) {
+    var i = A.vorgaenge(p).findIndex(function (v) { return v.id === id; });
+    return i < 0 ? 0 : i + 1;
+  };
+
+  A.vorgangNachNummer = function (p, nr) {
+    var i = parseInt(nr, 10);
+    var liste = A.vorgaenge(p);
+    return (i >= 1 && i <= liste.length) ? liste[i - 1] : null;
+  };
+
+  /* Ob eine Abhängigkeit erlaubt ist: Sie darf nicht auf den Vorgang
+     selbst und nicht über Umwege auf ihn zurückführen. */
+  A.abhaengigkeitErlaubt = function (p, vId, zielId) {
+    if (!zielId) return true;
+    if (vId === zielId) return false;
+    var nach = {};
+    A.vorgaenge(p).forEach(function (v) { nach[v.id] = v; });
+    var lauf = nach[zielId], tiefe = 0;
+    while (lauf && tiefe++ < 500) {
+      if (lauf.id === vId) return false;
+      lauf = lauf.abh ? nach[lauf.abh] : null;
+    }
+    return true;
+  };
+
   /* Beschriftung eines Projektjahres im Kalender. */
   A.jahrLabel = function (p, j) {
     var start = p && p.startjahr ? parseInt(p.startjahr, 10) : new Date().getFullYear();
@@ -1363,7 +1538,10 @@ window.APP = window.APP || {};
          verändern. Die Übernahme geschieht auf Knopfdruck.
            phasen = SIA-Phasen mit Von/Bis, dashboard = im Portfolio zeigen
            eigene = frei erfasste Termine und Meilensteine */
-      termine: { phasen: [], eigene: [] },
+      /* vorgaenge = Zeilen des Gantt-Diagramms (Start, Dauer,
+         Abhängigkeit); phasen/eigene sind die Vorgängerstruktur und
+         bleiben leer stehen, damit ein alter Stand lesbar bleibt. */
+      termine: { vorgaenge: [], phasen: [], eigene: [] },
 
       /* Das für dieses Grundstück geltende Baurecht. Die Fragen stehen
          im firmenweiten Katalog, die Antworten hier:
@@ -2005,6 +2183,45 @@ window.APP = window.APP || {};
       if (typeof x.thema !== 'string') x.thema = '';
       if (typeof x.prio !== 'string') x.prio = '';
     });
+
+    /* --- Schema 20 -> 21: Der Terminplan wird ein echtes Gantt.
+       Aus den SIA-Phasen mit Von/Bis und den eigenen Terminen werden
+       Vorgänge mit Start und Dauer in Tagen. Die alten Listen bleiben
+       vorerst liegen — ein Projekt, das noch mit der vorigen Fassung
+       geöffnet wird, verliert dadurch nichts. ------------------------ */
+    if (!Array.isArray(p.termine.vorgaenge)) {
+      var neue = [];
+      (p.termine.phasen || []).forEach(function (e) {
+        if (!e.von && !e.bis) return;
+        var ph = A.SIA_PHASEN.find(function (x) { return x.id === e.id; });
+        var tage = A.tageZwischen(e.von, e.bis);
+        neue.push(A.defVorgang({
+          label: ph ? (ph.sia ? ph.label + ' (SIA ' + ph.sia + ')' : ph.label) : e.id,
+          sia: e.id, start: e.von || '', tage: tage > 0 ? tage + 1 : 30,
+          dashboard: !!e.dashboard,
+          farbe: { entwicklung: 'dunkelblau', bewilligung: 'gelb',
+                   vorbereitung: 'grau', bau: 'blau' }[ph && ph.rechen] || 'blau'
+        }));
+      });
+      (p.termine.eigene || []).forEach(function (e) {
+        var von = e.von || e.bis, bis = e.bis || e.von;
+        if (!von) return;
+        var t = A.tageZwischen(von, bis);
+        neue.push(A.defVorgang({
+          label: e.text || 'Termin', start: von,
+          tage: e.meilenstein ? 1 : (t > 0 ? t + 1 : 1),
+          dashboard: !!e.dashboard, farbe: e.meilenstein ? 'gruen' : 'tuerkis'
+        }));
+      });
+      /* Die Reihenfolge ist die zeitliche — so, wie man einen Plan
+         liest. Verkettet wird nichts: Wer Abhängigkeiten will, setzt
+         sie selbst, statt dass ihm eine erfundene Kette untergeschoben
+         wird. */
+      neue.sort(function (a, b) {
+        return String(a.start || '9999').localeCompare(String(b.start || '9999'));
+      });
+      p.termine.vorgaenge = neue;
+    }
 
     /* --- Schema 19 -> 20: Baurecht-Check. Bestehende Projekte
        starten mit leeren Einträgen; die Fragen kommen aus dem

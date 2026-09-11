@@ -1623,6 +1623,11 @@ window.APP = window.APP || {};
         sollmiete: ERT.sollmiete,
         noi: BET.noi_a,
         ak_pro_nwf: F.total.nwf > 0 ? anlagekosten / F.total.nwf : 0,
+        /* Bezugsgrössen des Projektes — im Snapshot der Massstab dafür,
+           ob ein Kostensprung aus dem Preis oder aus mehr Bauvolumen
+           kommt. */
+        nwf_total: F.total.nwf,
+        gv_total: F.total.gv,
         bau_pro_gf: F.total.gf > 0 ? BAU.total / F.total.gf : 0,
         dauer: Z.t_ende,
         dauer_plan: E.planDauer(p),

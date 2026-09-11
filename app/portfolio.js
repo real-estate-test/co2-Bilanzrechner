@@ -990,23 +990,57 @@ window.APP = window.APP || {};
       ])
     ], [schalter]));
 
-    /* Snapshots */
+    /* Snapshots.
+
+       Flächen und Volumen sind erst seit kurzem in den Kennzahlen. Für
+       früher eingefrorene Stände werden sie aus dem mitgespeicherten
+       Projekt nachgerechnet — einmal je Snapshot, nicht je Zelle. */
+    var flCache = {};
+    function snapFlaechen(sn, i) {
+      if (flCache[i] !== undefined) return flCache[i];
+      var f = null;
+      try {
+        if (sn.projekt) f = A.engine.flaechen(A.migrate(A.clone(sn.projekt)), []);
+      } catch (e) { f = null; }
+      flCache[i] = f;
+      return f;
+    }
+    /* Ein Stand, der eine Kennzahl noch nicht kannte, soll keine Null
+       vortäuschen. */
+    function wert(v, formatierer) {
+      return (v === undefined || v === null || (typeof v === 'number' && !isFinite(v)))
+        ? '—' : formatierer(v);
+    }
+    function chf(v) { return wert(v, function (x) { return fmt(x); }); }
+    function proz(v) { return wert(v, function (x) { return A.fmtPct(x); }); }
+    function menge(v, einheit) {
+      return wert(v, function (x) { return fmt(x, 0) + ' ' + einheit; });
+    }
+
     var snapZeilen = p.snapshots.map(function (sn, i) {
-      var k = sn.kpi, jetzt = A.state.r.kpi;
-      function delta(a, b, dez) {
-        var d = b - a;
-        return el('span', { style: 'color:' + (d >= 0 ? 'var(--pos)' : 'var(--neg)'),
-          text: (d >= 0 ? '+' : '') + fmt(d, dez || 0) });
+      var k = sn.kpi || {}, fl = null;
+      var gv = k.gv_total, nwf = k.nwf_total;
+      if (gv === undefined || nwf === undefined) {
+        fl = snapFlaechen(sn, i);
+        if (fl) {
+          if (gv === undefined) gv = fl.total.gv;
+          if (nwf === undefined) nwf = fl.total.nwf;
+        }
       }
       return el('tr', {}, [
         el('td', {}, [el('span', { text: sn.label }),
           el('div', { class: 'muted', style: 'font-size:10.5px', text: sn.datum })]),
-        el('td', { class: 'n', text: fmt(k.anlagekosten) }),
-        el('td', { class: 'n', text: fmt(k.erloese) }),
-        el('td', { class: 'n', text: fmt(k.gewinn) }),
-        el('td', { class: 'n', text: A.fmtPct(k.marge_ak) }),
-        el('td', { class: 'n' }, [delta(k.gewinn, jetzt.gewinn)]),
+        el('td', { class: 'n', text: chf(k.anlagekosten) }),
+        el('td', { class: 'n', text: chf(k.erloese) }),
+        el('td', { class: 'n', text: chf(k.sollmiete) }),
+        el('td', { class: 'n', text: proz(k.ebt_stwe) }),
+        el('td', { class: 'n', text: proz(k.bruttorendite) }),
+        el('td', { class: 'n', text: menge(gv, 'm³') }),
+        el('td', { class: 'n', text: menge(nwf, 'm²') }),
         el('td', { class: 'w1' }, [
+          /* Ohne Projektkopie gibt es nichts zu laden — dann nur die
+             Kennzahlen zum Vergleich. */
+          !sn.projekt ? null :
           el('button', { class: 'ghost sm', text: 'laden', title: 'Diesen Stand als aktuelles Projekt übernehmen',
             onclick: function () {
               if (!confirm('Aktuellen Stand durch den Snapshot «' + sn.label + '» ersetzen?')) return;
@@ -1019,20 +1053,36 @@ window.APP = window.APP || {};
         ])
       ]);
     });
-    snapZeilen.push(el('tr', { class: 'total' }, [
-      el('td', { text: 'aktueller Stand' }),
-      el('td', { class: 'n', text: fmt(A.state.r.kpi.anlagekosten) }),
-      el('td', { class: 'n', text: fmt(A.state.r.kpi.erloese) }),
-      el('td', { class: 'n', text: fmt(A.state.r.kpi.gewinn) }),
-      el('td', { class: 'n', text: A.fmtPct(A.state.r.kpi.marge_ak) }),
-      el('td', {}), el('td', {})
-    ]));
+    /* Der aktuelle Stand wird über U.derived nachgeführt — er ändert
+       sich mit jeder Eingabe, die Snapshots darüber nie. */
+    var jetztZeile = el('tr', { class: 'total' });
+    U.derived.push(function () {
+      var k = A.state.r.kpi;
+      U.leeren(jetztZeile);
+      [el('td', { text: 'aktueller Stand' }),
+       el('td', { class: 'n', text: chf(k.anlagekosten) }),
+       el('td', { class: 'n', text: chf(k.erloese) }),
+       el('td', { class: 'n', text: chf(k.sollmiete) }),
+       el('td', { class: 'n', text: proz(k.ebt_stwe) }),
+       el('td', { class: 'n', text: proz(k.bruttorendite) }),
+       el('td', { class: 'n', text: menge(k.gv_total, 'm³') }),
+       el('td', { class: 'n', text: menge(k.nwf_total, 'm²') }),
+       el('td', {})
+      ].forEach(function (td) { jetztZeile.appendChild(td); });
+    });
+    snapZeilen.push(jetztZeile);
 
     out.appendChild(U.panel('Snapshots', 'eingefrorene Projektstände für den Verlauf', [
       el('div', { class: 'panelbody' }, [U.tabelle([
-        { label: 'Stand' }, { label: 'Anlagekosten', n: true }, { label: 'Erlöse', n: true },
-        { label: 'Gewinn', n: true }, { label: 'Marge', n: true },
-        { label: 'Δ Gewinn zu heute', n: true }, { label: '' }
+        { label: 'Stand' },
+        { label: 'Anlagekosten', n: true, w: '12%' },
+        { label: 'Erlöse', n: true, w: '12%' },
+        { label: 'Miete', n: true, w: '10%' },
+        { label: 'EBT STWE', n: true, w: '9%' },
+        { label: 'Bruttorendite Miete', n: true, w: '10%' },
+        { label: 'Gesamtvolumen', n: true, w: '11%' },
+        { label: 'Gesamt NWF', n: true, w: '10%' },
+        { label: '', w: '1%' }
       ], snapZeilen)]),
       el('div', { class: 'panelbody' }, [
         el('button', { class: 'primary', text: 'Aktuellen Stand einfrieren', onclick: function () {

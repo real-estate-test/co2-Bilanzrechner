@@ -374,7 +374,13 @@ Sitzungen hinweg erhalten.
 - **Cashflow** — Ausgaben, Einnahmen und kumulierter Saldo je Jahr
 
 **Tracking** Soll-Ist-Vergleich je Kostenposition mit CSV-Einlesung sowie
-Snapshots, die einen Projektstand einfrieren und gegen heute stellen.
+Snapshots, die einen Projektstand einfrieren und gegen heute stellen. Die
+Snapshot-Tabelle vergleicht Anlagekosten, Erlöse, Sollmiete, EBT STWE,
+Bruttorendite Miete, Gesamtvolumen und Gesamtnutzfläche — Volumen und Fläche
+daneben, damit ein Kostensprung sich einer Preis- oder einer Mengenänderung
+zuordnen lässt. Ältere Stände, die eine Kennzahl noch nicht kannten, zeigen «—»
+statt einer Null; Volumen und Fläche werden bei ihnen aus der mitgespeicherten
+Projektkopie nachgerechnet.
 
 Ein erfasster **Ist-Wert ersetzt den gerechneten Betrag** in der Kalkulation.
 Nachgelagerte Grössen ziehen automatisch nach: die Reserve auf BKP 20–29, die

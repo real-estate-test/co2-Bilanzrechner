@@ -291,9 +291,18 @@ Der Mietanteil wird gerechnet, als bliebe er im Bestand — ein Verkauf an einen
 Investor ist aber jederzeit eine Option. Eine eigene Zeile beantwortet deshalb,
 zu welchen Konditionen das möglich wäre: Ertragswert, Gewinn gegenüber der
 anteiligen Investition und das EBT darauf. Sie doppelt den Exit-Block bewusst —
-dort steht der geplante Verkauf, hier die Möglichkeit. Der
-Flächenschlüssel behandelt jeden Quadratmeter gleich — wo Gewerbe im Erdgeschoss
-anders kostet als Wohnen darüber, bildet er das nicht ab.
+dort steht der geplante Verkauf, hier die Möglichkeit.
+
+Nach Fläche verteilt werden dabei nur die **Anlagekosten**; die
+Vermarktungskosten folgen ihrem Verursacher: Verkaufsprovision und Beurkundung
+auf den STWE-Anteil, die Exit-Nebenkosten auf den Exit-Anteil, die Erstvermietung
+auf die vermieteten Flächen nach ihrer Miete, Marketing und Musterwohnung nach
+Fläche. Sonst trüge der Mietanteil einen Teil der Verkaufsprovision, die für ihn
+gar nicht anfällt. Brutto- und Nettorendite verwenden dieselbe Grundlage wie die
+EBT-Kennzahlen, damit nicht zwei Zahlen für dieselbe Investition nebeneinander
+stehen. Der Flächenschlüssel der Anlagekosten behandelt jeden Quadratmeter
+gleich — wo Gewerbe im Erdgeschoss anders kostet als Wohnen darüber, bildet er
+das nicht ab.
 
 Die **Projektdauer** zeigt die Spanne vom Kaufdatum bis zum letzten Vorgang im
 Terminplan, sobald dieser gefüllt ist; gerechnet wird weiterhin mit den

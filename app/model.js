@@ -95,6 +95,7 @@ window.APP = window.APP || {};
        gsf           CHF je m² Grundstücksfläche
        gv_bestand    CHF je m³ Gebäudevolumen Bestand (Abbruch)
        pct_bkp2      % der Summe BKP 20–29 vor Reserve
+       pct_bkp1_2    % der Summe BKP 1 und 2
        pct_bkp1_4    % der Summe BKP 1–4
      --------------------------------------------------------------- */
 
@@ -120,6 +121,7 @@ window.APP = window.APP || {};
     gsf:           'CHF/m² GSF',
     gv_bestand:    'CHF/m³ GV Bestand',
     pct_bkp2:      '% von BKP 20–29',
+    pct_bkp1_2:    '% von BKP 1–2',
     pct_bkp1_4:    '% von BKP 1–4',
     pct_bkp1_5:    '% von BKP 1–5'
   };

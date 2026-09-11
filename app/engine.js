@@ -324,7 +324,7 @@ window.APP = window.APP || {};
   }
   E.mengeFor = mengeFor;
 
-  var PROZENTBASEN = ['pct_bkp2', 'pct_bkp1_4', 'pct_bkp1_5'];
+  var PROZENTBASEN = ['pct_bkp2', 'pct_bkp1_2', 'pct_bkp1_4', 'pct_bkp1_5'];
 
   /* Zeilen mit fester Rechenreihenfolge — sie bauen aufeinander auf und
      werden deshalb nicht in der ersten Runde erfasst. */
@@ -425,6 +425,7 @@ window.APP = window.APP || {};
         var z = b.zeilen[kat.id];
         if (!z || !z.aktiv || PROZENTBASEN.indexOf(z.basis) < 0) return;
         var basis = z.basis === 'pct_bkp2' ? out.bkp2
+                  : z.basis === 'pct_bkp1_2' ? (out.bkp1 + out.bkp2)
                   : z.basis === 'pct_bkp1_5' ? (out.bkp1 + out.bkp2 + out.bkp3 + out.bkp4 + out.bkp5)
                   : (out.bkp1 + out.bkp2 + out.bkp3 + out.bkp4);
         erfassen(kat, z, basis * pct(z.wert), basis);

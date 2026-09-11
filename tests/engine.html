@@ -232,6 +232,48 @@
   pruefe('auch mit Teuerung geht die Aufteilung auf',
     rzt.kpi.gesamtinvestition, rzt.kpi.gi_stwe + rzt.kpi.gi_miete + rzt.kpi.gi_exit, 1);
 
+  /* Die Prüfansicht «Tracking · Aufteilung» muss Position für Position
+     dasselbe ergeben wie die Kalkulation — sonst prüft sie nichts. */
+  var pa = A.defaultProject();
+  pa.grundstueck.geschosse = 4;
+  pa.teile.neubau.pp = 20;
+  pa.teile.neubau.nutzungen = [
+    A.defNutzung({ bezeichnung: 'Wohnen STWE', art: 'wohnen', anteil: 50, preis: 10000, verwertung: 'stwe' }),
+    A.defNutzung({ bezeichnung: 'Wohnen Miete', art: 'wohnen', anteil: 30, miete: 300, verwertung: 'halten_vermietet' }),
+    A.defNutzung({ bezeichnung: 'Gewerbe Exit', art: 'gewerbe', anteil: 20, miete: 200, verwertung: 'exit' })
+  ];
+  pa.bau.neubau.zeilen.b2_oi_stwe.zuo = 'stwe';
+  pa.bau.neubau.zeilen.b2_oi_gewerbe.zuo = 'exit';
+  pa.bau.teuerung_aktiv = true; pa.bau.teuerung_pct = 2.5;
+  pa.finanzierung.bauzinsen_aktivieren = true;
+  var rpa = E.compute(pa), apa = E.aufteilung(rpa);
+  pruefe('Prüfansicht: Summe aller Positionen = Gesamtinvestition',
+    rpa.kpi.gesamtinvestition, apa.total.betrag, 1);
+  pruefe('Prüfansicht: Spalte STWE = Kachel STWE', rpa.kpi.gi_stwe, apa.total.stwe, 1);
+  pruefe('Prüfansicht: Spalte Miete = Kachel Miete', rpa.kpi.gi_miete, apa.total.miete, 1);
+  pruefe('Prüfansicht: Spalte Exit = Kachel Exit', rpa.kpi.gi_exit, apa.total.exit, 1);
+
+  /* Ohne aktivierte Bauzinsen gehören sie nicht zu den Anlagekosten und
+     dürfen in der Aufstellung auch nicht erscheinen. */
+  pa.finanzierung.bauzinsen_aktivieren = false;
+  var rpb = E.compute(pa), apb = E.aufteilung(rpb);
+  pruefe('Prüfansicht ohne aktivierte Bauzinsen geht ebenso auf',
+    rpb.kpi.gesamtinvestition, apb.total.betrag, 1);
+
+  /* Die Ueberleitung von den drei Blockgewinnen zum Projektgewinn — sie
+     muss in jeder Konstellation auf den Franken stimmen. */
+  pruefe('Gewinnbrücke bei aktivierten Bauzinsen',
+    rpa.kpi.gewinn, E.gewinnbruecke(rpa).errechnet, 1);
+  pruefe('Gewinnbrücke ohne aktivierte Bauzinsen',
+    rpb.kpi.gewinn, E.gewinnbruecke(rpb).errechnet, 1);
+  pa.steuern.aktiv = true; pa.steuern.satz = 15;
+  var rpc = E.compute(pa);
+  pruefe('Gewinnbrücke mit Steuern', rpc.kpi.gewinn, E.gewinnbruecke(rpc).errechnet, 1);
+  /* Nicht aktivierte Finanzierungskosten trägt kein Block — genau das
+     ist der Abstand zwischen der Summe der EBT und der Marge. */
+  pruefe('nicht aktivierte Finanzierungskosten fehlen in den Blöcken',
+    rpb.kpi.finanzierungskosten, E.gewinnbruecke(rpb).bloecke - rpb.kpi.gewinn, 1);
+
   var h = A.defaultProject();
   h.teile.neubau.nutzungen = [A.defNutzung({ bezeichnung: 'Gewerbe Exit', art: 'gewerbe',
     anteil: 100, miete: 400, verwertung: 'exit', exit_rendite: 4.00 })];

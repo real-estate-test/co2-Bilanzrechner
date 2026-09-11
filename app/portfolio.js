@@ -1049,6 +1049,171 @@ window.APP = window.APP || {};
     return out;
   };
 
+  /* ===================================================================
+     Seite: Tracking · Aufteilung   (vorübergehende Prüfansicht)
+
+     Dieselbe Zeilenstruktur wie das Tracking, aber statt Soll/Ist die
+     Frage, wo jeder Franken der Gesamtinvestition landet. Sie rechnet
+     nichts eigenes — E.aufteilung führt die Regeln aus E.compute an
+     denselben Beträgen vor. Die Kontrollzeile stellt die Summe den
+     Kacheln der Ergebnisseite gegenüber.
+     =================================================================== */
+
+  V.aufteilung = function (p) {
+    var out = el('div', {}, [U.kopf('Tracking · Aufteilung',
+      'Vorübergehende Prüfansicht: jede Kostenposition mit dem Schlüssel, nach dem sie auf ' +
+      'STWE, Miete und Exit verteilt wird. Die Zeilen und ihre Beträge sind dieselben wie im ' +
+      'Tracking — hier steht daneben, welcher Anteil in welchen Block fliesst.')]);
+
+    var tafel = el('div', { class: 'panelbody' });
+    var kontrolle = el('div', { class: 'panelbody' });
+
+    U.derived.push(function () {
+      var r = A.state.r, auf = A.engine.aufteilung(r), zeilen = [];
+
+      function summenzeile(klasse, label, s) {
+        return el('tr', { class: klasse }, [
+          el('td', { text: label }),
+          el('td', { class: 'n', text: fmt(s.betrag) }),
+          el('td', {}),
+          el('td', { class: 'n', text: fmt(s.stwe) }),
+          el('td', { class: 'n', text: fmt(s.miete) }),
+          el('td', { class: 'n', text: fmt(s.exit) }),
+          el('td', {})
+        ]);
+      }
+
+      auf.gruppen.forEach(function (g) {
+        zeilen.push(el('tr', { class: 'grp' }, [
+          el('td', {}, [el('span', { text: g.label }),
+            g.hinweis ? el('div', { class: 'muted', style: 'font-size:10.5px', text: g.hinweis }) : null]),
+          el('td', { class: 'n', text: fmt(g.summe.betrag) }),
+          el('td', {}),
+          el('td', { class: 'n', text: fmt(g.summe.stwe) }),
+          el('td', { class: 'n', text: fmt(g.summe.miete) }),
+          el('td', { class: 'n', text: fmt(g.summe.exit) }),
+          el('td', {})
+        ]));
+        g.zeilen.forEach(function (z) {
+          /* Eine direkt zugeordnete Zeile ist der Grund, warum ein Block
+             mehr trägt als seinen Flächenanteil — sie wird markiert. */
+          var direkt = z.schluessel.indexOf('direkt') === 0;
+          zeilen.push(el('tr', {}, [
+            el('td', {}, [el('span', { text: z.label })]),
+            el('td', { class: 'n muted', text: fmt(z.betrag) }),
+            el('td', {}, [el('span', { class: direkt ? 'tag pos' : 'muted',
+              style: direkt ? '' : 'font-size:11px', text: z.schluessel })]),
+            el('td', { class: 'n', text: fmt(z.stwe) }),
+            el('td', { class: 'n', text: fmt(z.miete) }),
+            el('td', { class: 'n', text: fmt(z.exit) }),
+            el('td', { class: 'n muted',
+              text: z.betrag > 0 ? A.fmtPct(z.stwe / z.betrag * 100) : '' })
+          ]));
+        });
+      });
+
+      zeilen.push(summenzeile('total', 'Gesamtinvestition', auf.total));
+      zeilen.push(el('tr', { class: 'grp' }, [
+        el('td', { text: 'laut Ergebnisseite' }),
+        el('td', { class: 'n muted', text: fmt(auf.soll.betrag) }),
+        el('td', {}),
+        el('td', { class: 'n muted', text: fmt(auf.soll.stwe) }),
+        el('td', { class: 'n muted', text: fmt(auf.soll.miete) }),
+        el('td', { class: 'n muted', text: fmt(auf.soll.exit) }),
+        el('td', {})
+      ]));
+      var d = auf.differenz;
+      zeilen.push(el('tr', { class: 'grp' }, [
+        el('td', { text: 'Differenz' }),
+        el('td', { class: 'n', style: Math.abs(d.betrag) > 1 ? 'color:var(--neg)' : '', text: fmt(d.betrag) }),
+        el('td', {}),
+        el('td', { class: 'n', style: Math.abs(d.stwe) > 1 ? 'color:var(--neg)' : '', text: fmt(d.stwe) }),
+        el('td', { class: 'n', style: Math.abs(d.miete) > 1 ? 'color:var(--neg)' : '', text: fmt(d.miete) }),
+        el('td', { class: 'n', style: Math.abs(d.exit) > 1 ? 'color:var(--neg)' : '', text: fmt(d.exit) }),
+        el('td', {})
+      ]));
+
+      U.leeren(tafel).appendChild(U.tabelle([
+        { label: 'Position' },
+        { label: 'Betrag CHF', n: true, w: '12%' },
+        { label: 'Schlüssel', w: '14%' },
+        { label: 'Anlagekosten STWE', n: true, w: '13%' },
+        { label: 'Anlagekosten Miete', n: true, w: '13%' },
+        { label: 'Anlagekosten Exit', n: true, w: '13%' },
+        { label: 'STWE %', n: true, w: '7%' }
+      ], zeilen));
+
+      U.leeren(kontrolle);
+      kontrolle.appendChild(auf.stimmt
+        ? U.hinweis('ok', 'Die Aufstellung geht auf: Position für Position aufsummiert ergibt ' +
+            'exakt die drei Blöcke der Ergebnisseite.')
+        : U.hinweis('warn', 'Die Aufstellung geht <b>nicht</b> auf. Die Differenz steht in der ' +
+            'letzten Zeile — sie zeigt, wo Kalkulation und Aufteilung auseinanderlaufen.'));
+      kontrolle.appendChild(el('div', { class: 'cols c4' }, [
+        U.kachel('Anteil STWE', A.fmtPct(r.ertraege.anteil_stwe * 100),
+          fmt(r.ertraege.nwf_stwe, 0) + ' m² von ' + fmt(r.ertraege.nwf_total, 0) + ' m² NWF'),
+        U.kachel('Anteil Miete', A.fmtPct(r.ertraege.anteil_miete * 100),
+          fmt(r.ertraege.nwf_miete, 0) + ' m² — gehalten, vermietet'),
+        U.kachel('Anteil Exit', A.fmtPct(r.ertraege.anteil_exit * 100),
+          fmt(r.ertraege.nwf_exit, 0) + ' m² — Verkauf an Investor'),
+        U.kachel('direkt zugeordnet', fmt(r.bau.zuo.total),
+          r.bau.zuo.total > 0
+            ? 'STWE ' + fmt(r.bau.zuo.stwe) + ' · Miete ' + fmt(r.bau.zuo.miete) +
+              ' · Exit ' + fmt(r.bau.zuo.exit)
+            : 'keine BKP-20–29-Zeile zugeordnet')
+      ]));
+    });
+
+    out.appendChild(U.panel('Wohin jeder Franken fliesst',
+      'Gesamtinvestition Position für Position', [tafel, kontrolle]));
+
+    /* Die Blockgewinne addieren sich nicht zum Projektgewinn — dazwischen
+       liegen Mietertrag, nicht aktivierte Finanzierungskosten und
+       Steuern. Genau hier geht die Rechnung scheinbar nicht auf. */
+    var bruecke = el('div', { class: 'panelbody' });
+    U.derived.push(function () {
+      var br = A.engine.gewinnbruecke(A.state.r), zeilen = [];
+      br.zeilen.forEach(function (z) {
+        var klasse = z.art === 'summe' ? 'total' : (z.art === 'soll' ? 'grp' : '');
+        zeilen.push(el('tr', { class: klasse }, [
+          el('td', {}, [el('span', { text: z.label }),
+            z.hinweis ? el('div', { class: 'muted', style: 'font-size:10.5px', text: z.hinweis }) : null]),
+          el('td', { class: 'n' + (z.art === 'soll' ? ' muted' : ''),
+            style: z.art === 'posten' && Math.abs(z.betrag) > 0.5
+              ? 'color:' + (z.betrag >= 0 ? 'var(--pos)' : 'var(--neg)') : '',
+            text: fmt(z.betrag) })
+        ]));
+      });
+      U.leeren(bruecke).appendChild(U.tabelle([
+        { label: 'Schritt' }, { label: 'CHF', n: true, w: '20%' }
+      ], zeilen));
+      bruecke.appendChild(br.stimmt
+        ? U.hinweis('ok', 'Die Überleitung stimmt auf den Franken.')
+        : U.hinweis('warn', 'Die Überleitung ergibt ' + fmt(br.differenz) +
+            ' CHF Differenz zur Ergebnisseite.'));
+    });
+
+    out.appendChild(U.panel('Von den drei Blöcken zum Projektgewinn',
+      'warum sich die EBT-Zahlen nicht zur Marge addieren', [bruecke]));
+
+    out.appendChild(U.panel('Was hier zu sehen ist', null, [
+      el('div', { class: 'panelbody' }, [
+        U.hinweis('info',
+          '<b>Parkplätze</b> zählen nicht in den Flächenschlüssel — sie haben keine Nutzfläche. ' +
+          'Ihr Erlös steckt aber im STWE-Erlös, was das EBT STWE hebt.<br>' +
+          '<b>Nicht aktivierte Bauzinsen</b> erscheinen hier nicht: Sie gehören dann nicht zu ' +
+          'den Anlagekosten, sondern mindern erst den Gewinn — und damit keinen der drei Blöcke.<br>' +
+          '<b>Der Mietanteil</b> wird gerechnet, als bliebe er im Bestand. In der Spalte ' +
+          'Anlagekosten Miete steht deshalb, was das Halten kostet — der Erlös daneben auf der ' +
+          'Ergebnisseite ist der Ertragswert, nicht ein tatsächlicher Verkauf.<br>' +
+          '<b>Diese Seite ist vorübergehend</b> und lässt sich entfernen, sobald die Rechenwege ' +
+          'nachvollzogen sind.')
+      ])
+    ]));
+
+    return out;
+  };
+
   function istImport(p) {
     var ta = el('textarea', { placeholder:
       'Je Zeile: Schlüssel;Betrag\nBeispiel:\nbau.neubau.b2_rohbau;2450000\nerwerb.kaufpreis;3500000' });

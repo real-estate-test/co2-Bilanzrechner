@@ -481,6 +481,7 @@ window.APP = window.APP || {};
       res.teuerung = res.basis_ohne_teuerung * (tf - 1);
     }
     res.total = res.basis_ohne_teuerung + res.teuerung;
+    res.tf = tf;   /* Teuerungsfaktor — die Prüfansicht rechnet damit weiter */
 
     /* Die Teuerung hebt alle Baukosten gleichmässig an — die direkt
        zugeordneten Beträge müssen mitwachsen, sonst wäre der nach Fläche
@@ -1496,6 +1497,9 @@ window.APP = window.APP || {};
       zeit: Z, flaechen: F, bau: BAU, erwerb: ERW, ertraege: ERT,
       vermarktung: VER, betrieb: BET, reihen: TR, fin: FIN, bestand: BES,
       warnungen: warn,
+      /* Sind die Bauzinsen aktiviert, stecken sie in den Anlagekosten —
+         die Prüfansicht muss sie dann mitverteilen. */
+      aktiviert: aktiviert,
       ist_anzahl: istAnzahl,
       ist_zeilen: istZeilen,
       verkauf: VKI ? {
@@ -1565,39 +1569,189 @@ window.APP = window.APP || {};
     };
   };
 
-  /* Die Vermarktungskosten auf die Verwertungsarten verteilen. Jede
-     Zeile trägt ihren Verursacher bei sich (siehe E.vermarktung);
+  /* Eine einzelne Vermarktungszeile auf die Verwertungsarten verteilen.
+     Ihr «traeger» sagt, wer sie verursacht hat (siehe E.vermarktung);
      gemeinsame Posten wie Marketing gehen nach Nutzfläche, die
-     Erstvermietung nach Sollmiete der vermieteten Flächen. */
-  E.vermarktungAufteilen = function (VER, ERT) {
-    var raus = { stwe: 0, miete: 0, exit: 0 };
+     Erstvermietung nach Sollmiete der vermieteten Flächen. Die Funktion
+     nennt auch den verwendeten Schlüssel — die Prüfansicht zeigt ihn an,
+     und so rechnet sie garantiert dasselbe wie die Kalkulation. */
+  E.vermarktungZeileTeilen = function (z, ERT) {
+    var b = z.betrag || 0;
     var smErtrag = ERT.sollmiete_miete + ERT.sollmiete_exit;
 
+    if (z.traeger === 'stwe') {
+      return { stwe: b, miete: 0, exit: 0, schluessel: 'ganz auf STWE' };
+    }
+    if (z.traeger === 'exit') {
+      return { stwe: 0, miete: 0, exit: b, schluessel: 'ganz auf Exit' };
+    }
+    if (z.traeger === 'ertrag') {
+      if (smErtrag > 0) {
+        return { stwe: 0,
+                 miete: b * ERT.sollmiete_miete / smErtrag,
+                 exit:  b * ERT.sollmiete_exit  / smErtrag,
+                 schluessel: 'Sollmiete' };
+      }
+      return { stwe: 0, miete: b, exit: 0, schluessel: 'ganz auf Miete' };
+    }
+    /* Vorgabe: nach Nutzfläche. Gibt es keine Flächen, bleibt der
+       Betrag beim Verkaufsanteil — irgendwo muss er hin, sonst
+       fehlte er in der Summe. */
+    if (ERT.nwf_total > 0) {
+      return { stwe: b * ERT.anteil_stwe, miete: b * ERT.anteil_miete,
+               exit: b * ERT.anteil_exit, schluessel: 'Nutzfläche' };
+    }
+    return { stwe: b, miete: 0, exit: 0, schluessel: 'keine Fläche erfasst' };
+  };
+
+  /* Alle Vermarktungskosten auf die Verwertungsarten verteilen. */
+  E.vermarktungAufteilen = function (VER, ERT) {
+    var raus = { stwe: 0, miete: 0, exit: 0 };
     (VER.zeilen || []).forEach(function (z) {
-      var b = z.betrag || 0;
-      if (z.traeger === 'stwe') { raus.stwe += b; return; }
-      if (z.traeger === 'exit') { raus.exit += b; return; }
-      if (z.traeger === 'ertrag') {
-        if (smErtrag > 0) {
-          raus.miete += b * ERT.sollmiete_miete / smErtrag;
-          raus.exit  += b * ERT.sollmiete_exit  / smErtrag;
-        } else {
-          raus.miete += b;
-        }
-        return;
-      }
-      /* Vorgabe: nach Nutzfläche. Gibt es keine Flächen, bleibt der
-         Betrag beim Verkaufsanteil — irgendwo muss er hin, sonst
-         fehlte er in der Summe. */
-      if (ERT.nwf_total > 0) {
-        raus.stwe  += b * ERT.anteil_stwe;
-        raus.miete += b * ERT.anteil_miete;
-        raus.exit  += b * ERT.anteil_exit;
-      } else {
-        raus.stwe += b;
-      }
+      var t = E.vermarktungZeileTeilen(z, ERT);
+      raus.stwe += t.stwe; raus.miete += t.miete; raus.exit += t.exit;
     });
     return raus;
+  };
+
+  /* ---------------------------------------------------------------
+     Prüfansicht: die Gesamtinvestition Position für Position auf die
+     Verwertungsarten aufgeteilt
+
+     Sie rechnet nicht neu, sondern führt dieselben Regeln wie E.compute
+     an denselben Beträgen vor — Zeile für Zeile, mit dem verwendeten
+     Schlüssel daneben. Die Kontrollzeile am Ende stellt die Summe den
+     Kacheln der Ergebnisseite gegenüber: bleibt dort eine Differenz,
+     stimmt eine der beiden Seiten nicht.
+     --------------------------------------------------------------- */
+
+  E.aufteilung = function (r) {
+    var ERT = r.ertraege, BAU = r.bau, tf = BAU.tf || 1;
+    var gruppen = [], akt = null;
+    var total = { betrag: 0, stwe: 0, miete: 0, exit: 0 };
+
+    function gruppe(label, hinweis) {
+      akt = { label: label, hinweis: hinweis || '', zeilen: [],
+              summe: { betrag: 0, stwe: 0, miete: 0, exit: 0 } };
+      gruppen.push(akt);
+    }
+    function zeile(label, betrag, teil) {
+      akt.zeilen.push({ label: label, betrag: betrag, schluessel: teil.schluessel,
+                        stwe: teil.stwe, miete: teil.miete, exit: teil.exit });
+      ['betrag', 'stwe', 'miete', 'exit'].forEach(function (k) {
+        var v = k === 'betrag' ? betrag : teil[k];
+        akt.summe[k] += v; total[k] += v;
+      });
+    }
+    /* Genau der Schlüssel aus E.compute — auch der Sonderfall ohne
+       Flächen, wo die Anteile null sind und die Blöcke die
+       Gesamtinvestition folglich nicht erreichen. Die Kontrollzeile
+       macht das sichtbar, statt es zu glätten. */
+    function nachFlaeche(betrag) {
+      return { stwe: betrag * ERT.anteil_stwe, miete: betrag * ERT.anteil_miete,
+               exit: betrag * ERT.anteil_exit, schluessel: 'Nutzfläche' };
+    }
+    function direkt(betrag, block) {
+      var t = { stwe: 0, miete: 0, exit: 0,
+                schluessel: 'direkt · ' + { stwe: 'STWE', miete: 'Miete', exit: 'Exit' }[block] };
+      t[block] = betrag;
+      return t;
+    }
+
+    gruppe('Erwerb');
+    (r.erwerb.zeilen || []).forEach(function (z) {
+      zeile(z.label, z.betrag, nachFlaeche(z.betrag));
+    });
+
+    Object.keys(BAU.bloecke).forEach(function (bid) {
+      var b = BAU.bloecke[bid];
+      gruppe('Bau · ' + b.label, tf !== 1
+        ? 'Beträge inklusive Teuerung — Faktor ' + A.fmt(tf, 4) : '');
+      b.zeilen.forEach(function (z) {
+        var betrag = z.betrag * tf;
+        zeile('BKP ' + z.bkp + ' · ' + z.label, betrag,
+              z.zuo ? direkt(betrag, z.zuo) : nachFlaeche(betrag));
+      });
+      if (b.reserve_pauschal > 0.5) {
+        var rp = b.reserve_pauschal * tf;
+        zeile('Pauschalreserve (Altprojekt)', rp, nachFlaeche(rp));
+      }
+    });
+
+    /* Aktivierte Bauzinsen sind Teil der Anlagekosten; sonst zählen sie
+       erst im Gewinn und gehören deshalb nicht in diese Aufstellung. */
+    if (r.aktiviert) {
+      var fz = r.fin.bauzinsen + r.fin.bereitstellung + r.fin.ek_zins_kalk;
+      gruppe('Finanzierung');
+      zeile('Bauzinsen, Bereitstellung und EK-Zins (aktiviert)', fz, nachFlaeche(fz));
+    }
+
+    gruppe('Vermarktung', 'folgt dem Verursacher, nicht der Fläche');
+    (r.vermarktung.zeilen || []).forEach(function (z) {
+      zeile(z.label, z.betrag, E.vermarktungZeileTeilen(z, ERT));
+    });
+
+    var soll = { betrag: r.kpi.gesamtinvestition, stwe: r.kpi.gi_stwe,
+                 miete: r.kpi.gi_miete, exit: r.kpi.gi_exit };
+    var diff = {};
+    ['betrag', 'stwe', 'miete', 'exit'].forEach(function (k) { diff[k] = total[k] - soll[k]; });
+
+    return { gruppen: gruppen, total: total, soll: soll, differenz: diff,
+             stimmt: Math.max(Math.abs(diff.betrag), Math.abs(diff.stwe),
+                              Math.abs(diff.miete), Math.abs(diff.exit)) < 1,
+             tf: tf };
+  };
+
+  /* Von den drei Blockgewinnen zum Projektgewinn.
+
+     Die Summe der Blöcke ist «Erlöse minus Gesamtinvestition» — und das
+     ist nicht der Projektgewinn. Drei Posten liegen dazwischen, und sie
+     erklären, warum die EBT-Kennzahlen freundlicher aussehen können als
+     die Marge auf den Anlagekosten:
+
+       + Mietertrag während der Projektdauer — er fällt vor dem Verkauf
+         an und steckt in keinem Block.
+       − Finanzierungskosten, sofern sie NICHT aktiviert werden. Dann
+         zählen sie nicht zu den Anlagekosten, mindern aber den Gewinn;
+         kein Block trägt sie, alle drei EBT stehen entsprechend zu gut da.
+       − Steuern. EBT heisst «vor Steuern», der Projektgewinn ist danach. */
+  E.gewinnbruecke = function (r) {
+    var k = r.kpi, zeilen = [];
+    function z(label, betrag, art, hinweis) {
+      zeilen.push({ label: label, betrag: betrag, art: art || 'posten', hinweis: hinweis || '' });
+    }
+    var gStwe  = k.stwe_erloes - k.gi_stwe;
+    var gMiete = k.halten_wert - k.gi_miete;
+    var gExit  = k.exit_wert - k.gi_exit;
+    var summe = gStwe + gMiete + gExit;
+
+    z('Gewinn STWE', gStwe, 'block', 'Erlös ' + A.fmt(k.stwe_erloes) + ' − Investition ' + A.fmt(k.gi_stwe));
+    z('Gewinn Mietanteil bei Verkauf', gMiete, 'block',
+      'Ertragswert ' + A.fmt(k.halten_wert) + ' − Investition ' + A.fmt(k.gi_miete));
+    z('Gewinn Exit', gExit, 'block',
+      'Erlös ' + A.fmt(k.exit_wert) + ' − Investition ' + A.fmt(k.gi_exit));
+    z('Summe der drei Blöcke', summe, 'summe');
+
+    z('+ Mietertrag während der Projektdauer', k.mietertrag_projekt, 'posten',
+      k.mietertrag_projekt > 0.5
+        ? 'fällt vor dem Verkauf an und steckt in keinem Block'
+        : 'keiner — es wird vor Projektende nicht vermietet');
+    var fin = r.aktiviert ? 0 : -k.finanzierungskosten;
+    z('− Finanzierungskosten (nicht aktiviert)', fin, 'posten',
+      r.aktiviert
+        ? 'aktiviert — sie stecken bereits in den Anlagekosten und damit in den Blöcken'
+        : 'nicht aktiviert — kein Block trägt sie, alle drei EBT stehen deshalb zu gut da');
+    z('− Steuern', -(k.steuern || 0), 'posten',
+      (k.steuern || 0) > 0.5 ? 'EBT heisst «vor Steuern»' : 'nicht aktiv');
+
+    var errechnet = summe + k.mietertrag_projekt + fin - (k.steuern || 0);
+    z('Projektgewinn', errechnet, 'summe');
+    z('laut Ergebnisseite', k.gewinn, 'soll');
+
+    return { zeilen: zeilen, errechnet: errechnet, soll: k.gewinn,
+             differenz: errechnet - k.gewinn,
+             stimmt: Math.abs(errechnet - k.gewinn) < 1,
+             bloecke: summe };
   };
 
   /* Projektdauer aus dem Terminplan: vom Kaufdatum bis zum spätesten

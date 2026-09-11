@@ -315,6 +315,20 @@ keinem einzelnen Anteil zuweisen. Eine Teuerung hebt die zugeordneten Beträge i
 selben Mass wie alle übrigen Baukosten; die Summe der drei Blöcke ergibt in jedem
 Fall wieder die Gesamtinvestition.
 
+**Tracking · Aufteilung** ist eine vorübergehende Prüfansicht mit der Zeilen-
+struktur des Trackings: jede Kostenposition mit dem Schlüssel, nach dem sie
+verteilt wird, und den Spalten *Anlagekosten STWE / Miete / Exit*. Eine
+Kontrollzeile stellt die Summe den Kacheln der Ergebnisseite gegenüber. Darunter
+steht die Überleitung von den drei Blockgewinnen zum Projektgewinn — sie
+addieren sich nicht, dazwischen liegen der Mietertrag während der Projektdauer,
+nicht aktivierte Finanzierungskosten und die Steuern. Besonders die
+**nicht aktivierten Finanzierungskosten** sind wichtig: Sie zählen dann nicht zu
+den Anlagekosten und werden von keinem Block getragen, weshalb alle drei
+EBT-Kennzahlen entsprechend besser aussehen als die Marge auf den Anlagekosten.
+Die Seite lässt sich entfernen, sobald die Rechenwege nachvollzogen sind; sie
+rechnet nichts eigenes, sondern führt die Regeln aus `E.compute` an denselben
+Beträgen vor.
+
 Die **Projektdauer** zeigt die Spanne vom Kaufdatum bis zum letzten Vorgang im
 Terminplan, sobald dieser gefüllt ist; gerechnet wird weiterhin mit den
 Phasendauern in Monaten, damit ein verschobener Termin die Marge nicht still

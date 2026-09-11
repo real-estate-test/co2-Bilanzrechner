@@ -37,6 +37,8 @@ window.APP = window.APP || {};
     { id: 'ergebnis',     ix: '→',  label: 'Ergebnis',  gruppe: 'aus' },
     { id: 'analyse',      ix: '→',  label: 'Analyse' },
     { id: 'tracking',     ix: '→',  label: 'Tracking' },
+    /* Vorübergehend, bis die Rechenwege nachvollzogen sind. */
+    { id: 'aufteilung',   ix: '⁇',  label: 'Tracking · Aufteilung' },
     { id: 'bericht',      ix: '→',  label: 'Bericht' },
     { id: 'verlauf',      ix: '·',  label: 'Änderungsverlauf', gruppe: 'verwaltung', nurServer: true },
     { id: 'verwaltung',   ix: '·',  label: 'Verwaltung', nurVerwalter: true }

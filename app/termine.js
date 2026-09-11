@@ -523,13 +523,21 @@ window.APP = window.APP || {};
   function vorgangAnlegen(p, alsMeilenstein) {
     var liste = A.vorgaenge(p);
     var letzter = liste[liste.length - 1];
+    var ende = letzter ? (A.terminplanRechnen(p).byId[letzter.id] || {}).ende : null;
+
+    /* Ein neuer Vorgang hängt sich hinten an die Kette — das ist der
+       Fall, den man fast immer meint. Ein Meilenstein nicht: Er steht
+       meist auf einem festen Datum («Baueingabe am 15. März»), und
+       hinge er an etwas, liesse sich gar kein Datum eintippen. Er
+       bekommt deshalb ein Datum statt einer Abhängigkeit; verketten
+       lässt er sich danach wie jede andere Zeile. */
     liste.push(A.defVorgang({
       label: '',
       meilenstein: !!alsMeilenstein,
-      /* Ein neuer Vorgang hängt sich hinten an — das ist der Fall, den
-         man fast immer meint. Lösen lässt er sich mit einem Handgriff. */
-      abh: letzter ? letzter.id : '',
-      start: letzter ? '' : (p.startdatum || A.heute()),
+      abh: (letzter && !alsMeilenstein) ? letzter.id : '',
+      start: (letzter && !alsMeilenstein) ? ''
+           : (alsMeilenstein && ende ? A.datumPlusTage(ende, 1)
+                                     : (p.startdatum || A.heute())),
       tage: alsMeilenstein ? 1 : 20,
       farbe: alsMeilenstein ? 'gruen' : 'blau'
     }));
@@ -615,14 +623,29 @@ window.APP = window.APP || {};
       var balken;
 
       if (v.meilenstein) {
-        /* Die Raute sitzt mittig auf ihrem Datum — deshalb die halbe
-           Kantenlänge nach links. */
+        /* Raute und Beschriftung sitzen in einer nicht gedrehten
+           Hülle: Nur die Raute selbst wird gekippt, der Text bliebe
+           sonst schief. Die Hülle beginnt eine halbe Kantenlänge vor
+           dem Datum, damit die Raute mittig darauf sitzt.
+
+           Die Beschriftung steht auch links in der Tabelle; hier wird
+           sie wiederholt, weil ein einzelner Punkt auf einer langen
+           Achse sonst nicht zu lesen ist, ohne die Zeile zu suchen. */
+        /* Am rechten Rand stünde die Beschriftung ausserhalb der
+           Fläche und wäre abgeschnitten — dort rückt sie vor die
+           Raute, und die Hülle wächst nach links. */
+        var nachLinks = x0 > gesamt - 140;
         balken = el('div', {
-          class: 'gmeilenstein' + (v.erledigt ? ' zu' : ''),
-          style: 'left:' + (x0 - 7) + 'px;top:' + (i * ZEILE + 8) + 'px;' +
-                 (v.erledigt ? '' : 'background:' + A.ganttFarbe(v.farbe) + ';'),
+          class: 'gmstein' + (v.erledigt ? ' zu' : '') + (nachLinks ? ' links' : ''),
+          style: (nachLinks ? 'right:' + (gesamt - x0 - 7) + 'px;'
+                            : 'left:' + (x0 - 7) + 'px;') +
+                 'top:' + (i * ZEILE + 8) + 'px;',
           title: (v.label || 'ohne Bezeichnung') + '\n' + A.datum(g.start) +
-                 (v.erledigt ? '\nerledigt' : '') });
+                 (v.erledigt ? '\nerledigt' : '') }, [
+          el('span', { class: 'gmraute',
+            style: v.erledigt ? '' : 'background:' + A.ganttFarbe(v.farbe) }),
+          v.label ? el('span', { class: 'mtext', text: v.label }) : null
+        ].filter(Boolean));
       } else {
         balken = el('div', {
           class: 'gbalken' + (v.erledigt ? ' zu' : '') + (g.tage === 1 ? ' punkt' : ''),

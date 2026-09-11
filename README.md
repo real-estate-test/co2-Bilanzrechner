@@ -186,8 +186,11 @@ die ganze Kette mit. Ringschlüsse werden abgewiesen, bevor sie entstehen.
 
 Neben Vorgängen mit Dauer gibt es **Meilensteine**: ein Datum ohne Dauer, als
 Raute gezeichnet, sonst mit denselben Spalten — Bezeichnung, Abhängigkeit,
-Verzögerung, Farbe, Erledigt-Haken. Ein Meilenstein kann an einem Vorgang
-hängen und ein Vorgang an ihm.
+Verzögerung, Farbe, Erledigt-Haken. Ein Meilenstein bekommt beim Anlegen ein
+festes Datum statt einer Abhängigkeit — das ist bei ihm der Normalfall;
+verketten lässt er sich danach wie jede andere Zeile, und ein Vorgang kann
+seinerseits an ihm hängen. Seine Bezeichnung steht im Diagramm neben der Raute,
+weil ein einzelner Punkt auf einer langen Achse sonst nicht zuzuordnen ist.
 
 Ein neues Projekt füllt der Knopf **SIA-Phasen einsetzen** mit den zehn Phasen,
 verkettet und mit Dauern aus dem Bauzeitmodell; danach ist jede Zeile frei.

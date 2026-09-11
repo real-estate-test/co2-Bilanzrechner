@@ -332,14 +332,17 @@ window.APP = window.APP || {};
 
   E.baukosten = function (p, F, warn) {
     var res = { bloecke: {}, total: 0, teuerung: 0, basis_ohne_teuerung: 0,
-                pm_basis: 0, pm_honorar: 0, ohne_pm: 0 };
+                pm_basis: 0, pm_honorar: 0, ohne_pm: 0,
+                /* Direkt zugeordnete BKP 20–29 — siehe A.zeileZuordenbar */
+                zuo: { stwe: 0, miete: 0, exit: 0, total: 0 } };
 
     ['neubau', 'erweiterung', 'sanierung'].forEach(function (bid) {
       var b = p.bau[bid];
       if (!b.aktiv) return;
       var out = { id: bid, label: A.BLOCK_LABELS[bid], zeilen: [],
                   bkp1: 0, bkp2: 0, bkp3: 0, bkp4: 0, bkp5: 0, bkp9: 0,
-                  summe: 0, reserve: 0, pm_honorar: 0, total: 0 };
+                  summe: 0, reserve: 0, pm_honorar: 0, total: 0,
+                  zuo: { stwe: 0, miete: 0, exit: 0, total: 0 } };
 
       var katalog = A.BKP_KATALOG.concat(b.eigene || []);
 
@@ -359,10 +362,16 @@ window.APP = window.APP || {};
            und Projektmanagement-Honorar automatisch nach. */
         var iv = ist(p, 'bau.' + bid + '.' + kat.id);
         var wirksam = iv !== null ? iv : betrag;
+        /* Effektive Zuordnung auf eine Verwertungsart. Nur BKP 20–29
+           tragen sie; bei allen übrigen Zeilen bleibt sie wirkungslos,
+           auch wenn ein Altprojekt dort noch einen Wert stehen hat. */
+        var zo = A.zeileZuordenbar(kat) ? (z.zuo || '') : '';
+        if (zo !== 'stwe' && zo !== 'miete' && zo !== 'exit') zo = '';
         out.zeilen.push({ id: kat.id, bkp: kat.bkp, label: kat.label, basis: z.basis,
                           menge: z.basis === 'pauschal' ? null : menge,
                           kennwert: num(z.wert), betrag: wirksam,
-                          soll: betrag, ist: iv !== null });
+                          soll: betrag, ist: iv !== null, zuo: zo });
+        if (zo) { out.zuo[zo] += wirksam; out.zuo.total += wirksam; }
         gruppieren(kat.bkp, wirksam);
         return wirksam;
       }
@@ -461,6 +470,7 @@ window.APP = window.APP || {};
       res.bloecke[bid] = out;
       res.basis_ohne_teuerung += out.total;
       res.pm_basis += out.pm_honorar;
+      ['stwe', 'miete', 'exit', 'total'].forEach(function (k) { res.zuo[k] += out.zuo[k]; });
     });
 
     var tf = 1;
@@ -471,6 +481,11 @@ window.APP = window.APP || {};
       res.teuerung = res.basis_ohne_teuerung * (tf - 1);
     }
     res.total = res.basis_ohne_teuerung + res.teuerung;
+
+    /* Die Teuerung hebt alle Baukosten gleichmässig an — die direkt
+       zugeordneten Beträge müssen mitwachsen, sonst wäre der nach Fläche
+       verteilte Rest zu gross. */
+    ['stwe', 'miete', 'exit', 'total'].forEach(function (k) { res.zuo[k] *= tf; });
 
     /* Baukosten ohne das Projektmanagement-Honorar — Bezugsgrösse des
        Entwicklungshonorars. Die Dritthonorare BKP 558.1 zählen mit. */
@@ -1341,14 +1356,21 @@ window.APP = window.APP || {};
        Auf die gesamten Anlagekosten bezogen wäre sie bei Mischprojekten
        verzerrt, weil verkaufte Flächen keinen Mietertrag liefern. */
     /* --- Aufteilung nach Verwertung -------------------------------
-       Die Anlagekosten werden über den Nutzflächenanteil verteilt, die
-       Vermarktung dagegen verursachungsgerecht: Eine Verkaufsprovision
-       entsteht nur für verkaufte Wohnungen. Zusammen ergeben die drei
-       Blöcke wieder die Gesamtinvestition. */
+       Drei Wege führen in die Blöcke, und zusammen ergeben sie wieder
+       die Gesamtinvestition:
+         1. Baukostenzeilen BKP 20–29 mit gesetzter Zuordnung gehen
+            ungeteilt an ihre Verwertungsart — was der Gewerbeausbau
+            kostet, hat mit dem Wohnungsverkauf nichts zu tun.
+         2. Die Vermarktung folgt ihrem Verursacher (siehe unten).
+         3. Alles Übrige — Erwerb, Finanzierung, BKP 1/3/4/5/9 und die
+            nicht zugeordneten Baukosten — wird über den
+            Nutzflächenanteil verteilt. */
     var vm = E.vermarktungAufteilen(VER, ERT);
-    var gi_stwe  = anlagekosten * ERT.anteil_stwe  + vm.stwe;
-    var gi_miete = anlagekosten * ERT.anteil_miete + vm.miete;
-    var gi_exit  = anlagekosten * ERT.anteil_exit  + vm.exit;
+    var bz = BAU.zuo;
+    var akRest = anlagekosten - bz.total;
+    var gi_stwe  = akRest * ERT.anteil_stwe  + bz.stwe  + vm.stwe;
+    var gi_miete = akRest * ERT.anteil_miete + bz.miete + vm.miete;
+    var gi_exit  = akRest * ERT.anteil_exit  + bz.exit  + vm.exit;
 
     /* Die Renditen der Ertragsflächen beziehen sich auf dieselbe
        Grundlage wie die EBT-Kacheln: die anteilige Gesamtinvestition
@@ -1361,10 +1383,10 @@ window.APP = window.APP || {};
     var margeErloes = erloese > 0 ? gewinnNach / erloese * 100 : 0;
 
     /* Jedem Block steht sein eigener Erlös gegenüber; die Marge darauf
-       misst, was er für sich genommen trägt. Der Flächenschlüssel der
-       Anlagekosten behandelt jeden Quadratmeter gleich — wo Gewerbe im
-       Erdgeschoss anders kostet als Wohnen darüber, bildet er das
-       nicht ab. */
+       misst, was er für sich genommen trägt. Wo Gewerbe im Erdgeschoss
+       anders kostet als Wohnen darüber, lässt sich das über die
+       Zuordnung der BKP-20–29-Zeilen abbilden; ohne sie behandelt der
+       Flächenschlüssel jeden Quadratmeter gleich. */
     var ebtStwe = gi_stwe > 0 ? (ERT.stwe_erloes - gi_stwe) / gi_stwe * 100 : 0;
     var ebtExit = gi_exit > 0 ? (ERT.exit_wert - gi_exit) / gi_exit * 100 : 0;
 
@@ -1531,6 +1553,10 @@ window.APP = window.APP || {};
         anteil_stwe: ERT.anteil_stwe,
         anteil_miete: ERT.anteil_miete,
         anteil_exit: ERT.anteil_exit,
+        /* Direkt zugeordnete Baukosten und der nach Fläche verteilte
+           Rest — der Rechenweg braucht beide Zahlen. */
+        bau_zuo: BAU.zuo,
+        ak_rest: akRest,
         ebt_stwe: ebtStwe,
         ebt_exit: ebtExit,
         gewinn_miete_verkauf: gewinnMieteVerkauf,

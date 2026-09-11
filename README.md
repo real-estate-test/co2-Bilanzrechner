@@ -282,7 +282,7 @@ den Baukredit.
 
 **Ergebnis je Verwertungsart** Bei einem Mischprojekt sagt eine Gesamtmarge über
 alles wenig. Die Gesamtinvestition (Anlagekosten inklusive Vermarktung) wird
-deshalb über den Nutzflächenanteil auf **STWE**, **Miete** und **Exit** verteilt,
+deshalb auf **STWE**, **Miete** und **Exit** verteilt,
 und jedem Block steht seine eigene Kennzahl gegenüber: *EBT STWE* als
 (Erlös − anteilige Investition) ÷ anteilige Investition, dasselbe für den
 Exit-Anteil, und für den Mietanteil die Brutto- und Nettorendite.
@@ -293,16 +293,27 @@ zu welchen Konditionen das möglich wäre: Ertragswert, Gewinn gegenüber der
 anteiligen Investition und das EBT darauf. Sie doppelt den Exit-Block bewusst —
 dort steht der geplante Verkauf, hier die Möglichkeit.
 
-Nach Fläche verteilt werden dabei nur die **Anlagekosten**; die
-Vermarktungskosten folgen ihrem Verursacher: Verkaufsprovision und Beurkundung
-auf den STWE-Anteil, die Exit-Nebenkosten auf den Exit-Anteil, die Erstvermietung
-auf die vermieteten Flächen nach ihrer Miete, Marketing und Musterwohnung nach
-Fläche. Sonst trüge der Mietanteil einen Teil der Verkaufsprovision, die für ihn
-gar nicht anfällt. Brutto- und Nettorendite verwenden dieselbe Grundlage wie die
-EBT-Kennzahlen, damit nicht zwei Zahlen für dieselbe Investition nebeneinander
-stehen. Der Flächenschlüssel der Anlagekosten behandelt jeden Quadratmeter
-gleich — wo Gewerbe im Erdgeschoss anders kostet als Wohnen darüber, bildet er
-das nicht ab.
+Drei Wege führen in die Blöcke. Baukostenzeilen **BKP 20–29** mit gesetzter
+**Zuordnung** gehen ungeteilt an ihre Verwertungsart — was der Gewerbeausbau
+kostet, hat mit dem Wohnungsverkauf nichts zu tun. Die **Vermarktungskosten**
+folgen ihrem Verursacher: Verkaufsprovision und Beurkundung auf den STWE-Anteil,
+die Exit-Nebenkosten auf den Exit-Anteil, die Erstvermietung auf die vermieteten
+Flächen nach ihrer Miete, Marketing und Musterwohnung nach Fläche; sonst trüge
+der Mietanteil einen Teil der Verkaufsprovision, die für ihn gar nicht anfällt.
+Alles Übrige — Erwerb, Finanzierung, BKP 1/3/4/5/9 und die nicht zugeordneten
+Baukosten — wird nach Nutzfläche verteilt. Brutto- und Nettorendite verwenden
+dieselbe Grundlage wie die EBT-Kennzahlen, damit nicht zwei Zahlen für dieselbe
+Investition nebeneinander stehen.
+
+Die Zuordnung steht als Auswahlfeld in jeder BKP-20–29-Zeile der Seite
+**Baukosten** und ist in der Vorgabe leer — dann bleibt es beim Flächenschlüssel,
+der jeden Quadratmeter gleich behandelt. Wo Gewerbe im Erdgeschoss anders kostet
+als Wohnen darüber, lässt sich das damit effektiv abbilden. Bewusst beschränkt
+auf BKP 20–29 (samt Reserve 202): Vorbereitung, Baunebenkosten und
+Projektmanagement-Honorar bauen prozentual auf den Baukosten auf und lassen sich
+keinem einzelnen Anteil zuweisen. Eine Teuerung hebt die zugeordneten Beträge im
+selben Mass wie alle übrigen Baukosten; die Summe der drei Blöcke ergibt in jedem
+Fall wieder die Gesamtinvestition.
 
 Die **Projektdauer** zeigt die Spanne vom Kaufdatum bis zum letzten Vorgang im
 Terminplan, sobald dieser gefüllt ist; gerechnet wird weiterhin mit den

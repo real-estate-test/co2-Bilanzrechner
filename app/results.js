@@ -151,7 +151,14 @@ window.APP = window.APP || {};
       /* Erste Reihe: was das Projekt kostet und einbringt.
          Zweite Reihe: dasselbe je Verwertungsart — bei einem
          Mischprojekt sagt eine Gesamtmarge über alles wenig. */
-      var anteilText = function (a) { return A.fmtPct(a * 100) + ' der Nutzfläche'; };
+      /* Der Flächenanteil erklärt die Kachel nur so lange, wie alles
+         nach Fläche verteilt wird. Sobald Baukosten direkt zugeordnet
+         sind, gehört der Betrag daneben — sonst ginge die Kachel nicht
+         mehr auf. */
+      var anteilText = function (a, direkt) {
+        var t = A.fmtPct(a * 100) + ' der Nutzfläche';
+        return direkt > 0 ? t + ' + ' + fmt(direkt) + ' direkt zugeordnet' : t;
+      };
 
       U.leeren(kacheln).appendChild(el('div', { class: 'cols c4' }, [
         /* Bewusst mit Zusatz benannt: Die Kennzahlenleiste oben und der
@@ -167,7 +174,8 @@ window.APP = window.APP || {};
           'gesamt · Ziel ' + A.fmtPct(pp.ziele.marge),
           k.marge_ak >= pp.ziele.marge ? 'pos' : 'neg'),
 
-        U.kachel('Gesamtinvestition Anteil STWE', fmt(k.gi_stwe), anteilText(k.anteil_stwe)),
+        U.kachel('Gesamtinvestition Anteil STWE', fmt(k.gi_stwe),
+          anteilText(k.anteil_stwe, k.bau_zuo && k.bau_zuo.stwe)),
         /* Der Gewinn steht bei seinem Erlös — die EBT-Kachel daneben
            nennt dafür nur noch die Bezugsgrösse, sonst stünde derselbe
            Betrag zweimal nebeneinander. */
@@ -178,7 +186,8 @@ window.APP = window.APP || {};
           k.gi_stwe > 0 ? (k.ebt_stwe >= pp.ziele.marge ? 'pos' : 'neg') : ''),
         U.kachel('Marge auf Erlös', A.fmtPct(k.marge_erloes), 'gesamt'),
 
-        U.kachel('Gesamtinvestition Anteil Miete', fmt(k.gi_miete), anteilText(k.anteil_miete)),
+        U.kachel('Gesamtinvestition Anteil Miete', fmt(k.gi_miete),
+          anteilText(k.anteil_miete, k.bau_zuo && k.bau_zuo.miete)),
         U.kachel('Sollmiete', fmt(k.sollmiete), 'pro Jahr, Miete und Exit'),
         U.kachel('Bruttorendite Miete', A.fmtPct(k.bruttorendite, 2),
           'auf ' + A.fmtMio(k.ak_ertrag) + ' anteilige Investition · Ziel ' + A.fmtPct(pp.ziele.bruttorendite, 2),
@@ -201,7 +210,8 @@ window.APP = window.APP || {};
           k.gi_miete > 0 ? (k.ebt_miete_verkauf >= pp.ziele.marge ? 'pos' : 'neg') : ''),
         el('div', {}),
 
-        U.kachel('Gesamtinvestition Anteil Exit', fmt(k.gi_exit), anteilText(k.anteil_exit)),
+        U.kachel('Gesamtinvestition Anteil Exit', fmt(k.gi_exit),
+          anteilText(k.anteil_exit, k.bau_zuo && k.bau_zuo.exit)),
         U.kachel('Erlöse Verkauf an Endinvestor', fmt(k.exit_wert),
           'geplanter Exit' + (k.gi_exit > 0
             ? ' · Gewinn ' + fmt(k.exit_wert - k.gi_exit) : '')),
@@ -278,11 +288,12 @@ window.APP = window.APP || {};
         'Sollmiete ÷ anteilige Investition',
         fmt(r.ertraege.sollmiete) + ' ÷ ' + fmt(k.ak_ertrag),
         A.fmtPct(k.bruttorendite, 2),
-        'Anteilige Investition = Anlagekosten × ' + A.fmtPct(k.anteil_ertrag * 100) +
-        ' Anteil gehaltener Nutzfläche, zuzüglich der Vermarktungskosten, die auf diese ' +
-        'Flächen entfallen. Verkaufte Flächen liefern keinen Mietertrag und gehören ' +
-        'deshalb nicht in den Nenner. Dieselbe Grundlage verwenden die EBT-Kennzahlen ' +
-        'je Verwertungsart.');
+        'Anteilige Investition = die Summe der Blöcke Miete und Exit: direkt zugeordnete ' +
+        'Baukosten, die auf diese Flächen entfallenden Vermarktungskosten und ' +
+        A.fmtPct(k.anteil_ertrag * 100) + ' des übrigen Aufwands nach gehaltener ' +
+        'Nutzfläche. Verkaufte Flächen liefern keinen Mietertrag und gehören deshalb ' +
+        'nicht in den Nenner. Dieselbe Grundlage verwenden die EBT-Kennzahlen je ' +
+        'Verwertungsart.');
 
       fz('Nettorendite Ertragsflächen',
         'Nettoertrag ÷ anteilige Investition',
@@ -294,11 +305,18 @@ window.APP = window.APP || {};
         '(Erlös − anteilige Investition) ÷ anteilige Investition',
         'STWE ' + fmt(k.stwe_erloes) + ' ÷ ' + fmt(k.gi_stwe),
         A.fmtPct(k.ebt_stwe),
-        'Die Anlagekosten werden nach Nutzfläche verteilt, die Vermarktungskosten nach ' +
-        'ihrem Verursacher: Verkaufsprovision und Beurkundung auf den STWE-Anteil, die ' +
-        'Exit-Nebenkosten auf den Exit-Anteil, die Erstvermietung auf die vermieteten ' +
-        'Flächen nach ihrer Miete; Marketing und Musterwohnung nach Fläche. Die drei ' +
-        'Blöcke ergeben zusammen wieder die Gesamtinvestition.');
+        'Baukostenzeilen BKP 20–29 mit gesetzter Zuordnung gehen ungeteilt an ihre ' +
+        'Verwertungsart' +
+        (k.bau_zuo && k.bau_zuo.total > 0
+          ? ' (zurzeit ' + fmt(k.bau_zuo.total) + ' — STWE ' + fmt(k.bau_zuo.stwe) +
+            ', Miete ' + fmt(k.bau_zuo.miete) + ', Exit ' + fmt(k.bau_zuo.exit) + ')'
+          : ' (zurzeit keine gesetzt)') +
+        '. Die Vermarktungskosten folgen ihrem Verursacher: Verkaufsprovision und ' +
+        'Beurkundung auf den STWE-Anteil, die Exit-Nebenkosten auf den Exit-Anteil, die ' +
+        'Erstvermietung auf die vermieteten Flächen nach ihrer Miete; Marketing und ' +
+        'Musterwohnung nach Fläche. Der Rest der Anlagekosten — ' + fmt(k.ak_rest) + ' — ' +
+        'wird nach Nutzfläche verteilt. Die drei Blöcke ergeben zusammen wieder die ' +
+        'Gesamtinvestition.');
 
       U.leeren(formeln).appendChild(U.tabelle([
         { label: 'Kennzahl', w: '26%' }, { label: 'Formel', w: '22%' },

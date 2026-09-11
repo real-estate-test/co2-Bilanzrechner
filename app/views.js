@@ -909,7 +909,9 @@ window.APP = window.APP || {};
     var out = el('div', {}, [U.kopf('Baukosten',
       'BKP 20–29 sind zu Vollkosten je Bereich zusammengefasst — Rohbau, Technik, Ausbau und ' +
       'Planerhonorare stecken im Kennwert. Die Mengen der oberirdischen Zeilen folgen dem ' +
-      'Nutzungsmix aus «Erträge & Verwertung».')]);
+      'Nutzungsmix aus «Erträge & Verwertung». Über die Spalte «Zuordnung» geht eine Zeile ' +
+      'BKP 20–29 ungeteilt an eine Verwertungsart, statt im Ergebnis nach Fläche verteilt zu ' +
+      'werden.')]);
 
     if (p.baukosten_pruefen) {
       out.appendChild(U.hinweis('warn',
@@ -935,7 +937,7 @@ window.APP = window.APP || {};
       var zeilen = katalog.map(function (kat, idx) {
         var eigen = idx >= A.BKP_KATALOG.length;
         if (!b.zeilen[kat.id]) {
-          b.zeilen[kat.id] = { aktiv: true, basis: 'pauschal', wert: 0, menge_manuell: 0 };
+          b.zeilen[kat.id] = { aktiv: true, basis: 'pauschal', wert: 0, menge_manuell: 0, zuo: '' };
         }
         var z = b.zeilen[kat.id], band = kw[kat.id] || {};
         var tr = el('tr', {});
@@ -971,6 +973,12 @@ window.APP = window.APP || {};
         tr.appendChild(el('td', { style: 'width:110px' }, [
           U.zelleNum(z, 'menge_manuell', { gross: true, leerBei0: true, platzhalter: 'auto' })
         ]));
+        /* Zuordnung auf die Verwertungsart — nur BKP 20–29 tragen sie. */
+        tr.appendChild(el('td', { class: 'w1' }, [
+          A.zeileZuordenbar(kat)
+            ? U.zelleSel(z, 'zuo', A.ZUORDNUNG)
+            : el('span', { class: 'muted', text: '—' })
+        ]));
         tr.appendChild(U.dTd(function (r) { return fmt(betrag(r, bid, kat.id)); }));
         tr.appendChild(el('td', { class: 'w1' }, [
           eigen ? el('button', { class: 'ghost sm schreibend', text: '×',
@@ -986,16 +994,17 @@ window.APP = window.APP || {};
       var tabWrap = el('div', { class: 'panelbody' });
       tabWrap.appendChild(U.tabelle([
         { label: '', w: '1%' }, { label: 'BKP', w: '1%' }, { label: 'Position' },
-        { label: 'Bezug', w: '13%' }, { label: 'Menge', n: true, w: '10%' },
-        { label: 'Kennwert', n: true, w: '10%' }, { label: 'Menge manuell', n: true, w: '10%' },
-        { label: 'CHF', n: true, w: '12%' }, { label: '', w: '1%' }
+        { label: 'Bezug', w: '13%' }, { label: 'Menge', n: true, w: '9%' },
+        { label: 'Kennwert', n: true, w: '9%' }, { label: 'Menge manuell', n: true, w: '9%' },
+        { label: 'Zuordnung', w: '10%' },
+        { label: 'CHF', n: true, w: '11%' }, { label: '', w: '1%' }
       ], zeilen));
 
       var werkzeuge = el('div', { class: 'panelbody' }, [
         el('button', { class: 'schreibend', text: '+ eigene Zeile', onclick: function () {
           var id = 'x' + A.uid();
           b.eigene.push({ id: id, bkp: '5', label: 'Eigene Position' });
-          b.zeilen[id] = { aktiv: true, basis: 'pauschal', wert: 0, menge_manuell: 0 };
+          b.zeilen[id] = { aktiv: true, basis: 'pauschal', wert: 0, menge_manuell: 0, zuo: '' };
           A.recompute(); A.render();
         } }),
         b.reserve > 0 ? el('span', { class: 'tag warn', style: 'margin-left:10px',

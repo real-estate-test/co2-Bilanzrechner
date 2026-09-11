@@ -192,6 +192,46 @@
     nwf * 0.60 * 10000 + 20 * 45000, rb.ertraege.stwe_erloes, 1);
   pruefe('Ertragsflächenanteil = 40 % der NWF', 0.40, rb.kpi.anteil_ertrag, 0.001);
 
+  /* ---- Baukosten effektiv zuordnen statt nach Fläche -------------- */
+  var zp = A.defaultProject();
+  zp.grundstueck.geschosse = 4;
+  zp.teile.neubau.nutzungen = [
+    A.defNutzung({ bezeichnung: 'Wohnen STWE', art: 'wohnen', anteil: 50, preis: 10000, verwertung: 'stwe' }),
+    A.defNutzung({ bezeichnung: 'Wohnen Miete', art: 'wohnen', anteil: 30, miete: 300, verwertung: 'halten_vermietet' }),
+    A.defNutzung({ bezeichnung: 'Gewerbe Exit', art: 'gewerbe', anteil: 20, miete: 200, verwertung: 'exit' })
+  ];
+  var rz0 = E.compute(zp);
+  pruefe('ohne Zuordnung bleibt alles beim Flächenschlüssel', 0, rz0.bau.zuo.total);
+
+  zp.bau.neubau.zeilen.b2_oi_stwe.zuo = 'stwe';
+  var rz1 = E.compute(zp);
+  var zzeile = rz1.bau.bloecke.neubau.zeilen.find(function (x) { return x.id === 'b2_oi_stwe'; }).betrag;
+  pruefe('zugeordnete BKP-20–29-Zeile zählt voll', zzeile, rz1.bau.zuo.stwe, 1);
+  pruefe('zugeordneter Betrag verlässt den Flächentopf',
+    rz1.kpi.anlagekosten - zzeile, rz1.kpi.ak_rest, 1);
+  /* Vorher AK × 50 %, nachher (AK − z) × 50 % + z — die Differenz ist
+     genau die Hälfte der zugeordneten Zeile, die vorher den anderen
+     beiden Blöcken zufiel. */
+  pruefe('der STWE-Block wächst um den fremden Anteil der Zeile',
+    zzeile * 0.50, rz1.kpi.gi_stwe - rz0.kpi.gi_stwe, 1);
+  pruefe('die drei Blöcke ergeben die Gesamtinvestition',
+    rz1.kpi.gesamtinvestition, rz1.kpi.gi_stwe + rz1.kpi.gi_miete + rz1.kpi.gi_exit, 1);
+  pruefe('die Zuordnung verschiebt nur, sie verändert den Gewinn nicht',
+    rz0.kpi.gewinn, rz1.kpi.gewinn, 1);
+
+  /* Nur BKP 20–29 tragen die Zuordnung — BKP 5 baut prozentual darauf auf. */
+  var zn = A.defaultProject();
+  zn.bau.neubau.zeilen.b5_bnk.zuo = 'stwe';
+  pruefe('BKP 5 lässt sich nicht zuordnen', 0, E.compute(zn).bau.zuo.total);
+
+  /* Die Teuerung hebt zugeordnete Beträge wie alle übrigen Baukosten. */
+  var zt = A.defaultProject();
+  zt.bau.neubau.zeilen.b2_oi_stwe.zuo = 'stwe';
+  zt.bau.teuerung_aktiv = true; zt.bau.teuerung_pct = 3;
+  var rzt = E.compute(zt);
+  pruefe('auch mit Teuerung geht die Aufteilung auf',
+    rzt.kpi.gesamtinvestition, rzt.kpi.gi_stwe + rzt.kpi.gi_miete + rzt.kpi.gi_exit, 1);
+
   var h = A.defaultProject();
   h.teile.neubau.nutzungen = [A.defNutzung({ bezeichnung: 'Gewerbe Exit', art: 'gewerbe',
     anteil: 100, miete: 400, verwertung: 'exit', exit_rendite: 4.00 })];

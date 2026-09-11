@@ -1067,6 +1067,25 @@ window.APP = window.APP || {};
     { id: 'b9_ausstat',   bkp: '9',     label: 'Ausstattung' }
   ];
 
+  /* Zuordnung einer Baukostenzeile auf die Verwertungsart. Vorgabe ist
+     der Flächenschlüssel — er behandelt jeden Quadratmeter gleich. Wo
+     bekannt ist, welche Kosten welchem Anteil zufallen, lässt sich das
+     hier effektiv setzen; der Betrag geht dann vollständig dorthin und
+     nur der Rest wird weiterhin nach Fläche verteilt. */
+  A.ZUORDNUNG = [
+    { id: '',      label: 'nach Fläche' },
+    { id: 'stwe',  label: 'STWE' },
+    { id: 'miete', label: 'Miete' },
+    { id: 'exit',  label: 'Exit' }
+  ];
+
+  /* Nur BKP 20–29 (samt Reserve 202) lassen sich direkt zuordnen. BKP 1,
+     3, 4, 5 und 9 bleiben beim Flächenschlüssel — so ausdrücklich
+     gewünscht. */
+  A.zeileZuordenbar = function (kat) {
+    return !!kat && String(kat.bkp).charAt(0) === '2';
+  };
+
   /* Kennwert-Bibliothek je Kostenblock. min/max = Plausibilitätsband.
      Die Kennwerte für BKP 20–29 verstehen sich als Vollkosten inklusive
      Gebäudetechnik, Ausbau und Planerhonoraren. */
@@ -1489,7 +1508,8 @@ window.APP = window.APP || {};
     var zeilen = {}, kw = A.KENNWERTE[art];
     A.BKP_KATALOG.forEach(function (z) {
       var k = kw[z.id];
-      zeilen[z.id] = { aktiv: k.wert !== 0, basis: k.basis, wert: k.wert, menge_manuell: 0 };
+      zeilen[z.id] = { aktiv: k.wert !== 0, basis: k.basis, wert: k.wert,
+                       menge_manuell: 0, zuo: '' };
     });
     /* Die Reserve steckt neu als Zeile «202» im Katalog und wirkt auf
        BKP 20–29. Das Feld bleibt für Altprojekte erhalten (Vorgabe 0). */

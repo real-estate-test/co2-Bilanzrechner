@@ -1097,7 +1097,8 @@ window.APP = window.APP || {};
         g.zeilen.forEach(function (z) {
           /* Eine direkt zugeordnete Zeile ist der Grund, warum ein Block
              mehr trägt als seinen Flächenanteil — sie wird markiert. */
-          var direkt = z.schluessel.indexOf('direkt') === 0;
+          var direkt = z.schluessel.indexOf('direkt') === 0 ||
+                       z.schluessel.indexOf('Nutzung') === 0;
           zeilen.push(el('tr', {}, [
             el('td', {}, [el('span', { text: z.label })]),
             el('td', { class: 'n muted', text: fmt(z.betrag) }),

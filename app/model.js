@@ -1067,16 +1067,24 @@ window.APP = window.APP || {};
     { id: 'b9_ausstat',   bkp: '9',     label: 'Ausstattung' }
   ];
 
-  /* Zuordnung einer Baukostenzeile auf die Verwertungsart. Vorgabe ist
-     der Flächenschlüssel — er behandelt jeden Quadratmeter gleich. Wo
-     bekannt ist, welche Kosten welchem Anteil zufallen, lässt sich das
-     hier effektiv setzen; der Betrag geht dann vollständig dorthin und
-     nur der Rest wird weiterhin nach Fläche verteilt. */
+  /* Zuordnung einer Baukostenzeile auf die Verwertungsart.
+
+     «automatisch» ist die Vorgabe und in den allermeisten Fällen die
+     richtige Antwort: Misst eine Zeile eine Kostengruppe — BKP 20–29
+     Stockwerkeigentum, Miete, Gewerbe —, ist längst bekannt, wem diese
+     Flächen gehören, und die Kosten folgen ihnen. Zeilen ohne solchen
+     Bezug (Untergeschoss, Einstellhalle, Reserve) haben keine eindeutige
+     Nutzung und gehen nach Fläche.
+
+     «nach Fläche» erzwingt den Flächenschlüssel auch dort, wo die
+     Automatik greifen würde; STWE, Miete und Exit legen den ganzen
+     Betrag in einen Block. */
   A.ZUORDNUNG = [
-    { id: '',      label: 'nach Fläche' },
-    { id: 'stwe',  label: 'STWE' },
-    { id: 'miete', label: 'Miete' },
-    { id: 'exit',  label: 'Exit' }
+    { id: '',        label: 'automatisch' },
+    { id: 'flaeche', label: 'nach Fläche' },
+    { id: 'stwe',    label: 'STWE' },
+    { id: 'miete',   label: 'Miete' },
+    { id: 'exit',    label: 'Exit' }
   ];
 
   /* Nur BKP 20–29 (samt Reserve 202) lassen sich direkt zuordnen. BKP 1,

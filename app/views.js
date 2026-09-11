@@ -909,9 +909,9 @@ window.APP = window.APP || {};
     var out = el('div', {}, [U.kopf('Baukosten',
       'BKP 20–29 sind zu Vollkosten je Bereich zusammengefasst — Rohbau, Technik, Ausbau und ' +
       'Planerhonorare stecken im Kennwert. Die Mengen der oberirdischen Zeilen folgen dem ' +
-      'Nutzungsmix aus «Erträge & Verwertung». Über die Spalte «Zuordnung» geht eine Zeile ' +
-      'BKP 20–29 ungeteilt an eine Verwertungsart, statt im Ergebnis nach Fläche verteilt zu ' +
-      'werden.')]);
+      'Nutzungsmix aus «Erträge & Verwertung». Die Spalte «Zuordnung» bestimmt, in welchen ' +
+      'Ergebnisblock eine Zeile BKP 20–29 fliesst: «automatisch» folgt den Flächen, die sie ' +
+      'baut — die Zeile Stockwerkeigentum also ganz dem STWE-Anteil.')]);
 
     if (p.baukosten_pruefen) {
       out.appendChild(U.hinweis('warn',

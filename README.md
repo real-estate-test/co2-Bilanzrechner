@@ -293,9 +293,10 @@ zu welchen Konditionen das möglich wäre: Ertragswert, Gewinn gegenüber der
 anteiligen Investition und das EBT darauf. Sie doppelt den Exit-Block bewusst —
 dort steht der geplante Verkauf, hier die Möglichkeit.
 
-Drei Wege führen in die Blöcke. Baukostenzeilen **BKP 20–29** mit gesetzter
-**Zuordnung** gehen ungeteilt an ihre Verwertungsart — was der Gewerbeausbau
-kostet, hat mit dem Wohnungsverkauf nichts zu tun. Die **Vermarktungskosten**
+Drei Wege führen in die Blöcke. Baukostenzeilen **BKP 20–29**, die eine
+**Kostengruppe** bemessen, folgen den Flächen, die sie bauen — was der
+Gewerbeausbau kostet, hat mit dem Wohnungsverkauf nichts zu tun. Die
+**Vermarktungskosten**
 folgen ihrem Verursacher: Verkaufsprovision und Beurkundung auf den STWE-Anteil,
 die Exit-Nebenkosten auf den Exit-Anteil, die Erstvermietung auf die vermieteten
 Flächen nach ihrer Miete, Marketing und Musterwohnung nach Fläche; sonst trüge
@@ -305,15 +306,29 @@ Baukosten — wird nach Nutzfläche verteilt. Brutto- und Nettorendite verwenden
 dieselbe Grundlage wie die EBT-Kennzahlen, damit nicht zwei Zahlen für dieselbe
 Investition nebeneinander stehen.
 
-Die Zuordnung steht als Auswahlfeld in jeder BKP-20–29-Zeile der Seite
-**Baukosten** und ist in der Vorgabe leer — dann bleibt es beim Flächenschlüssel,
-der jeden Quadratmeter gleich behandelt. Wo Gewerbe im Erdgeschoss anders kostet
-als Wohnen darüber, lässt sich das damit effektiv abbilden. Bewusst beschränkt
-auf BKP 20–29 (samt Reserve 202): Vorbereitung, Baunebenkosten und
-Projektmanagement-Honorar bauen prozentual auf den Baukosten auf und lassen sich
-keinem einzelnen Anteil zuweisen. Eine Teuerung hebt die zugeordneten Beträge im
-selben Mass wie alle übrigen Baukosten; die Summe der drei Blöcke ergibt in jedem
-Fall wieder die Gesamtinvestition.
+Die **Zuordnung** steht als Auswahlfeld in jeder BKP-20–29-Zeile der Seite
+**Baukosten** und ist in der Vorgabe **automatisch**. Das ist meistens die
+richtige Antwort, denn bei einer Zeile, die eine Kostengruppe misst, ist längst
+bekannt, wem ihre Flächen gehören:
+
+| Zeile | Schlüssel |
+|---|---|
+| BKP 20–29 · oberirdisch Stockwerkeigentum | ganz auf STWE — die Gruppe enthält nur verkaufte Wohnungen |
+| BKP 20–29 · oberirdisch Miete | nach der Verwertung ihrer Nutzungen; Wohnen zum Exit zählt in dieselbe Gruppe und geht in den Exit-Block |
+| BKP 20–29 · oberirdisch Gewerbe | ebenso — Gewerbe kann verkauft, gehalten oder an einen Investor gegeben werden |
+| Untergeschoss, Einstellhalle, Reserve | nach Fläche — sie dienen allen Nutzungen |
+
+Wo das nicht passt, überschreiben *nach Fläche*, *STWE*, *Miete* oder *Exit* die
+Automatik. Die Einstellhalle ist der übliche Fall dafür: Werden die Parkplätze
+mit den Eigentumswohnungen verkauft, gehört sie auf STWE, sonst tragen Miete und
+Exit einen Teil ihrer Baukosten mit.
+
+Bewusst beschränkt auf BKP 20–29 (samt Reserve 202): Vorbereitung,
+Baunebenkosten und Projektmanagement-Honorar bauen prozentual auf den Baukosten
+auf und lassen sich keinem einzelnen Anteil zuweisen. Eine Teuerung hebt die
+zugeordneten Beträge im selben Mass wie alle übrigen Baukosten; die Summe der
+drei Blöcke ergibt in jedem Fall wieder die Gesamtinvestition, und der
+Projektgewinn bleibt von der Zuordnung unberührt — sie verschiebt nur.
 
 **Tracking · Aufteilung** ist eine vorübergehende Prüfansicht mit der Zeilen-
 struktur des Trackings: jede Kostenposition mit dem Schlüssel, nach dem sie

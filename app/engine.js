@@ -124,12 +124,35 @@ window.APP = window.APP || {};
      1 · Flächen
      --------------------------------------------------------------- */
 
+  /* Fläche je Kostengruppe, aufgeschlüsselt nach der Verwertung der
+     Nutzungen darin. Die Kostengruppe «o.i. Stockwerkeigentum» enthält
+     ausschliesslich verkaufte Wohnungen — ihre Baukosten gehören deshalb
+     ganz in den STWE-Block, nicht anteilig über alle Flächen verteilt.
+     Bei «o.i. Miete» und «o.i. Gewerbe» ist es nicht so eindeutig:
+     Wohnungen mit Verwertung «Exit» zählen in die Gruppe Miete, und
+     Gewerbe kann verkauft, gehalten oder an einen Investor gegeben
+     werden. Deshalb der genaue Schlüssel statt einer festen Regel. */
+  function leereGruppenVerw() {
+    return { oi_stwe:    { stwe: 0, miete: 0, exit: 0 },
+             oi_miete:   { stwe: 0, miete: 0, exit: 0 },
+             oi_gewerbe: { stwe: 0, miete: 0, exit: 0 } };
+  }
+
+  /* Welchem Ergebnisblock eine Nutzung zufällt. «halten_selbst» wird wie
+     «halten_vermietet» behandelt — beide bleiben im Bestand. */
+  E.blockFuer = function (verwertung) {
+    if (verwertung === 'stwe') return 'stwe';
+    if (verwertung === 'exit') return 'exit';
+    return 'miete';
+  };
+
   E.flaechen = function (p, warn) {
     var g = p.grundstueck;
     var res = { teile: {}, total: {
       gf_oi: 0, gf_ug: 0, f_aeh: 0, gf: 0, gv: 0, gv_oi: 0, gv_ug: 0, gv_aeh: 0,
       nwf: 0, pp: 0, grundflaeche: 0, attika: 0
-    }, gruppen: { oi_stwe: 0, oi_miete: 0, oi_gewerbe: 0 } };
+    }, gruppen: { oi_stwe: 0, oi_miete: 0, oi_gewerbe: 0 },
+       gruppen_verw: leereGruppenVerw() };
 
     /* Anrechenbare Geschossfläche: über die Ausnützungsziffer samt
        allfälligem Bonus, oder direkt erfasst. */
@@ -150,7 +173,8 @@ window.APP = window.APP || {};
       var o = { aktiv: !!t.aktiv, gf_oi: 0, gf_ug: 0, f_aeh: 0, gf: 0, attika: 0,
                 gv_oi: 0, gv_ug: 0, gv_aeh: 0, gv: 0, nwf: 0,
                 pp: num(t.pp), grundflaeche: 0, nutzungen: {}, zeilen: [],
-                gruppen: { oi_stwe: 0, oi_miete: 0, oi_gewerbe: 0 } };
+                gruppen: { oi_stwe: 0, oi_miete: 0, oi_gewerbe: 0 },
+                gruppen_verw: leereGruppenVerw() };
 
       if (t.aktiv) {
         if (t.modus === 'ausnutzung') {
@@ -217,7 +241,11 @@ window.APP = window.APP || {};
         /* Geschossfläche je Kostengruppe — Grundlage der BKP 20–29 */
         if (t.aktiv && n.art !== 'parkplatz') {
           var gr = n.kostengruppe || A.kostengruppeFuer(n.art, n.verwertung);
-          o.gruppen[gr] = (o.gruppen[gr] || 0) + o.gf_oi * pct(n.anteil);
+          var gf_n = o.gf_oi * pct(n.anteil);
+          o.gruppen[gr] = (o.gruppen[gr] || 0) + gf_n;
+          /* … und wem diese Fläche am Ende gehört */
+          if (!o.gruppen_verw[gr]) o.gruppen_verw[gr] = { stwe: 0, miete: 0, exit: 0 };
+          o.gruppen_verw[gr][E.blockFuer(n.verwertung)] += gf_n;
         }
       });
 
@@ -270,7 +298,13 @@ window.APP = window.APP || {};
       if (t.aktiv) {
         ['gf_oi', 'gf_ug', 'f_aeh', 'gf', 'gv', 'gv_oi', 'gv_ug', 'gv_aeh', 'nwf', 'pp', 'grundflaeche', 'attika']
           .forEach(function (k) { res.total[k] += o[k]; });
-        Object.keys(o.gruppen).forEach(function (k) { res.gruppen[k] += o.gruppen[k]; });
+        Object.keys(o.gruppen).forEach(function (k) {
+          res.gruppen[k] += o.gruppen[k];
+          if (!res.gruppen_verw[k]) res.gruppen_verw[k] = { stwe: 0, miete: 0, exit: 0 };
+          ['stwe', 'miete', 'exit'].forEach(function (bl) {
+            res.gruppen_verw[k][bl] += (o.gruppen_verw[k] || {})[bl] || 0;
+          });
+        });
       }
     });
 
@@ -326,6 +360,44 @@ window.APP = window.APP || {};
 
   var PROZENTBASEN = ['pct_bkp2', 'pct_bkp1_2', 'pct_bkp1_4', 'pct_bkp1_5'];
 
+  /* Bezugsgrössen, die eine Kostengruppe bemessen — nur diese Zeilen
+     lassen sich von selbst zuordnen. */
+  var BASIS_GRUPPE = {
+    gf_oi_stwe: 'oi_stwe',       gv_oi_stwe: 'oi_stwe',
+    gf_oi_miete: 'oi_miete',     gv_oi_miete: 'oi_miete',
+    gf_oi_gewerbe: 'oi_gewerbe', gv_oi_gewerbe: 'oi_gewerbe'
+  };
+
+  /* Nach welchem Schlüssel eine Baukostenzeile in die Ergebnisblöcke
+     fliesst. null heisst: nach Nutzfläche wie alle übrigen Kosten.
+
+     Misst eine Zeile eine Kostengruppe, ist ihre Zuordnung bekannt und
+     muss nicht geschätzt werden: Die Kostengruppe «o.i. Stockwerk-
+     eigentum» enthält nur verkaufte Wohnungen, ihre Baukosten gehören
+     also ganz in den STWE-Block. Bei «o.i. Miete» und «o.i. Gewerbe»
+     kann die Gruppe gemischt sein — dort entscheidet das tatsächliche
+     Flächenverhältnis der Nutzungen darin. Eine ausdrückliche Zuordnung
+     in der Zeile geht in jedem Fall vor. */
+  E.bauSchluessel = function (kat, z, F) {
+    if (!A.zeileZuordenbar(kat)) return null;
+    var zo = z.zuo || '';
+    if (zo === 'stwe' || zo === 'miete' || zo === 'exit') {
+      var a = { stwe: 0, miete: 0, exit: 0 };
+      a[zo] = 1;
+      return { art: 'direkt', block: zo, anteile: a };
+    }
+    if (zo === 'flaeche') return null;   /* ausdrücklich nach Fläche */
+
+    var gr = BASIS_GRUPPE[z.basis];
+    if (!gr || !F || !F.gruppen_verw || !F.gruppen_verw[gr]) return null;
+    var v = F.gruppen_verw[gr], summe = v.stwe + v.miete + v.exit;
+    /* Ohne Flächen in der Gruppe gibt es nichts zu schlüsseln — dann
+       bleibt es beim Flächenanteil, sonst ginge der Betrag verloren. */
+    if (summe <= 0) return null;
+    return { art: 'nutzung', gruppe: gr,
+             anteile: { stwe: v.stwe / summe, miete: v.miete / summe, exit: v.exit / summe } };
+  };
+
   /* Zeilen mit fester Rechenreihenfolge — sie bauen aufeinander auf und
      werden deshalb nicht in der ersten Runde erfasst. */
   var GEORDNET = ['b1_vorbereitung', 'b2_reserve', 'b5_dritt', 'b5_bnk', 'b5_pm'];
@@ -362,16 +434,21 @@ window.APP = window.APP || {};
            und Projektmanagement-Honorar automatisch nach. */
         var iv = ist(p, 'bau.' + bid + '.' + kat.id);
         var wirksam = iv !== null ? iv : betrag;
-        /* Effektive Zuordnung auf eine Verwertungsart. Nur BKP 20–29
-           tragen sie; bei allen übrigen Zeilen bleibt sie wirkungslos,
-           auch wenn ein Altprojekt dort noch einen Wert stehen hat. */
-        var zo = A.zeileZuordenbar(kat) ? (z.zuo || '') : '';
-        if (zo !== 'stwe' && zo !== 'miete' && zo !== 'exit') zo = '';
+        /* Zuordnung auf die Verwertungsarten. Nur BKP 20–29 tragen sie;
+           bei allen übrigen Zeilen bleibt sie wirkungslos, auch wenn ein
+           Altprojekt dort noch einen Wert stehen hat. */
+        var sch = E.bauSchluessel(kat, z, F);
         out.zeilen.push({ id: kat.id, bkp: kat.bkp, label: kat.label, basis: z.basis,
                           menge: z.basis === 'pauschal' ? null : menge,
                           kennwert: num(z.wert), betrag: wirksam,
-                          soll: betrag, ist: iv !== null, zuo: zo });
-        if (zo) { out.zuo[zo] += wirksam; out.zuo.total += wirksam; }
+                          soll: betrag, ist: iv !== null,
+                          zuo: z.zuo || '', schluessel: sch });
+        if (sch) {
+          ['stwe', 'miete', 'exit'].forEach(function (bl) {
+            out.zuo[bl] += wirksam * sch.anteile[bl];
+          });
+          out.zuo.total += wirksam;
+        }
         gruppieren(kat.bkp, wirksam);
         return wirksam;
       }
@@ -1651,11 +1728,21 @@ window.APP = window.APP || {};
       return { stwe: betrag * ERT.anteil_stwe, miete: betrag * ERT.anteil_miete,
                exit: betrag * ERT.anteil_exit, schluessel: 'Nutzfläche' };
     }
-    function direkt(betrag, block) {
-      var t = { stwe: 0, miete: 0, exit: 0,
-                schluessel: 'direkt · ' + { stwe: 'STWE', miete: 'Miete', exit: 'Exit' }[block] };
-      t[block] = betrag;
-      return t;
+    /* Eine Zeile mit bekanntem Schlüssel — entweder ausdrücklich gesetzt
+       oder aus der Kostengruppe abgeleitet. */
+    function nachSchluessel(betrag, sch) {
+      var namen = { stwe: 'STWE', miete: 'Miete', exit: 'Exit' };
+      var text;
+      if (sch.art === 'direkt') {
+        text = 'direkt · ' + namen[sch.block];
+      } else {
+        /* Ist die Gruppe sortenrein, ist die Aussage klar; sonst zeigt
+           die Prozentspalte, wie sie sich aufteilt. */
+        var voll = ['stwe', 'miete', 'exit'].filter(function (b) { return sch.anteile[b] > 0.9995; });
+        text = voll.length === 1 ? 'Nutzung · ' + namen[voll[0]] : 'Nutzung · gemischt';
+      }
+      return { stwe: betrag * sch.anteile.stwe, miete: betrag * sch.anteile.miete,
+               exit: betrag * sch.anteile.exit, schluessel: text };
     }
 
     gruppe('Erwerb');
@@ -1670,7 +1757,7 @@ window.APP = window.APP || {};
       b.zeilen.forEach(function (z) {
         var betrag = z.betrag * tf;
         zeile('BKP ' + z.bkp + ' · ' + z.label, betrag,
-              z.zuo ? direkt(betrag, z.zuo) : nachFlaeche(betrag));
+              z.schluessel ? nachSchluessel(betrag, z.schluessel) : nachFlaeche(betrag));
       });
       if (b.reserve_pauschal > 0.5) {
         var rp = b.reserve_pauschal * tf;

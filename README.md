@@ -172,6 +172,11 @@ ihrer Aufgabe und werden mitgedruckt; beim Übernehmen ins nächste Protokoll
 wandern sie mit. Die Aufgaben lassen sich als Liste, Kanban, nach Zuständigkeit
 oder als Themenbild ansehen.
 
+Erledigte Aufgaben werden nirgends hin verschoben: Sie bleiben in ihrem
+Protokoll stehen, nur der Status wechselt. Liste und Zuständigkeit zeigen von
+sich aus nur Offenes; der Haken **erledigte zeigen** holt die abgeschlossenen
+dazu — gedämpft und ans Ende gestellt, mit Abschlussdatum statt Termin.
+
 **Baurecht-Check** Eine Sammlung des für das Grundstück geltenden Baurechts:
 75 Prüfpunkte in fünf Gruppen (Grundstück, Ziffern und Boni, Abstände und
 Begrenzungen, Weiteres, Grundbuch), je Punkt ein Eintrag, eine Bemerkung —

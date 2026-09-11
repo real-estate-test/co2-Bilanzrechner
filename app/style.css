@@ -485,6 +485,12 @@ textarea:focus { outline: none; border-color: var(--accent); }
   letter-spacing: -.01em;
 }
 
+/* Eine abgeschlossene Aufgabe tritt zurück, bleibt aber lesbar: Sie
+   ist Chronik, nicht Arbeitsvorrat. Erkennbar bleiben muss sie —
+   deshalb kein Durchstreichen, sondern gedämpfte Farbe. */
+tr.aufgabezu td { color: var(--muted); }
+tr.aufgabezu td .tag { opacity: .7; }
+
 /* --- Rückmeldungen zu einer Aufgabe ------------------------------- */
 
 /* Was aus einer Aufgabe geworden ist, steht eingerückt unter ihr —

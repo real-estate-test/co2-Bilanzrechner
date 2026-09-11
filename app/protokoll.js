@@ -508,6 +508,19 @@ window.APP = window.APP || {};
     var offeneZahl = aufgaben.filter(function (o) {
       return A.statusOffen(o.punkt.status);
     }).length;
+    var erledigteZahl = aufgaben.length - offeneZahl;
+
+    /* Erledigte Aufgaben werden nirgends hin verschoben — sie bleiben
+       in ihrem Protokoll stehen. Nur zeigen Liste und Zuständigkeit
+       sonst allein das Offene; dieser Haken holt die abgeschlossenen
+       dazu. */
+    var erl = el('input', { type: 'checkbox', style: 'width:auto',
+      checked: S.zeigeErledigte ? '' : null });
+    erl.addEventListener('change', function () {
+      S.zeigeErledigte = erl.checked;
+      erledigteMerken(erl.checked);
+      A.render();
+    });
 
     var inhalt;
     if (S.ansicht === 'kanban') inhalt = kanban(p, aufgaben);
@@ -517,10 +530,18 @@ window.APP = window.APP || {};
 
     return U.panel('Aufgaben',
       offeneZahl + (offeneZahl === 1 ? ' offene Aufgabe' : ' offene Aufgaben') +
+      (erledigteZahl ? ' · ' + erledigteZahl + ' abgeschlossen' : '') +
       ' · aus Protokollen und manuell erfasst', [
       el('div', { class: 'panelbody noprint',
         style: 'display:flex;gap:14px;align-items:center;flex-wrap:wrap' }, [
         umschalter,
+        el('label', { style: 'display:flex;gap:6px;align-items:center;font-size:12px',
+          title: S.ansicht === 'kanban'
+            ? 'Im Kanban stehen die erledigten ohnehin in der rechten Spalte'
+            : 'Erledigte und in ein neues Protokoll übernommene Aufgaben mitzeigen' }, [
+          erl, el('span', { class: S.ansicht === 'kanban' || S.ansicht === 'themen'
+            ? 'muted' : '', text: 'erledigte zeigen' })
+        ]),
         el('button', { class: 'schreibend', style: 'margin-left:auto',
           text: '+ Aufgabe ohne Protokoll', onclick: function () { neueAufgabe(p); } })
       ]),
@@ -550,7 +571,10 @@ window.APP = window.APP || {};
       var r = A.reihe(o.sitzung.reihe);
       var t = A.thema(o.punkt.thema);
       var pr = A.prioritaet(o.punkt.prio);
-      return el('tr', {}, [
+      /* Abgeschlossenes tritt zurück, bleibt aber lesbar — es ist die
+         Chronik, nicht die Arbeitsliste. */
+      var zu = !A.statusOffen(o.punkt.status);
+      return el('tr', { class: zu ? 'aufgabezu' : '' }, [
         el('td', { class: 'muted', style: 'width:120px',
           text: (r ? r.kuerzel || r.label : '') + ' ' + o.sitzung.nummer + ' · ' +
                 A.datum(o.sitzung.datum) }),
@@ -566,17 +590,21 @@ window.APP = window.APP || {};
           ? [el('span', { class: 'tag' + (pr.klasse ? ' ' + pr.klasse : ''), text: pr.label })]
           : [el('span', { class: 'muted', text: '—' })]),
         el('td', { style: 'width:150px', text: b ? (b.name || b.kuerzel) : 'ohne Zuständigkeit' }),
-        terminZelle(o.punkt.termin),
+        zu && o.punkt.erledigt_am
+          ? el('td', { class: 'n muted', style: 'width:110px',
+              text: A.datum(o.punkt.erledigt_am) })
+          : terminZelle(o.punkt.termin),
         el('td', { style: 'width:180px' }, [statuswahl(o.punkt, o.sitzung)])
       ]);
     });
     if (!zeilen.length) {
       zeilen.push(el('tr', {}, [el('td', { colspan: 7, class: 'muted',
-        text: 'Keine offenen Aufgaben.' })]));
+        text: S.zeigeErledigte ? 'Noch keine Aufgaben erfasst.' : 'Keine offenen Aufgaben.' })]));
     }
     return el('div', { class: 'panelbody' }, [U.tabelle([
       { label: 'Herkunft' }, { label: 'Thema' }, { label: 'Aufgabe' },
-      { label: 'Prio' }, { label: 'Zuständig' }, { label: 'Termin', n: true },
+      { label: 'Prio' }, { label: 'Zuständig' },
+      { label: S.zeigeErledigte ? 'Termin / erledigt' : 'Termin', n: true },
       { label: 'Status' }
     ], zeilen)]);
   }
@@ -617,36 +645,38 @@ window.APP = window.APP || {};
     if (ohne.punkte.length) mitArbeit.push(ohne);
 
     if (!mitArbeit.length) {
-      box.appendChild(el('div', { class: 'muted', text: 'Keine offenen Aufgaben.' }));
+      box.appendChild(el('div', { class: 'muted',
+        text: S.zeigeErledigte ? 'Noch keine Aufgaben erfasst.' : 'Keine offenen Aufgaben.' }));
       return box;
     }
 
     mitArbeit.forEach(function (g) {
-      var spaet = g.punkte.filter(function (o) {
+      var noch = g.punkte.filter(function (o) { return A.statusOffen(o.punkt.status); });
+      var spaet = noch.filter(function (o) {
         return o.punkt.termin && o.punkt.termin < heute;
       }).length;
+      var zu = g.punkte.length - noch.length;
 
       var kopf = el('div', { class: 'personenkopf' }, [
         el('span', { class: 'pname' + (g.herrenlos ? ' herrenlos' : ''), text: g.name }),
         g.zusatz ? el('span', { class: 'muted', style: 'font-size:11.5px', text: g.zusatz }) : null,
         el('span', { class: 'sp' }, [
           spaet ? el('span', { class: 'tag neg', text: spaet + ' überfällig' }) : null,
-          el('span', { class: 'tag warn',
-            text: g.punkte.length + (g.punkte.length === 1 ? ' offen' : ' offen') })
+          noch.length ? el('span', { class: 'tag warn', text: noch.length + ' offen' }) : null,
+          zu ? el('span', { class: 'tag pos', text: zu + ' erledigt' }) : null
         ].filter(Boolean))
       ].filter(Boolean));
 
-      /* Innerhalb einer Person nach Termin — was zuerst fällig ist,
-         steht oben; Aufgaben ohne Termin am Schluss. */
-      var sortiert = g.punkte.slice().sort(function (a, b) {
-        return (a.punkt.termin || '9999').localeCompare(b.punkt.termin || '9999');
-      });
+      /* Offenes zuerst und darin das früher Fällige; Abgeschlossenes
+         steht hinten. */
+      var sortiert = g.punkte.slice().sort(sortierung);
 
       var zeilen = sortiert.map(function (o) {
         var t = A.thema(o.punkt.thema);
         var pr = A.prioritaet(o.punkt.prio);
         var r = A.reihe(o.sitzung.reihe);
-        return el('tr', {}, [
+        var fertig = !A.statusOffen(o.punkt.status);
+        return el('tr', { class: fertig ? 'aufgabezu' : '' }, [
           el('td', { style: 'width:150px' }, t ? [
             el('span', { class: 'themenpunkt', style: 'background:' + t.farbe }),
             el('span', { text: ' ' + t.label })
@@ -658,7 +688,10 @@ window.APP = window.APP || {};
           el('td', { style: 'width:74px' }, pr.id
             ? [el('span', { class: 'tag' + (pr.klasse ? ' ' + pr.klasse : ''), text: pr.label })]
             : [el('span', { class: 'muted', text: '—' })]),
-          terminZelle(o.punkt.termin),
+          fertig && o.punkt.erledigt_am
+            ? el('td', { class: 'n muted', style: 'width:110px',
+                text: A.datum(o.punkt.erledigt_am) })
+            : terminZelle(o.punkt.termin),
           el('td', { style: 'width:180px' }, [statuswahl(o.punkt, o.sitzung)]),
           el('td', { class: 'muted', style: 'width:120px',
             text: A.istManuell(o.sitzung) ? 'manuell'
@@ -669,7 +702,8 @@ window.APP = window.APP || {};
       box.appendChild(kopf);
       box.appendChild(U.tabelle([
         { label: 'Thema' }, { label: 'Aufgabe' }, { label: 'Prio' },
-        { label: 'Termin', n: true }, { label: 'Status' }, { label: 'aus' }
+        { label: S.zeigeErledigte ? 'Termin / erledigt' : 'Termin', n: true },
+        { label: 'Status' }, { label: 'aus' }
       ], zeilen));
     });
 
@@ -679,7 +713,7 @@ window.APP = window.APP || {};
     var frei = gruppen.filter(function (g) { return !g.punkte.length; });
     if (frei.length) {
       box.appendChild(el('div', { class: 'hilfe', style: 'margin-top:12px',
-        text: 'Ohne offene Aufgaben: ' +
+        text: (S.zeigeErledigte ? 'Ohne Aufgaben: ' : 'Ohne offene Aufgaben: ') +
               frei.map(function (g) { return g.name; }).join(', ') }));
     }
     return box;
@@ -877,18 +911,52 @@ window.APP = window.APP || {};
      Aufgabe. */
   S.fragtNach = null;
 
-  /* Die offenen Aufgaben — und dazu die eine, zu der gerade nach dem
-     Ergebnis gefragt wird. Ohne sie verschwände die Aufgabe im selben
-     Augenblick aus der Liste, in dem das Feld aufklappt: Wer auf
-     «erledigt» stellt, nimmt sie ja aus den offenen heraus. */
+  /* Ob abgeschlossene Aufgaben mitlaufen. Eine Vorliebe des
+     Betrachters, keine Eigenschaft des Projekts — sie wird lokal
+     gemerkt, wie der Statusfilter im Portfolio. */
+  var ERLEDIGT_KEY = 'projektrechner.aufgabenerledigte';
+
+  S.zeigeErledigte = (function () {
+    try { return localStorage.getItem(ERLEDIGT_KEY) === '1'; }
+    catch (e) { return false; }
+  })();
+
+  function erledigteMerken(an) {
+    try {
+      if (an) localStorage.setItem(ERLEDIGT_KEY, '1');
+      else localStorage.removeItem(ERLEDIGT_KEY);
+    } catch (e) { /* privater Modus: gilt dann nur für diese Sitzung */ }
+  }
+
+  /* Die Aufgaben, die Liste und Zuständigkeit zeigen: die offenen,
+     wahlweise die abgeschlossenen dazu — und immer die eine, zu der
+     gerade nach dem Ergebnis gefragt wird. Ohne sie verschwände die
+     Aufgabe im selben Augenblick aus der Liste, in dem das Feld
+     aufklappt: Wer auf «erledigt» stellt, nimmt sie ja aus den offenen
+     heraus. */
   function offeneUndGefragte() {
-    var liste = P.offenePunkte(null);
+    var liste = S.zeigeErledigte
+      ? P.allePunkte('aufgabe').slice().sort(sortierung)
+      : P.offenePunkte(null);
     if (!S.fragtNach) return liste;
     if (liste.some(function (o) { return o.punkt.id === S.fragtNach; })) return liste;
     var dazu = P.allePunkte('aufgabe').find(function (o) {
       return o.punkt.id === S.fragtNach;
     });
     return dazu ? liste.concat([dazu]) : liste;
+  }
+
+  /* Offenes zuerst, darin das früher Fällige — abgeschlossene Aufgaben
+     stehen hinten, nach Abschlussdatum absteigend: Was zuletzt erledigt
+     wurde, sucht man am ehesten. */
+  function sortierung(a, b) {
+    var oa = A.statusOffen(a.punkt.status) ? 0 : 1;
+    var ob = A.statusOffen(b.punkt.status) ? 0 : 1;
+    if (oa !== ob) return oa - ob;
+    if (oa === 1) {
+      return String(b.punkt.erledigt_am || '').localeCompare(String(a.punkt.erledigt_am || ''));
+    }
+    return String(a.punkt.termin || '9999').localeCompare(String(b.punkt.termin || '9999'));
   }
 
   function antwortHinzu(pt, sitzung, text) {

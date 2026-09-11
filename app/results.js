@@ -168,26 +168,29 @@ window.APP = window.APP || {};
           k.marge_ak >= pp.ziele.marge ? 'pos' : 'neg'),
 
         U.kachel('Gesamtinvestition Anteil STWE', fmt(k.gi_stwe), anteilText(k.anteil_stwe)),
-        U.kachel('Erlöse STWE', fmt(k.stwe_erloes)),
+        /* Der Gewinn steht bei seinem Erlös — die EBT-Kachel daneben
+           nennt dafür nur noch die Bezugsgrösse, sonst stünde derselbe
+           Betrag zweimal nebeneinander. */
+        U.kachel('Erlöse STWE', fmt(k.stwe_erloes),
+          k.gi_stwe > 0 ? 'Gewinn ' + fmt(k.stwe_erloes - k.gi_stwe) : null),
         U.kachel('EBT STWE', A.fmtPct(k.ebt_stwe),
-          k.gi_stwe > 0 ? fmt(k.stwe_erloes - k.gi_stwe) + ' auf ' + A.fmtMio(k.gi_stwe)
-                        : 'keine STWE-Fläche',
+          k.gi_stwe > 0 ? 'auf ' + A.fmtMio(k.gi_stwe) + ' Investition' : 'keine STWE-Fläche',
           k.gi_stwe > 0 ? (k.ebt_stwe >= pp.ziele.marge ? 'pos' : 'neg') : ''),
         U.kachel('Marge auf Erlös', A.fmtPct(k.marge_erloes), 'gesamt'),
 
         U.kachel('Gesamtinvestition Anteil Miete', fmt(k.gi_miete), anteilText(k.anteil_miete)),
+        U.kachel('Sollmiete', fmt(k.sollmiete), 'pro Jahr, Miete und Exit'),
         U.kachel('Bruttorendite Miete', A.fmtPct(k.bruttorendite, 2),
           'auf ' + A.fmtMio(k.ak_ertrag) + ' anteilige AK · Ziel ' + A.fmtPct(pp.ziele.bruttorendite, 2),
           k.bruttorendite >= pp.ziele.bruttorendite ? 'pos' : ''),
         U.kachel('Nettorendite Miete', A.fmtPct(k.nettorendite, 2),
           A.fmtPct(k.anteil_ertrag * 100) + ' der Nutzfläche wird gehalten'),
-        U.kachel('Sollmiete', fmt(k.sollmiete), 'pro Jahr, Miete und Exit'),
 
         U.kachel('Gesamtinvestition Anteil Exit', fmt(k.gi_exit), anteilText(k.anteil_exit)),
-        U.kachel('Erlöse Verkauf an Endinvestor', fmt(k.exit_wert)),
+        U.kachel('Erlöse Verkauf an Endinvestor', fmt(k.exit_wert),
+          k.gi_exit > 0 ? 'Gewinn ' + fmt(k.exit_wert - k.gi_exit) : null),
         U.kachel('EBT Exit', A.fmtPct(k.ebt_exit),
-          k.gi_exit > 0 ? fmt(k.exit_wert - k.gi_exit) + ' auf ' + A.fmtMio(k.gi_exit)
-                        : 'kein Exit-Anteil',
+          k.gi_exit > 0 ? 'auf ' + A.fmtMio(k.gi_exit) + ' Investition' : 'kein Exit-Anteil',
           k.gi_exit > 0 ? (k.ebt_exit >= pp.ziele.marge ? 'pos' : 'neg') : ''),
         U.kachel('Wert gehaltener Flächen', fmt(k.halten_wert), 'bei Projektende'),
 

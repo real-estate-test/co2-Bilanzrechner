@@ -687,6 +687,37 @@ tr.brentfaellt input { color: var(--muted); }
 /* Die Pfeilebene liegt über den Balken und fängt keine Klicks ab. */
 .gpfeile { position: absolute; left: 0; top: 38px; pointer-events: none; z-index: 2; }
 
+/* --- Ziehen ------------------------------------------------------- */
+
+/* Der Balken ist anfassbar: in der Mitte zum Verschieben, am rechten
+   Rand zum Verlängern. Den Cursor setzt das Skript, weil er vom Ort
+   innerhalb des Balkens abhängt. */
+.gbalken { touch-action: none; }
+.gbalken.zu { cursor: default; }
+.gbalken.zieht { opacity: .75; box-shadow: 0 2px 8px rgba(16,21,28,.28); }
+/* Der Griff zum Verlängern, nur beim Überfahren sichtbar. */
+.gbalken:not(.zu):hover::after {
+  content: ""; position: absolute; right: 0; top: 0; bottom: 0; width: 6px;
+  background: rgba(255,255,255,.55); border-radius: 0 3px 3px 0;
+}
+
+/* Das Datum, das beim Ziehen entsteht — über dem Balken, weil die
+   Tabelle erst nach dem Loslassen nachgeführt wird. */
+.gzieher {
+  position: absolute; z-index: 500; pointer-events: none;
+  background: var(--ink); color: #fff; font-size: 11px;
+  font-family: var(--mono); padding: 3px 7px; border-radius: 4px;
+  white-space: nowrap; box-shadow: 0 2px 8px rgba(16,21,28,.3);
+}
+
+/* Die Nummer ist der Griff zum Umsortieren. */
+.gc-nr[draggable="true"] { cursor: grab; }
+.gc-nr[draggable="true"]:hover { color: var(--ink); background: var(--accent2); border-radius: 3px; }
+.gzeile.nimmt { opacity: .45; }
+/* Wohin die Zeile fällt */
+.gzeile.ueber-oben  { box-shadow: inset 0  2px 0 var(--accent); }
+.gzeile.ueber-unten { box-shadow: inset 0 -2px 0 var(--accent); }
+
 /* Schmale Tabelle: nur was man beim Lesen des Plans braucht. */
 .gantt.schmal .gc-abh,
 .gantt.schmal .gc-verz,

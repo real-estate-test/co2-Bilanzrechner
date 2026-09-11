@@ -190,6 +190,13 @@ Erledigtes wird grau und durchgestrichen. Die Zeitachse lässt sich zwischen
 *passend* (der ganze Plan im Bild, auch auf dem Ausdruck) und drei festen
 Massstäben umschalten.
 
+Balken lassen sich **ziehen**: in der Mitte angefasst verschieben sie den
+Vorgang, am rechten Rand verlängern sie ihn; bei einem abhängigen Vorgang ändert
+das Schieben die Verzögerung, damit die Kette hält. Während des Ziehens steht
+das entstehende Datum über dem Balken. Die **Nummer** links ist der Griff zum
+Umsortieren der Zeilen — die Abhängigkeiten zeigen auf Kennungen, nicht auf
+Nummern, und überstehen das unverändert.
+
 Die **Dauern in die Kalkulation zu übernehmen** bleibt ein eigener Knopf mit
 Vorschau: Ein verschobener Termin darf Kapitalbedarf, Zinsen und damit die Marge
 nicht still verändern. Termine aus den Protokollen stehen als eigener Block

@@ -467,7 +467,9 @@ window.APP = window.APP || {};
         'seines Vorgängers; die <b>Verzögerung</b> schiebt ihn um weitere Tage. Sein ' +
         'Startdatum wird dann gerechnet und ist nicht mehr eingebbar. Die <b>Dauer</b> zählt ' +
         'Kalendertage, nicht Arbeitstage. Verschiebt sich ein Vorgang, wandert die ganze ' +
-        'Kette mit.')
+        'Kette mit.<br>Ein <b>Balken</b> lässt sich schieben, am rechten Rand verlängern — ' +
+        'bei einem abhängigen Vorgang ändert das Schieben die Verzögerung. Die <b>Nummer</b> ' +
+        'links ist der Griff: daran zieht man eine Zeile an eine andere Stelle.')
     ]));
 
     return U.panel('Terminplan', liste.length + (liste.length === 1
@@ -609,6 +611,7 @@ window.APP = window.APP || {};
         title: (v.label || 'ohne Bezeichnung') + '\n' +
                A.datum(g.start) + ' – ' + A.datum(g.ende) + ' · ' + g.tage + ' Tage' +
                (v.erledigt ? '\nerledigt' : '') });
+      ziehbar(p, v, g, balken, tagBreite);
       raster.appendChild(balken);
     });
 
@@ -629,6 +632,117 @@ window.APP = window.APP || {};
 
     return el('div', { class: 'gantt' + (Z.schmal ? ' schmal' : '') }, [tabelle, scroll]);
   }
+
+  /* ---------------------------------------------------------------
+     Balken ziehen
+
+     Zwei Griffe in einem: Die letzten sechs Pixel verlängern den
+     Vorgang, der Rest verschiebt ihn. Gerechnet wird in Tagen — die
+     Mausbewegung wird durch die Tagesbreite geteilt und gerundet.
+
+     Während des Ziehens wird nichts neu gezeichnet: Nur der Balken
+     selbst wandert, und erst beim Loslassen gehen die Werte in die
+     Daten. Ein Neuaufbau mitten in der Bewegung würde den Balken unter
+     dem Zeiger austauschen.
+     --------------------------------------------------------------- */
+
+  function ziehbar(p, v, g, balken, tagBreite) {
+    if (v.erledigt) return;          // Abgeschlossenes bleibt, wie es ist
+
+    var RAND = 6;                    // Breite des Griffs zum Verlängern
+    var zieht = null;
+
+    balken.addEventListener('pointermove', function (e) {
+      if (zieht) return;
+      var amRand = e.offsetX > balken.offsetWidth - RAND;
+      balken.style.cursor = amRand ? 'col-resize' : 'grab';
+    });
+
+    balken.addEventListener('pointerdown', function (e) {
+      if (e.button !== 0 || !A.darfBearbeiten()) return;
+      e.preventDefault();
+      zieht = {
+        art: e.offsetX > balken.offsetWidth - RAND ? 'laenge' : 'schieben',
+        x: e.clientX,
+        links0: parseFloat(balken.style.left) || 0,
+        breite0: parseFloat(balken.style.width) || 0,
+        tage0: g.tage, verz0: Math.round(num0(v.verz)),
+        start0: g.start, tageVersatz: 0
+      };
+      balken.setPointerCapture(e.pointerId);
+      balken.classList.add('zieht');
+      anzeigeZeigen(balken, v, g, zieht);
+    });
+
+    balken.addEventListener('pointermove', function (e) {
+      if (!zieht) return;
+      var tage = Math.round((e.clientX - zieht.x) / tagBreite);
+      if (zieht.art === 'laenge') {
+        /* Unter einen Tag geht es nicht. */
+        tage = Math.max(tage, 1 - zieht.tage0);
+        balken.style.width = Math.max(4, zieht.breite0 + tage * tagBreite) + 'px';
+      } else {
+        /* Ein abhängiger Vorgang hat kein eigenes Startdatum — bei ihm
+           wandert die Verzögerung, und die kann nicht negativ werden. */
+        if (v.abh) tage = Math.max(tage, -zieht.verz0);
+        balken.style.left = (zieht.links0 + tage * tagBreite) + 'px';
+      }
+      zieht.tageVersatz = tage;
+      anzeigeZeigen(balken, v, g, zieht);
+    });
+
+    function beenden(e) {
+      if (!zieht) return;
+      var stand = zieht;
+      zieht = null;
+      balken.classList.remove('zieht');
+      anzeigeWeg();
+      try { balken.releasePointerCapture(e.pointerId); } catch (f) { /* egal */ }
+
+      if (!stand.tageVersatz) { A.render(); return; }
+
+      if (stand.art === 'laenge') {
+        v.tage = Math.max(1, stand.tage0 + stand.tageVersatz);
+      } else if (v.abh) {
+        v.verz = Math.max(0, stand.verz0 + stand.tageVersatz);
+      } else {
+        v.start = A.datumPlusTage(stand.start0, stand.tageVersatz);
+      }
+      A.markDirty(); A.render();
+    }
+    balken.addEventListener('pointerup', beenden);
+    balken.addEventListener('pointercancel', beenden);
+  }
+
+  /* Während des Ziehens steht das entstehende Datum über dem Balken —
+     die Tabelle links wird ja erst nach dem Loslassen nachgeführt. */
+  var anzeige = null;
+
+  function anzeigeZeigen(balken, v, g, zieht) {
+    if (!anzeige) {
+      anzeige = el('div', { class: 'gzieher' });
+      document.body.appendChild(anzeige);
+    }
+    var start = g.start, tage = g.tage;
+    if (zieht.art === 'laenge') {
+      tage = Math.max(1, zieht.tage0 + zieht.tageVersatz);
+    } else {
+      start = A.datumPlusTage(zieht.start0, zieht.tageVersatz);
+    }
+    anzeige.textContent = A.datum(start) + ' – ' +
+      A.datum(A.datumPlusTage(start, tage - 1)) + ' · ' + tage + ' Tage' +
+      (zieht.art === 'schieben' && v.abh
+        ? ' · Verzug ' + Math.max(0, zieht.verz0 + zieht.tageVersatz) + ' T' : '');
+    var k = balken.getBoundingClientRect();
+    anzeige.style.left = (k.left + window.scrollX) + 'px';
+    anzeige.style.top = (k.top + window.scrollY - 24) + 'px';
+  }
+
+  function anzeigeWeg() {
+    if (anzeige) { anzeige.remove(); anzeige = null; }
+  }
+
+  function num0(x) { var n = parseFloat(x); return isFinite(n) ? n : 0; }
 
   function kopfzeile() {
     return el('div', { class: 'gzeile gkopf' }, [
@@ -652,7 +766,44 @@ window.APP = window.APP || {};
 
     function geaendert() { A.markDirty(); A.render(); }
 
-    zeile.appendChild(el('span', { class: 'gc gc-nr', text: String(i + 1) }));
+    /* Die Nummer ist zugleich der Griff zum Umsortieren. Nur sie ist
+       ziehbar, nicht die ganze Zeile — sonst liesse sich in den
+       Eingabefeldern kein Text mehr markieren. */
+    var griff = el('span', { class: 'gc gc-nr', text: String(i + 1),
+      draggable: 'true', title: 'ziehen, um die Reihenfolge zu ändern' });
+    griff.addEventListener('dragstart', function (e) {
+      e.dataTransfer.setData('text/plain', v.id);
+      e.dataTransfer.effectAllowed = 'move';
+      zeile.classList.add('nimmt');
+    });
+    griff.addEventListener('dragend', function () {
+      zeile.classList.remove('nimmt');
+      alleMarkenWeg();
+    });
+    zeile.appendChild(griff);
+
+    /* Abgelegt wird auf der ganzen Zeile: Die Marke zeigt, ob der
+       gezogene Vorgang darüber oder darunter einsortiert wird. */
+    zeile.addEventListener('dragover', function (e) {
+      if (!ziehtZeile) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      var k = zeile.getBoundingClientRect();
+      var oben = (e.clientY - k.top) < k.height / 2;
+      zeile.classList.toggle('ueber-oben', oben);
+      zeile.classList.toggle('ueber-unten', !oben);
+    });
+    zeile.addEventListener('dragleave', function () {
+      zeile.classList.remove('ueber-oben', 'ueber-unten');
+    });
+    zeile.addEventListener('drop', function (e) {
+      e.preventDefault();
+      var id = e.dataTransfer.getData('text/plain');
+      alleMarkenWeg();
+      if (!id || id === v.id) return;
+      var k = zeile.getBoundingClientRect();
+      einsortieren(p, id, v.id, (e.clientY - k.top) < k.height / 2);
+    });
 
     /* Bezeichnung */
     var name = el('input', { type: 'text', value: v.label || '',
@@ -751,6 +902,36 @@ window.APP = window.APP || {};
     ]));
 
     return zeile;
+  }
+
+  /* Läuft gerade ein Zeilenumzug? Ohne diese Merkhilfe würde jede
+     fremde Ablage (eine Datei aus dem Dateimanager etwa) die Zeilen
+     durcheinanderbringen. */
+  var ziehtZeile = false;
+  document.addEventListener('dragstart', function (e) {
+    ziehtZeile = !!(e.target && e.target.classList &&
+                    e.target.classList.contains('gc-nr'));
+  });
+  document.addEventListener('dragend', function () { ziehtZeile = false; });
+
+  function alleMarkenWeg() {
+    Array.prototype.forEach.call(
+      document.querySelectorAll('.gzeile.ueber-oben, .gzeile.ueber-unten'),
+      function (z) { z.classList.remove('ueber-oben', 'ueber-unten'); });
+  }
+
+  /* Den gezogenen Vorgang vor oder hinter das Ziel setzen. Die
+     Abhängigkeiten zeigen auf Ids, nicht auf Nummern — sie überstehen
+     das Umsortieren unverändert. */
+  function einsortieren(p, id, zielId, davor) {
+    var liste = A.vorgaenge(p);
+    var von = liste.findIndex(function (x) { return x.id === id; });
+    if (von < 0) return;
+    var bewegt = liste.splice(von, 1)[0];
+    var ziel = liste.findIndex(function (x) { return x.id === zielId; });
+    if (ziel < 0) { liste.splice(von, 0, bewegt); return; }
+    liste.splice(davor ? ziel : ziel + 1, 0, bewegt);
+    A.markDirty(); A.render();
   }
 
   function verschieben(p, i, richtung) {

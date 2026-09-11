@@ -889,10 +889,41 @@ window.APP = window.APP || {};
       status: 'offen',
       erledigt_am: '',
       erledigt_in: '',       // Id der Sitzung, in der er geschlossen wurde
-      bemerkung: ''
+      bemerkung: '',
+      /* Was aus der Aufgabe geworden ist: Rückmeldungen mit Datum, in
+         der Reihenfolge ihres Eintreffens. Eine Aufgabe läuft oft über
+         mehrere Sitzungen — «Bauprofile am 14.10., Bestätigung folgt»
+         ist ein Zwischenstand, dem später etwas nachkommt. Deshalb ein
+         Verlauf und kein einzelnes Feld. */
+      antworten: []
     };
     Object.keys(vorgabe || {}).forEach(function (k) { pt[k] = vorgabe[k]; });
+    if (!Array.isArray(pt.antworten)) pt.antworten = [];
+    pt.antworten = pt.antworten.map(A.defAntwort);
     return pt;
+  };
+
+  A.defAntwort = function (vorgabe) {
+    var a = { id: A.uid(), datum: A.heute(), text: '', von: '' };
+    Object.keys(vorgabe || {}).forEach(function (k) { a[k] = vorgabe[k]; });
+    return a;
+  };
+
+  /* Wer gerade schreibt. Im Firmenbetrieb der angemeldete Benutzer,
+     sonst der im Projekt eingetragene Bearbeiter. Leer ist zulässig —
+     die Rückmeldung steht dann ohne Urheber da. */
+  A.werBinIch = function () {
+    var pr = A.api && A.api.profil;
+    if (pr) return pr.name || pr.email || '';
+    var p = A.state && A.state.p;
+    return (p && p.bearbeiter) || '';
+  };
+
+  /* Die jüngste Rückmeldung einer Aufgabe — für Listen, die nur den
+     aktuellen Stand zeigen. */
+  A.letzteAntwort = function (pt) {
+    var a = (pt && pt.antworten) || [];
+    return a.length ? a[a.length - 1] : null;
   };
 
   /* Aufgaben ohne Sitzung liegen in einer eigenen Sammelsitzung je

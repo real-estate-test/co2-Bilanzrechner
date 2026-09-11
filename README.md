@@ -160,6 +160,18 @@ Projektmanagement-Honorar BKP 599; die Dritthonorare BKP 558.1 zählen mit.
 Wahlweise auch auf Anlagekosten, Landwert oder Projektgewinn. Alternativ Baurecht mit Einmalentschädigung und Baurechtszins.
 Kantonale Richtwerte für AG · SO · ZH · LU · BE · BS · BL sind hinterlegt.
 
+**Protokolle und Aufgaben** Sitzungsprotokolle nach Themen gegliedert, mit
+Aufgaben, Entscheiden und Infos. Offene Aufgaben aus der letzten Sitzung wandern
+beim Anlegen des nächsten Protokolls automatisch mit.
+
+An jeder Aufgabe hängt ein **Rückmeldungsverlauf**: kurze Einträge mit Datum und
+Urheber, die festhalten, was aus ihr geworden ist. Sie entstehen beim Umstellen
+auf *erledigt* oder *warten auf Rückmeldung* — das Feld klappt von selbst auf —
+oder jederzeit über *+ Rückmeldung*. Im Protokoll stehen sie eingerückt unter
+ihrer Aufgabe und werden mitgedruckt; beim Übernehmen ins nächste Protokoll
+wandern sie mit. Die Aufgaben lassen sich als Liste, Kanban, nach Zuständigkeit
+oder als Themenbild ansehen.
+
 **Baurecht-Check** Eine Sammlung des für das Grundstück geltenden Baurechts:
 75 Prüfpunkte in fünf Gruppen (Grundstück, Ziffern und Boni, Abstände und
 Begrenzungen, Weiteres, Grundbuch), je Punkt ein Eintrag, eine Bemerkung —

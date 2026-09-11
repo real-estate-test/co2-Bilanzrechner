@@ -544,7 +544,7 @@ window.APP = window.APP || {};
   }
 
   function pendenzenListe(p) {
-    var offen = P.offenePunkte(null);
+    var offen = offeneUndGefragte();
     var zeilen = offen.map(function (o) {
       var b = A.beteiligteListe(p).find(function (x) { return x.id === o.punkt.beteiligter; });
       var r = A.reihe(o.sitzung.reihe);
@@ -558,7 +558,10 @@ window.APP = window.APP || {};
           el('span', { class: 'themenpunkt', style: 'background:' + t.farbe }),
           el('span', { text: ' ' + t.label })
         ] : [el('span', { class: 'muted', text: '—' })]),
-        el('td', { text: o.punkt.text || '—' }),
+        el('td', {}, [
+          el('div', { text: o.punkt.text || '—' }),
+          antwortenBlock(o.punkt, o.sitzung)
+        ].filter(Boolean)),
         el('td', { style: 'width:74px' }, pr.id
           ? [el('span', { class: 'tag' + (pr.klasse ? ' ' + pr.klasse : ''), text: pr.label })]
           : [el('span', { class: 'muted', text: '—' })]),
@@ -589,7 +592,7 @@ window.APP = window.APP || {};
      --------------------------------------------------------------- */
 
   function nachZustaendigkeit(p) {
-    var offen = P.offenePunkte(null);
+    var offen = offeneUndGefragte();
     var beteiligte = A.beteiligteListe(p);
     var heute = A.heute();
 
@@ -648,7 +651,10 @@ window.APP = window.APP || {};
             el('span', { class: 'themenpunkt', style: 'background:' + t.farbe }),
             el('span', { text: ' ' + t.label })
           ] : [el('span', { class: 'muted', text: '—' })]),
-          el('td', { text: o.punkt.text || '—' }),
+          el('td', {}, [
+            el('div', { text: o.punkt.text || '—' }),
+            antwortenBlock(o.punkt, o.sitzung)
+          ].filter(Boolean)),
           el('td', { style: 'width:74px' }, pr.id
             ? [el('span', { class: 'tag' + (pr.klasse ? ' ' + pr.klasse : ''), text: pr.label })]
             : [el('span', { class: 'muted', text: '—' })]),
@@ -796,6 +802,12 @@ window.APP = window.APP || {};
         text: pt.termin ? A.datum(pt.termin) : 'ohne Termin' })
     ]));
 
+    /* Auf der Karte nur der jüngste Stand — der ganze Verlauf würde
+       die Tafel sprengen. Das Feld klappt hier genauso auf wie in der
+       Liste, damit ein Zug auf «erledigt» gleich zum Vermerk führt. */
+    var stand = antwortenBlock(pt, o.sitzung, { nurLetzte: true });
+    if (stand) k.appendChild(stand);
+
     k.appendChild(el('div', { class: 'kherkunft', text: o.herkunft }));
 
     /* Rückfallebene ohne Maus: eine Spalte zurück oder weiter */
@@ -841,9 +853,126 @@ window.APP = window.APP || {};
     } else if (wert !== A.STATUS_UEBERNOMMEN) {
       pt.erledigt_am = ''; pt.erledigt_in = '';
     }
+    /* Beim Abschliessen und beim Warten auf jemanden ist die Frage
+       «und was kam dabei heraus?» fällig. Das Feld klappt von selbst
+       auf; wer nichts einzutragen hat, geht einfach weiter. */
+    if (wert === 'erledigt' || wert === 'warten') S.fragtNach = pt.id;
     P.speichern(sitzung).then(function (ok) {
       if (ok) A.render();
     });
+  }
+
+  /* ---------------------------------------------------------------
+     Rückmeldungen — was aus einer Aufgabe geworden ist
+
+     Eine Aufgabe hält fest, was zu tun ist. Was dabei herauskam, steht
+     hier: kurze Einträge mit Datum, in der Reihenfolge ihres
+     Eintreffens. Sie wandern mit der Aufgabe ins nächste Protokoll und
+     stehen dort unter ihr — damit die Runde den Stand sieht, ohne
+     nachfragen zu müssen.
+     --------------------------------------------------------------- */
+
+  /* Zu welcher Aufgabe gerade ein Eingabefeld offen steht. Ausserhalb
+     der Daten: eine Frage des Augenblicks, keine Eigenschaft der
+     Aufgabe. */
+  S.fragtNach = null;
+
+  /* Die offenen Aufgaben — und dazu die eine, zu der gerade nach dem
+     Ergebnis gefragt wird. Ohne sie verschwände die Aufgabe im selben
+     Augenblick aus der Liste, in dem das Feld aufklappt: Wer auf
+     «erledigt» stellt, nimmt sie ja aus den offenen heraus. */
+  function offeneUndGefragte() {
+    var liste = P.offenePunkte(null);
+    if (!S.fragtNach) return liste;
+    if (liste.some(function (o) { return o.punkt.id === S.fragtNach; })) return liste;
+    var dazu = P.allePunkte('aufgabe').find(function (o) {
+      return o.punkt.id === S.fragtNach;
+    });
+    return dazu ? liste.concat([dazu]) : liste;
+  }
+
+  function antwortHinzu(pt, sitzung, text) {
+    text = String(text || '').trim();
+    if (!text) return false;
+    if (!Array.isArray(pt.antworten)) pt.antworten = [];
+    pt.antworten.push(A.defAntwort({ text: text, von: A.werBinIch() }));
+    S.fragtNach = null;
+    P.speichern(sitzung).then(function (ok) {
+      if (!ok) {
+        /* Nicht gespeichert: Der Eintrag darf nicht stehen bleiben und
+           Sicherheit vortäuschen. */
+        pt.antworten.pop();
+      }
+      A.render();
+    });
+    return true;
+  }
+
+  /* Die vorhandenen Rückmeldungen als Block. Wird im Protokoll unter
+     der Aufgabe und in den Aufgabenansichten verwendet. */
+  function antwortenListe(pt, opts) {
+    opts = opts || {};
+    var liste = pt.antworten || [];
+    if (!liste.length) return null;
+    var zeigen = opts.nurLetzte ? liste.slice(-1) : liste;
+
+    return el('div', { class: 'antworten' }, zeigen.map(function (a) {
+      return el('div', { class: 'antwort' }, [
+        el('span', { class: 'adatum', text: A.datum(a.datum) }),
+        el('span', { class: 'atext', text: a.text }),
+        a.von ? el('span', { class: 'avon', text: a.von }) : null
+      ].filter(Boolean));
+    }));
+  }
+
+  /* Eingabe einer neuen Rückmeldung. Geschrieben wird erst beim
+     Absenden — beim Tippen darf nichts neu gezeichnet werden. */
+  function antwortFeld(pt, sitzung) {
+    var feld = el('textarea', { rows: '1', class: 'zellenarea',
+      placeholder: pt.status === 'erledigt'
+        ? 'Was ist das Ergebnis?' : 'Was ist der Stand?',
+      style: 'height:30px' });
+
+    function senden() { if (!antwortHinzu(pt, sitzung, feld.value)) abbrechen(); }
+    function abbrechen() { S.fragtNach = null; A.render(); }
+
+    feld.addEventListener('input', function () {
+      feld.style.height = 'auto';
+      feld.style.height = Math.min(120, Math.max(30, feld.scrollHeight + 2)) + 'px';
+    });
+    /* Enter sendet, Umschalt+Enter macht eine neue Zeile — eine
+       Rückmeldung ist meist ein Satz. */
+    feld.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); senden(); }
+      if (e.key === 'Escape') { e.preventDefault(); abbrechen(); }
+    });
+    setTimeout(function () { feld.focus(); }, 0);
+
+    return el('div', { class: 'antwortfeld noprint' }, [
+      feld,
+      el('div', { class: 'antwortknoepfe' }, [
+        el('button', { class: 'primary sm schreibend', text: 'eintragen',
+          onclick: senden }),
+        el('button', { class: 'ghost sm', text: 'ohne Vermerk', onclick: abbrechen })
+      ])
+    ]);
+  }
+
+  /* Rückmeldungen samt Eingabe — der Baustein, den alle Ansichten
+     benutzen. */
+  function antwortenBlock(pt, sitzung, opts) {
+    opts = opts || {};
+    var teile = [antwortenListe(pt, opts)];
+
+    if (S.fragtNach === pt.id) {
+      teile.push(antwortFeld(pt, sitzung));
+    } else if (!opts.ohneKnopf) {
+      teile.push(el('button', { class: 'ghost sm schreibend noprint antwortplus',
+        text: '+ Rückmeldung', title: 'Festhalten, was aus dieser Aufgabe geworden ist',
+        onclick: function () { S.fragtNach = pt.id; A.render(); } }));
+    }
+    teile = teile.filter(Boolean);
+    return teile.length ? el('div', { class: 'antwortblock' }, teile) : null;
   }
 
   /* ---------------------------------------------------------------
@@ -1297,7 +1426,14 @@ window.APP = window.APP || {};
       thema: pt.thema, phase: pt.phase, beteiligter: pt.beteiligter,
       typ: 'aufgabe', text: pt.text, termin: pt.termin, prio: pt.prio,
       status: pt.status === 'warten' ? 'warten' : 'offen',
-      bemerkung: pt.bemerkung ? pt.bemerkung + ' · ' + herkunft : herkunft
+      bemerkung: pt.bemerkung ? pt.bemerkung + ' · ' + herkunft : herkunft,
+      /* Der Stand zieht mit um: Im neuen Protokoll steht unter der
+         Aufgabe, was seit der letzten Sitzung gemeldet wurde. Kopiert,
+         nicht geteilt — sonst schriebe eine spätere Rückmeldung auch
+         das alte Protokoll um, das längst versendet ist. */
+      antworten: (pt.antworten || []).map(function (a) {
+        return A.defAntwort({ datum: a.datum, text: a.text, von: a.von });
+      })
     });
     ziel.punkte.push(neu);
     /* Der alte Punkt lebt im neuen Protokoll weiter — das ist kein
@@ -1458,7 +1594,7 @@ window.APP = window.APP || {};
     tr.appendChild(el('td', { class: 'n muted', text: pt._nr || '' }));
 
     tr.appendChild(el('td', {}, [(function () {
-      var sel = el('select');
+      var sel = el('select', { class: 'nichtdrucken' });
       A.PUNKT_TYPEN.forEach(function (t) {
         sel.appendChild(el('option', { value: t.id, text: t.label,
           selected: pt.typ === t.id ? '' : null }));
@@ -1470,14 +1606,20 @@ window.APP = window.APP || {};
         schmutzig(); A.render();
       });
       return sel;
+    })(), (function () {
+      var t = A.PUNKT_TYPEN.find(function (x) { return x.id === pt.typ; });
+      return el('span', { class: 'nurdruck', text: t ? t.label : pt.typ });
     })()]));
 
     /* Das globale Textfeld ist 150 px hoch — in einer Protokollzeile
-       wäre das eine Wand. Dieses beginnt einzeilig und wächst mit. */
+       wäre das eine Wand. Dieses beginnt einzeilig und wächst mit.
+       Darunter steht, was aus der Aufgabe geworden ist — im Protokoll
+       eingerückt unter ihrem Traktandum, damit es mitgedruckt wird. */
     tr.appendChild(el('td', {}, [
       U.zelleArea(pt, 'text', { eigen: true, min: 38, breit: 220,
-        onchange: function (v) { pt.text = v; schmutzig(); } })
-    ]));
+        onchange: function (v) { pt.text = v; schmutzig(); } }),
+      pt.typ === 'aufgabe' ? antwortenBlock(pt, s) : null
+    ].filter(Boolean)));
 
     /* Thema — die Ordnung quer zu den Phasen. Der farbige Punkt macht
        eine lange Liste auf einen Blick lesbar. */
@@ -1539,26 +1681,33 @@ window.APP = window.APP || {};
         : datumFeld(pt, 'termin', function () { schmutzig(); A.render(); })
     ]));
 
-    tr.appendChild(el('td', {}, [
-      pt.typ === 'aufgabe'
-        ? (function () {
-            var sel = el('select');
-            A.PUNKT_STATUS.forEach(function (st) {
-              sel.appendChild(el('option', { value: st.id, text: st.label,
-                selected: pt.status === st.id ? '' : null }));
-            });
-            sel.addEventListener('change', function () {
-              pt.status = sel.value;
-              if (sel.value === 'erledigt') {
-                pt.erledigt_am = s.datum || A.heute();
-                pt.erledigt_in = s.id;
-              } else { pt.erledigt_am = ''; pt.erledigt_in = ''; }
-              schmutzig(); A.render();
-            });
-            return sel;
-          })()
-        : el('span', { class: 'muted', text: '—' })
-    ]));
+    /* Ein Auswahlfeld druckt seine Breite, nicht seinen Inhalt — aus
+       «warten auf Rückmeldung» würde auf dem Papier «wa…». Deshalb wie
+       bei Thema und Zuständigkeit: Feld am Bildschirm, Klartext im
+       Druck. */
+    tr.appendChild(el('td', {}, pt.typ === 'aufgabe'
+      ? (function () {
+          var sel = el('select', { class: 'nichtdrucken' });
+          A.PUNKT_STATUS.forEach(function (st) {
+            sel.appendChild(el('option', { value: st.id, text: st.label,
+              selected: pt.status === st.id ? '' : null }));
+          });
+          if (pt.status === A.STATUS_UEBERNOMMEN) {
+            sel.appendChild(el('option', { value: A.STATUS_UEBERNOMMEN,
+              text: 'übernommen', selected: '' }));
+          }
+          sel.addEventListener('change', function () {
+            pt.status = sel.value;
+            if (sel.value === 'erledigt') {
+              pt.erledigt_am = s.datum || A.heute();
+              pt.erledigt_in = s.id;
+            } else { pt.erledigt_am = ''; pt.erledigt_in = ''; }
+            schmutzig(); A.render();
+          });
+          return [sel, el('span', { class: 'nurdruck',
+            text: A.statusLabel(pt.status || 'offen') })];
+        })()
+      : [el('span', { class: 'muted', text: '—' })]));
 
     /* Die Phase steht schon als Überschrift über der Tabelle — auf dem
        Papier wäre die Spalte eine Wiederholung. */

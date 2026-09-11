@@ -397,6 +397,20 @@ textarea:focus { outline: none; border-color: var(--accent); }
   body.seite-protokolle .panel { border-color: #d8dde4; }
   body.seite-protokolle textarea { resize: none !important; }
 
+  /* Die Spaltenbreiten der Traktandentabelle sind für den Bildschirm
+     bemessen; zusammen sind sie breiter als ein A4-Blatt, und was
+     rechts übersteht, wird abgeschnitten — «warten auf Rückmeldung»
+     endete als «warten auf Rückmeldun». Auf Papier verteilt der
+     Browser die Breite selbst, nach Inhalt. */
+  body.seite-protokolle table { table-layout: auto; width: 100%; }
+  body.seite-protokolle th, body.seite-protokolle td { width: auto !important; }
+  body.seite-protokolle td, body.seite-protokolle th {
+    overflow-wrap: break-word; padding: 4px 5px;
+  }
+  /* Der waagrechte Rollbalken der Tabelle ist am Bildschirm nützlich;
+     auf Papier schneidet er die letzte Spalte ab. */
+  .tw { overflow: visible !important; }
+
   /* Der Briefkopf gehört auf jede Seite des Protokolls, nicht nur auf
      die erste — sonst weiss man auf Blatt drei nicht mehr, wozu die
      Punkte gehören. */
@@ -469,6 +483,36 @@ textarea:focus { outline: none; border-color: var(--accent); }
 .traktandenkopf .tlabel {
   font-weight: 640; font-size: 13px; color: var(--kopf);
   letter-spacing: -.01em;
+}
+
+/* --- Rückmeldungen zu einer Aufgabe ------------------------------- */
+
+/* Was aus einer Aufgabe geworden ist, steht eingerückt unter ihr —
+   sichtbar zugehörig, aber dem Aufgabentext untergeordnet. */
+.antwortblock { margin-top: 6px; }
+.antworten {
+  display: grid; gap: 3px;
+  border-left: 2px solid var(--line2); padding-left: 8px;
+}
+.antwort { font-size: 12px; color: var(--ink2); line-height: 1.4; }
+.antwort .adatum {
+  font-family: var(--mono); font-size: 11px; color: var(--muted);
+  margin-right: 6px; white-space: nowrap;
+}
+.antwort .avon { color: var(--muted); font-size: 11px; margin-left: 6px; }
+.antwort .avon::before { content: "· "; }
+
+.antwortplus {
+  margin-top: 4px; padding-left: 0; font-size: 11.5px;
+}
+.antwortfeld { margin-top: 6px; display: grid; gap: 6px; }
+.antwortknoepfe { display: flex; gap: 6px; }
+
+@media print {
+  /* Der Verlauf gehört ins versendete Protokoll — er ist die Antwort
+     auf «und was ist daraus geworden?». Der Eintragknopf nicht. */
+  .antworten { border-left-color: #d8dde4; }
+  .antwort .avon { display: inline; }
 }
 
 /* --- Aufgaben nach Zuständigkeit --------------------------------- */

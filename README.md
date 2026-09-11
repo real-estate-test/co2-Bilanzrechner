@@ -280,6 +280,20 @@ Eigenkapitalverzinsung. Der Vorverkauf wirkt zweifach: über eine frei definierb
 Staffel senkt er den Zinssatz, über den Zahlungsplan entlasten die Käuferzahlungen
 den Baukredit.
 
+**Ergebnis je Verwertungsart** Bei einem Mischprojekt sagt eine Gesamtmarge über
+alles wenig. Die Gesamtinvestition (Anlagekosten inklusive Vermarktung) wird
+deshalb über den Nutzflächenanteil auf **STWE**, **Miete** und **Exit** verteilt,
+und jedem Block steht seine eigene Kennzahl gegenüber: *EBT STWE* als
+(Erlös − anteilige Investition) ÷ anteilige Investition, dasselbe für den
+Exit-Anteil, und für den Mietanteil die Brutto- und Nettorendite. Der
+Flächenschlüssel behandelt jeden Quadratmeter gleich — wo Gewerbe im Erdgeschoss
+anders kostet als Wohnen darüber, bildet er das nicht ab.
+
+Die **Projektdauer** zeigt die Spanne vom Kaufdatum bis zum letzten Vorgang im
+Terminplan, sobald dieser gefüllt ist; gerechnet wird weiterhin mit den
+Phasendauern in Monaten, damit ein verschobener Termin die Marge nicht still
+verändert.
+
 **Ergebnis** Anlagekosten, Projektgewinn, Marge, Rendite auf Eigenkapital,
 interner Zinsfuss, Spitzenkapitalbedarf, Brutto- und Nettorendite,
 Wasserfalldarstellung, Cashflow und Kapitalbindung im Jahresraster.

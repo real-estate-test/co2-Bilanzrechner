@@ -580,7 +580,11 @@ window.APP = window.APP || {};
       stwe_erloes: 0,
       exit_wert: 0,
       halten_wert: 0,
-      nwf_stwe: 0, nwf_halten: 0
+      nwf_stwe: 0, nwf_halten: 0,
+      /* Getrennt nach Verwertung — Grundlage der anteiligen
+         Investition je Block. nwf_halten bleibt die Summe aus Miete
+         und Exit, weil die Renditekennzahlen darauf aufbauen. */
+      nwf_miete: 0, nwf_exit: 0
     };
 
     A.TEILE.forEach(function (T) {
@@ -629,7 +633,7 @@ window.APP = window.APP || {};
           r.exit_wert += pos.wert;
           r.sollmiete += miete_a;
           r.sollmiete_halten += miete_a;
-          if (!istPP) r.nwf_halten += menge;
+          if (!istPP) { r.nwf_halten += menge; r.nwf_exit += menge; }
         } else {
           var rh = Math.max(0.5, num(p.bewertung.rendite_halten));
           pos.wert = miete_a / pct(rh);
@@ -640,7 +644,7 @@ window.APP = window.APP || {};
           r.halten_wert += pos.wert;
           r.sollmiete += miete_a;
           r.sollmiete_halten += miete_a;
-          if (!istPP) r.nwf_halten += menge;
+          if (!istPP) { r.nwf_halten += menge; r.nwf_miete += menge; }
         }
         r.positionen.push(pos);
       });
@@ -651,6 +655,13 @@ window.APP = window.APP || {};
     /* Anteil der Ertragsflächen — Grundlage der anteiligen Anlagekosten
        für die Bruttorendite (Rückmeldung D2, Variante a). */
     r.anteil_ertrag = r.nwf_total > 0 ? r.nwf_halten / r.nwf_total : 0;
+    /* Anteile je Verwertung. Sie ergeben zusammen eins und verteilen
+       die Gesamtinvestition auf die drei Blöcke. Parkplätze zählen
+       nicht mit — sie haben keine Nutzfläche und würden den Schlüssel
+       verzerren. */
+    r.anteil_stwe  = r.nwf_total > 0 ? r.nwf_stwe  / r.nwf_total : 0;
+    r.anteil_miete = r.nwf_total > 0 ? r.nwf_miete / r.nwf_total : 0;
+    r.anteil_exit  = r.nwf_total > 0 ? r.nwf_exit  / r.nwf_total : 0;
     return r;
   };
 
@@ -1322,6 +1333,24 @@ window.APP = window.APP || {};
     var nettorendite  = ak_ertrag > 0 ? BET.noi_a / ak_ertrag * 100 : 0;
     var margeAK = anlagekosten > 0 ? gewinnNach / anlagekosten * 100 : 0;
     var margeErloes = erloese > 0 ? gewinnNach / erloese * 100 : 0;
+
+    /* --- Aufteilung nach Verwertung -------------------------------
+       Die Gesamtinvestition (Anlagekosten inklusive Vermarktung) wird
+       über den Nutzflächenanteil auf die drei Verwertungsarten
+       verteilt. Jedem Block steht sein eigener Erlös gegenüber; die
+       Marge darauf misst, was der Block für sich genommen trägt.
+
+       Der Flächenschlüssel behandelt jeden Quadratmeter gleich. Wo
+       Gewerbe im Erdgeschoss deutlich anders kostet als Wohnen
+       darüber, bildet er das nicht ab — für die Beurteilung eines
+       Mischprojekts ist er trotzdem aussagekräftiger als eine
+       Gesamtmarge über alles. */
+    var gi_stwe  = gesamtinvestition * ERT.anteil_stwe;
+    var gi_miete = gesamtinvestition * ERT.anteil_miete;
+    var gi_exit  = gesamtinvestition * ERT.anteil_exit;
+
+    var ebtStwe = gi_stwe > 0 ? (ERT.stwe_erloes - gi_stwe) / gi_stwe * 100 : 0;
+    var ebtExit = gi_exit > 0 ? (ERT.exit_wert - gi_exit) / gi_exit * 100 : 0;
     /* ROE auf das verpflichtete Eigenkapital (Quote × Gesamtinvestition).
        Die effektiv gebundene Spitze wird separat ausgewiesen — sie liegt bei
        hohem Vorverkauf deutlich tiefer und würde die Kennzahl schönen. */
@@ -1468,9 +1497,37 @@ window.APP = window.APP || {};
         noi: BET.noi_a,
         ak_pro_nwf: F.total.nwf > 0 ? anlagekosten / F.total.nwf : 0,
         bau_pro_gf: F.total.gf > 0 ? BAU.total / F.total.gf : 0,
-        dauer: Z.t_ende
+        dauer: Z.t_ende,
+        dauer_plan: E.planDauer(p),
+
+        /* Gesamtinvestition und Ergebnis je Verwertungsart */
+        gi_stwe: gi_stwe,
+        gi_miete: gi_miete,
+        gi_exit: gi_exit,
+        anteil_stwe: ERT.anteil_stwe,
+        anteil_miete: ERT.anteil_miete,
+        anteil_exit: ERT.anteil_exit,
+        ebt_stwe: ebtStwe,
+        ebt_exit: ebtExit
       }
     };
+  };
+
+  /* Projektdauer aus dem Terminplan: vom Kaufdatum bis zum spätesten
+     Ende aller Vorgänge. Reine Anzeige — gerechnet wird weiterhin mit
+     den Monatsdauern, damit ein verschobener Termin die Marge nicht
+     still verändert. Ohne Terminplan oder Startdatum: null. */
+  E.planDauer = function (p) {
+    if (!p || !p.startdatum || !A.terminplanRechnen) return null;
+    var ber = A.terminplanRechnen(p).byId;
+    var spaetestes = null;
+    Object.keys(ber).forEach(function (id) {
+      var e = ber[id].ende;
+      if (e && (!spaetestes || e > spaetestes)) spaetestes = e;
+    });
+    if (!spaetestes) return null;
+    var tage = A.tageZwischen(p.startdatum, spaetestes);
+    return tage === null ? null : Math.max(0, tage / 365.25);
   };
 
   /* ---------------------------------------------------------------

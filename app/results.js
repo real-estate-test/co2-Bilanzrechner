@@ -148,24 +148,58 @@ window.APP = window.APP || {};
     var kacheln = el('div', { class: 'panelbody' });
     U.derived.push(function () {
       var k = A.state.r.kpi, pp = A.state.p;
+      /* Erste Reihe: was das Projekt kostet und einbringt.
+         Zweite Reihe: dasselbe je Verwertungsart — bei einem
+         Mischprojekt sagt eine Gesamtmarge über alles wenig. */
+      var anteilText = function (a) { return A.fmtPct(a * 100) + ' der Nutzfläche'; };
+
       U.leeren(kacheln).appendChild(el('div', { class: 'cols c4' }, [
-        U.kachel('Anlagekosten', fmt(k.anlagekosten), fmt(k.ak_pro_nwf) + ' CHF/m² NWF'),
-        U.kachel('Gesamtinvestition', fmt(k.gesamtinvestition), 'inkl. Vermarktung'),
+        /* Bewusst mit Zusatz benannt: Die Kennzahlenleiste oben und der
+           Rechenweg unten meinen mit «Anlagekosten» die Summe OHNE
+           Vermarktung — zwei gleich benannte Zahlen mit verschiedenem
+           Inhalt wären die schlechteste aller Lösungen. */
+        U.kachel('Anlagekosten inkl. Vermarktung', fmt(k.gesamtinvestition),
+          fmt(k.ak_pro_nwf) + ' CHF/m² NWF · ohne Vermarktung ' + A.fmtMio(k.anlagekosten)),
         U.kachel('Erlöse total', fmt(k.erloese + k.mietertrag_projekt)),
         U.kachel('Projektgewinn', fmt(k.gewinn), p.steuern.aktiv ? 'nach Steuern' : 'vor Steuern',
           k.gewinn >= 0 ? 'pos' : 'neg'),
-        U.kachel('Marge auf Anlagekosten', A.fmtPct(k.marge_ak), 'Ziel ' + A.fmtPct(pp.ziele.marge),
+        U.kachel('Marge auf Anlagekosten', A.fmtPct(k.marge_ak),
+          'gesamt · Ziel ' + A.fmtPct(pp.ziele.marge),
           k.marge_ak >= pp.ziele.marge ? 'pos' : 'neg'),
-        U.kachel('Marge auf Erlös', A.fmtPct(k.marge_erloes)),
+
+        U.kachel('Gesamtinvestition Anteil STWE', fmt(k.gi_stwe), anteilText(k.anteil_stwe)),
+        U.kachel('Erlöse STWE', fmt(k.stwe_erloes)),
+        U.kachel('EBT STWE', A.fmtPct(k.ebt_stwe),
+          k.gi_stwe > 0 ? fmt(k.stwe_erloes - k.gi_stwe) + ' auf ' + A.fmtMio(k.gi_stwe)
+                        : 'keine STWE-Fläche',
+          k.gi_stwe > 0 ? (k.ebt_stwe >= pp.ziele.marge ? 'pos' : 'neg') : ''),
+        U.kachel('Marge auf Erlös', A.fmtPct(k.marge_erloes), 'gesamt'),
+
+        U.kachel('Gesamtinvestition Anteil Miete', fmt(k.gi_miete), anteilText(k.anteil_miete)),
+        U.kachel('Bruttorendite Miete', A.fmtPct(k.bruttorendite, 2),
+          'auf ' + A.fmtMio(k.ak_ertrag) + ' anteilige AK · Ziel ' + A.fmtPct(pp.ziele.bruttorendite, 2),
+          k.bruttorendite >= pp.ziele.bruttorendite ? 'pos' : ''),
+        U.kachel('Nettorendite Miete', A.fmtPct(k.nettorendite, 2),
+          A.fmtPct(k.anteil_ertrag * 100) + ' der Nutzfläche wird gehalten'),
+        U.kachel('Sollmiete', fmt(k.sollmiete), 'pro Jahr, Miete und Exit'),
+
+        U.kachel('Gesamtinvestition Anteil Exit', fmt(k.gi_exit), anteilText(k.anteil_exit)),
+        U.kachel('Erlöse Verkauf an Endinvestor', fmt(k.exit_wert)),
+        U.kachel('EBT Exit', A.fmtPct(k.ebt_exit),
+          k.gi_exit > 0 ? fmt(k.exit_wert - k.gi_exit) + ' auf ' + A.fmtMio(k.gi_exit)
+                        : 'kein Exit-Anteil',
+          k.gi_exit > 0 ? (k.ebt_exit >= pp.ziele.marge ? 'pos' : 'neg') : ''),
+        U.kachel('Wert gehaltener Flächen', fmt(k.halten_wert), 'bei Projektende'),
+
         U.kachel('Rendite auf Eigenkapital', A.fmtPct(k.roe), 'auf ' + A.fmtMio(k.ek_max) + ' verpflichtet'),
         U.kachel('Interner Zinsfuss', k.irr === null ? '–' : A.fmtPct(k.irr), 'auf Eigenkapital-Cashflow'),
         U.kachel('Spitzenkapitalbedarf', fmt(k.kapital_peak), 'EK ' + A.fmtMio(k.ek_eingesetzt) + ' · FK ' + A.fmtMio(k.fk_peak)),
-        U.kachel('Bruttorendite Ertragsflächen', A.fmtPct(k.bruttorendite, 2),
-          'auf ' + A.fmtMio(k.ak_ertrag) + ' anteilige AK · Ziel ' + A.fmtPct(pp.ziele.bruttorendite, 2),
-          k.bruttorendite >= pp.ziele.bruttorendite ? 'pos' : ''),
-        U.kachel('Nettorendite Ertragsflächen', A.fmtPct(k.nettorendite, 2),
-          A.fmtPct(k.anteil_ertrag * 100) + ' der Nutzfläche wird gehalten'),
-        U.kachel('Projektdauer', A.fmt(k.dauer, 2) + ' Jahre')
+        /* Gerechnet wird mit den Monatsdauern; der Terminplan liefert
+           die Spanne bis zum letzten Vorgang, sobald er gefüllt ist. */
+        U.kachel('Projektdauer',
+          A.fmt(k.dauer_plan === null ? k.dauer : k.dauer_plan, 2) + ' Jahre',
+          k.dauer_plan === null ? 'aus den Phasendauern'
+            : 'aus dem Terminplan · gerechnet ' + A.fmt(k.dauer, 2))
       ]));
     });
     out.appendChild(U.panel('Kennzahlen', null, [kacheln]));

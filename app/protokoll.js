@@ -681,36 +681,127 @@ window.APP = window.APP || {};
   }
   P.aufgabenTextFeld = aufgabenTextFeld;
 
+  /* ---------------------------------------------------------------
+     Die übrigen Felder einer Aufgabe ohne Protokoll
+
+     Wer eine Aufgabe hier anlegt, muss sie hier auch vollständig
+     beschreiben können — Thema, Priorität, Zuständigkeit und Termin
+     wie in einem Protokoll. Eine Aufgabe AUS einem Protokoll bleibt
+     dagegen, wie sie dort beschlossen wurde: Sie zeigt ihre Angaben
+     nur an. Geändert werden dürfen an ihr Status und Rückmeldung —
+     das ist die Arbeit daran, nicht ihr Wortlaut.
+     --------------------------------------------------------------- */
+
+  function freiErfasst(o) {
+    return A.istManuell(o.sitzung) && !o.punkt.aus_sitzung;
+  }
+  P.freiErfasst = freiErfasst;
+
+  /* Eine Änderung an einer Auswahl greift sofort. Anders als beim
+     Tippen ist ein Neuzeichnen hier harmlos — die Auswahl ist beendet. */
+  function sofort(o) {
+    P.speichern(o.sitzung).then(function (ok) { if (ok) A.render(); });
+  }
+
+  function themaZelle(o) {
+    var t = A.thema(o.punkt.thema);
+    if (!freiErfasst(o)) {
+      return t ? el('span', { style: 'display:flex;align-items:center;gap:5px' }, [
+        el('span', { class: 'themenpunkt', style: 'background:' + t.farbe }),
+        el('span', { text: t.label })
+      ]) : el('span', { class: 'muted', text: '—' });
+    }
+    var sel = el('select', { class: 'schreibend' });
+    sel.appendChild(el('option', { value: '', text: '— ohne —' }));
+    A.themenListe().forEach(function (x) {
+      sel.appendChild(el('option', { value: x.id, text: x.label,
+        selected: o.punkt.thema === x.id ? '' : null }));
+    });
+    sel.addEventListener('change', function () {
+      o.punkt.thema = sel.value; sofort(o);
+    });
+    var marke = el('span', { class: 'themenpunkt', style: t
+      ? 'background:' + t.farbe : 'background:transparent;border:1px solid var(--line2)' });
+    return el('span', { style: 'display:flex;align-items:center;gap:5px' }, [marke, sel]);
+  }
+
+  function prioZelle(o) {
+    var pr = A.prioritaet(o.punkt.prio);
+    if (!freiErfasst(o)) {
+      return pr.id
+        ? el('span', { class: 'tag' + (pr.klasse ? ' ' + pr.klasse : ''), text: pr.label })
+        : el('span', { class: 'muted', text: '—' });
+    }
+    var sel = el('select', { class: 'schreibend' });
+    A.PRIORITAETEN.forEach(function (x) {
+      sel.appendChild(el('option', { value: x.id, text: x.label,
+        selected: (o.punkt.prio || '') === x.id ? '' : null }));
+    });
+    sel.addEventListener('change', function () {
+      o.punkt.prio = sel.value; sofort(o);
+    });
+    return sel;
+  }
+
+  function werZelle(o, beteiligte) {
+    var wer = beteiligte.find(function (b) { return b.id === o.punkt.beteiligter; });
+    if (!freiErfasst(o)) {
+      return el('span', { text: wer ? (wer.name || wer.kuerzel) : 'ohne Zuständigkeit' });
+    }
+    var sel = el('select', { class: 'schreibend' });
+    sel.appendChild(el('option', { value: '', text: '— ohne —' }));
+    beteiligte.forEach(function (b) {
+      sel.appendChild(el('option', { value: b.id,
+        text: [b.kuerzel, b.name].filter(Boolean).join(' · '),
+        selected: o.punkt.beteiligter === b.id ? '' : null }));
+    });
+    sel.addEventListener('change', function () {
+      o.punkt.beteiligter = sel.value; sofort(o);
+    });
+    return sel;
+  }
+
+  /* Der Termin als Zelle. Bei einer Aufgabe ohne Protokoll ein
+     Eingabefeld, daneben dieselbe Angabe als Marke — sie zeigt auf
+     einen Blick, was überfällig ist. */
+  function terminFeldZelle(o) {
+    if (!freiErfasst(o)) return terminZelle(o.punkt.termin);
+    var feld = el('input', { type: 'date', value: o.punkt.termin || '',
+      class: 'nichtdrucken', style: 'width:100%' });
+    feld.addEventListener('change', function () {
+      o.punkt.termin = feld.value; sofort(o);
+    });
+    return el('td', { class: 'n', style: 'width:130px' }, [
+      feld,
+      el('span', { class: 'nurdruck',
+        text: o.punkt.termin ? A.datum(o.punkt.termin) : '—' })
+    ]);
+  }
+
   function pendenzenListe(p) {
     var offen = offeneUndGefragte();
+    var beteiligte = A.beteiligteListe(p);
     var zeilen = offen.map(function (o) {
-      var b = A.beteiligteListe(p).find(function (x) { return x.id === o.punkt.beteiligter; });
       var r = A.reihe(o.sitzung.reihe);
-      var t = A.thema(o.punkt.thema);
-      var pr = A.prioritaet(o.punkt.prio);
       /* Abgeschlossenes tritt zurück, bleibt aber lesbar — es ist die
          Chronik, nicht die Arbeitsliste. */
       var zu = !A.statusOffen(o.punkt.status);
       return el('tr', { class: zu ? 'aufgabezu' : '' }, [
         el('td', { class: 'muted', style: 'width:120px',
-          text: (r ? r.kuerzel || r.label : '') + ' ' + o.sitzung.nummer + ' · ' +
-                A.datum(o.sitzung.datum) }),
-        el('td', { style: 'width:150px' }, t ? [
-          el('span', { class: 'themenpunkt', style: 'background:' + t.farbe }),
-          el('span', { text: ' ' + t.label })
-        ] : [el('span', { class: 'muted', text: '—' })]),
+          text: freiErfasst(o) ? 'ohne Protokoll'
+            : (r ? r.kuerzel || r.label : '') + ' ' + o.sitzung.nummer + ' · ' +
+              A.datum(o.sitzung.datum) }),
+        el('td', { style: 'width:150px' }, [themaZelle(o)]),
         el('td', {}, [
           aufgabenTextFeld(o),
           antwortenBlock(o.punkt, o.sitzung)
         ].filter(Boolean)),
-        el('td', { style: 'width:74px' }, pr.id
-          ? [el('span', { class: 'tag' + (pr.klasse ? ' ' + pr.klasse : ''), text: pr.label })]
-          : [el('span', { class: 'muted', text: '—' })]),
-        el('td', { style: 'width:150px', text: b ? (b.name || b.kuerzel) : 'ohne Zuständigkeit' }),
+        el('td', { style: 'width:90px' }, [prioZelle(o)]),
+        el('td', { style: 'width:150px' }, [werZelle(o, beteiligte)]),
         zu && o.punkt.erledigt_am
           ? el('td', { class: 'n muted', style: 'width:110px',
               text: A.datum(o.punkt.erledigt_am) })
-          : terminZelle(o.punkt.termin),
+          : terminFeldZelle(o),
         el('td', { style: 'width:180px' }, [statuswahl(o.punkt, o.sitzung)])
       ]);
     });
@@ -789,29 +880,22 @@ window.APP = window.APP || {};
       var sortiert = g.punkte.slice().sort(sortierung);
 
       var zeilen = sortiert.map(function (o) {
-        var t = A.thema(o.punkt.thema);
-        var pr = A.prioritaet(o.punkt.prio);
         var r = A.reihe(o.sitzung.reihe);
         var fertig = !A.statusOffen(o.punkt.status);
         return el('tr', { class: fertig ? 'aufgabezu' : '' }, [
-          el('td', { style: 'width:150px' }, t ? [
-            el('span', { class: 'themenpunkt', style: 'background:' + t.farbe }),
-            el('span', { text: ' ' + t.label })
-          ] : [el('span', { class: 'muted', text: '—' })]),
+          el('td', { style: 'width:150px' }, [themaZelle(o)]),
           el('td', {}, [
             aufgabenTextFeld(o),
             antwortenBlock(o.punkt, o.sitzung)
           ].filter(Boolean)),
-          el('td', { style: 'width:74px' }, pr.id
-            ? [el('span', { class: 'tag' + (pr.klasse ? ' ' + pr.klasse : ''), text: pr.label })]
-            : [el('span', { class: 'muted', text: '—' })]),
+          el('td', { style: 'width:90px' }, [prioZelle(o)]),
           fertig && o.punkt.erledigt_am
             ? el('td', { class: 'n muted', style: 'width:110px',
                 text: A.datum(o.punkt.erledigt_am) })
-            : terminZelle(o.punkt.termin),
+            : terminFeldZelle(o),
           el('td', { style: 'width:180px' }, [statuswahl(o.punkt, o.sitzung)]),
           el('td', { class: 'muted', style: 'width:120px',
-            text: A.istManuell(o.sitzung) ? 'manuell'
+            text: freiErfasst(o) ? 'ohne Protokoll'
                 : (r ? r.kuerzel || r.label : '') + ' ' + o.sitzung.nummer })
         ]);
       });
@@ -942,24 +1026,41 @@ window.APP = window.APP || {};
     }
 
     var marken = el('div', { class: 'kmarken' });
-    if (t) {
-      marken.appendChild(el('span', { class: 'tag', style: 'border-color:' + t.farbe,
-        text: t.label }));
-    }
-    if (pr.id) {
-      marken.appendChild(el('span', { class: 'tag' + (pr.klasse ? ' ' + pr.klasse : ''),
-        text: pr.label }));
+    if (freiErfasst(o)) {
+      /* Ohne Protokoll erfasst: Die Karte ist der Ort, an dem die
+         Aufgabe beschrieben wird — also Felder statt Marken. */
+      marken.appendChild(themaZelle(o));
+      marken.appendChild(prioZelle(o));
+    } else {
+      if (t) {
+        marken.appendChild(el('span', { class: 'tag', style: 'border-color:' + t.farbe,
+          text: t.label }));
+      }
+      if (pr.id) {
+        marken.appendChild(el('span', { class: 'tag' + (pr.klasse ? ' ' + pr.klasse : ''),
+          text: pr.label }));
+      }
     }
     if (pt.status === A.STATUS_UEBERNOMMEN) {
       marken.appendChild(el('span', { class: 'tag', text: 'übernommen' }));
     }
     if (marken.childNodes.length) k.appendChild(marken);
 
-    k.appendChild(el('div', { class: 'kfuss' }, [
-      el('span', { text: b ? (b.kuerzel || b.name) : 'ohne Zuständigkeit' }),
-      el('span', { class: pt.termin && ueberfaellig ? 'spaet' : '',
-        text: pt.termin ? A.datum(pt.termin) : 'ohne Termin' })
-    ]));
+    if (freiErfasst(o)) {
+      var wahl = werZelle(o, beteiligte);
+      var tf = el('input', { type: 'date', value: pt.termin || '', class: 'nichtdrucken' });
+      tf.addEventListener('change', function () {
+        pt.termin = tf.value;
+        P.speichern(o.sitzung).then(function (ok) { if (ok) A.render(); });
+      });
+      k.appendChild(el('div', { class: 'kfuss' }, [wahl, tf]));
+    } else {
+      k.appendChild(el('div', { class: 'kfuss' }, [
+        el('span', { text: b ? (b.kuerzel || b.name) : 'ohne Zuständigkeit' }),
+        el('span', { class: pt.termin && ueberfaellig ? 'spaet' : '',
+          text: pt.termin ? A.datum(pt.termin) : 'ohne Termin' })
+      ]));
+    }
 
     /* Auf der Karte nur der jüngste Stand — der ganze Verlauf würde
        die Tafel sprengen. Das Feld klappt hier genauso auf wie in der

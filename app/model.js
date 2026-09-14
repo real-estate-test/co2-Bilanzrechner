@@ -1808,13 +1808,27 @@ window.APP = window.APP || {};
            «preis» wird daraus abgeleitet. Zwei Wahrheiten nebeneinander
            gäbe es damit nicht — nur zwei Wege, zur selben zu kommen. */
         preismodus: 'einheit',           // einheit | m2
-        /* Je Einheit: {nr, anzahl, geschoss, zimmer, flaeche, preis, zeile}
-           «anzahl» fasst gleichwertige Wohnungen zusammen — Fläche und
-           Preis gelten je Einheit und werden mit der Anzahl multipliziert.
-           Im Modus «m2» kommt «preis_m2» als führende Grösse dazu.
+        /* Dasselbe für die Miete. Gerechnet wird mit «miete» je Monat;
+           im Modus «m2» führt die Jahresmiete je Quadratmeter, wie man
+           Gewerbe und grössere Bestände kalkuliert. */
+        mietmodus: 'monat',              // monat | m2
+        /* Je Einheit: {nr, haus, anzahl, geschoss, zimmer, flaeche,
+           preis, miete, zeile}
+           «anzahl» fasst gleichwertige Wohnungen zusammen — Fläche,
+           Preis und Miete gelten je Einheit und werden mit der Anzahl
+           multipliziert. In den m²-Modi kommen «preis_m2» und
+           «miete_m2» als führende Grössen dazu.
+           «haus» ist eine freie Bezeichnung; über sie lassen sich alle
+           Einheiten eines Hauses auf einmal einer Nutzungszeile
+           zuordnen — ob verkauft oder vermietet wird, entscheidet sich
+           in der Regel je Haus.
            «zeile» verweist auf eine Nutzungszeile — darüber erbt die
            Einheit Art und Verwertung. Ohne Spiegel gilt der
-           Durchschnittspreis der Zeile. */
+           Durchschnittswert der Zeile.
+           Welches Feld zählt, sagt die Verwertung der Zeile: Beim
+           Verkauf der Preis, beim Halten und beim Exit die Miete. Das
+           jeweils andere bleibt erhalten — ein Projekt wechselt die
+           Verwertung im Verlauf oft noch. */
         einheiten: []
       },
 

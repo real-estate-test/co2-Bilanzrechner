@@ -314,6 +314,54 @@
   pruefe('Exit-Wert = Sollmiete / 4 %', rh.flaechen.total.nwf * 400 / 0.04, rh.ertraege.exit_wert, 5);
   pruefe('Exit zählt nicht zum STWE-Erlös', 0, rh.ertraege.stwe_erloes);
 
+  /* ---- Wohnungsspiegel: Verkauf und Miete nebeneinander ---------- */
+  var ws = A.defaultProject();
+  ws.grundstueck.geschosse = 5;
+  ws.teile.neubau.nutzungen = [
+    A.defNutzung({ bezeichnung: 'STWE', art: 'wohnen', anteil: 55, preis: 10000, verwertung: 'stwe' }),
+    A.defNutzung({ bezeichnung: 'Miete', art: 'wohnen', anteil: 45, miete: 320, verwertung: 'halten_vermietet' })
+  ];
+  var idV = ws.teile.neubau.nutzungen[0].id, idM = ws.teile.neubau.nutzungen[1].id;
+  ws.spiegel.aktiv = true;
+  ws.spiegel.teil = 'neubau';
+  ws.spiegel.einheiten = [
+    { nr: 'A1', haus: 'A', anzahl: 4, zimmer: 2.5, flaeche: 62, preis: 640000, zeile: idV },
+    { nr: 'A2', haus: 'A', anzahl: 6, zimmer: 3.5, flaeche: 88, preis: 880000, zeile: idV },
+    { nr: 'B1', haus: 'B', anzahl: 5, zimmer: 3.5, flaeche: 85, miete: 2100, zeile: idM },
+    { nr: 'B2', haus: 'B', anzahl: 3, zimmer: 4.5, flaeche: 108, miete: 2650, zeile: idM }
+  ];
+  var rws = E.compute(ws);
+  pruefe('Spiegel: STWE-Erlös aus den Einheitspreisen',
+    4 * 640000 + 6 * 880000, rws.ertraege.stwe_erloes, 1);
+  /* Die Miete wird je Monat erfasst und aufs Jahr gebracht. */
+  pruefe('Spiegel: Sollmiete aus den Monatsmieten',
+    (5 * 2100 + 3 * 2650) * 12, rws.ertraege.sollmiete, 1);
+  pruefe('Spiegel: Ertragswert = Sollmiete / Bewertungsrendite',
+    (5 * 2100 + 3 * 2650) * 12 / 0.04, rws.ertraege.halten_wert, 5);
+  pruefe('Spiegel: Fläche der Mietzeile aus den Einheiten',
+    5 * 85 + 3 * 108, rws.flaechen.teile.neubau.nutzungen[idM], 0.5);
+  /* Eine Verkaufszeile bleibt vom Mietfeld unberührt und umgekehrt. */
+  pruefe('Spiegel: keine Sollmiete auf der Verkaufszeile', 0,
+    rws.ertraege.positionen.find(function (x) { return x.nutzung === idV; }).sollmiete);
+  pruefe('Spiegel: kein Erlös auf der Mietzeile', 0,
+    rws.ertraege.positionen.find(function (x) { return x.nutzung === idM; }).erloes);
+
+  /* Ohne Miete im Spiegel gilt weiterhin der Durchschnitt der Zeile. */
+  var wo = A.clone(ws);
+  wo.spiegel.einheiten.forEach(function (e) { e.miete = 0; });
+  var rwo = E.compute(wo);
+  pruefe('ohne Miete im Spiegel gilt der Zeilendurchschnitt',
+    (5 * 85 + 3 * 108) * 320, rwo.ertraege.sollmiete, 1);
+
+  /* Teilweise erfasst: Die fehlende Miete wird gemeldet, nicht ersetzt. */
+  var wt = A.clone(ws);
+  wt.spiegel.einheiten[3].miete = 0;
+  var rwt = E.compute(wt);
+  pruefe('teilweise erfasste Miete zählt nur das Erfasste',
+    5 * 2100 * 12, rwt.ertraege.sollmiete, 1);
+  pruefe('und wird als Lücke gemeldet', true,
+    rwt.warnungen.some(function (w) { return /Spiegel ohne Miete/.test(w.text); }));
+
   /* ---- Betrieb ohne gehaltene Flächen ---------------------------- */
   var s0 = A.defaultProject();
   pruefe('kein Betriebsaufwand ohne gehaltene Fläche', 0, E.compute(s0).betrieb.total_a);

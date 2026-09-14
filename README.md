@@ -274,21 +274,46 @@ sollen: Jede Einheit wird einer Nutzungszeile zugeordnet und erbt von dort Art
 und Verwertung; Fläche und Durchschnittspreis der Zeile ergeben sich dann aus den
 Einheiten. Ohne Spiegel gilt der erfasste Durchschnittswert.
 
-Ein Umschalter bestimmt, **womit der Preis erfasst wird**: *Preis je Einheit*
-(dann wird CHF/m² gerechnet) oder *Preis je m²* (dann der Einheitspreis). Beide
-Wege führen zum selben Ergebnis — gerechnet wird immer mit dem Preis je Einheit,
-im m²-Modus wird er aus Fläche × CHF/m² gebildet. Dort führt der
-Quadratmeterpreis: Ändert sich die Fläche, wächst der Einheitspreis mit. Beim
-Umschalten wird der bestehende Stand übernommen, sodass keine Zahl springt.
+Der Spiegel trägt **Verkauf und Miete nebeneinander**. Welches Feld eine Zeile
+zeigt, sagt die Verwertung ihrer Nutzungszeile: Beim Verkauf der Preis, beim
+Halten und beim Exit die Miete. Der jeweils andere Wert bleibt im Datensatz
+erhalten — ein Projekt wechselt die Verwertung im Verlauf oft noch. Zwei
+Tabellen braucht es dafür nicht: Nr., Haus, Geschoss, Zimmer und Fläche sind
+dieselben, und ein Wohnungsmix will zusammen gelesen werden.
+
+Je ein Umschalter bestimmt, **womit erfasst wird**: *Preis je Einheit* oder
+*Preis je m²*, *Miete je Monat* oder *Miete je m² und Jahr*. Gerechnet wird immer
+mit dem Preis je Einheit und der Monatsmiete; in den m²-Modi werden sie aus der
+Fläche gebildet. Dort führt der Quadratmeterwert: Ändert sich die Fläche, wächst
+der Betrag je Einheit mit. Beim Umschalten wird der bestehende Stand übernommen,
+sodass keine Zahl springt.
+
+Die **Miete aus dem Spiegel schlägt auf die Nutzungszeile durch**, so wie es der
+Preis schon tat — sonst stünde bei einzeln erfassten Wohnungen deren Fläche neben
+dem Mietdurchschnitt der Zeile. Ist für eine Mietzeile gar keine Miete erfasst,
+gilt weiterhin der Zeilendurchschnitt. Ist sie nur **teilweise** erfasst, zählt
+nur das Erfasste — und eine Warnung nennt die Wohnungen ohne Miete samt ihrer
+Fläche: Sie zählen in die Rendite, ihr Ertrag fehlt.
+
+Die Spalte **Haus** ist eine freie Bezeichnung. Darunter lassen sich alle
+Einheiten eines Hauses in einem Zug derselben Nutzungszeile zuordnen — ob
+verkauft oder vermietet wird, entscheidet sich in der Regel je Haus, nicht je
+Wohnung. Sind die Einheiten eines Hauses verschieden zugeordnet, steht dort
+*gemischt*; einzelne Zeilen lassen sich weiterhin abweichend setzen.
 
 Die **Zimmerzahl** ist eine Auswahl von 1.5 bis 6.5 — eine feste Liste, weil sie
 die Verteilung darunter erst auswertbar macht. Ein Bestandswert ausserhalb der
 Liste (etwa 4.0) wird als eigener Eintrag aufgenommen, nicht stillschweigend
 ersetzt.
 
-Darunter zeigt ein Kreisdiagramm den **Wohnungsmix** nach Anzahl Wohnungen —
+Darunter zeigen Kreisdiagramme den **Wohnungsmix** nach Anzahl Wohnungen —
 danach fragt der Markt, nicht nach Quadratmetern; die Fläche und der
-Flächendurchschnitt stehen in der Legende daneben. Die Farbskala läuft von hell
+Flächendurchschnitt stehen in der Legende daneben. **Ein Bild je Nutzungszeile**,
+untereinander, und darüber eines über alles: Die Frage «welche Wohnungsgrössen
+bauen wir?» stellt sich für den Verkauf anders als für den Bestand — im Verkauf
+zählt, was der Markt aufnimmt, im Bestand, was sich dauerhaft vermieten lässt.
+Nur zusammengezählt sähe man keines von beidem. Bei nur einer Nutzungszeile
+entfällt das Gesamtbild, sonst stünde dasselbe zweimal. Die Farbskala läuft von hell
 nach dunkel mit steigender Zimmerzahl und hängt an der Zahl selbst, nicht an der
 Reihenfolge im Projekt: Dasselbe Blau bedeutet in jedem Projekt dieselbe
 Wohnungsgrösse. Einheiten ohne Zimmerzahl bilden eine graue Gruppe am Schluss,

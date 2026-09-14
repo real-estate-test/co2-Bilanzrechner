@@ -766,6 +766,17 @@ body.seite-termine #inhalt { max-width: none; }
 
 /* --- Verteilung der Wohnungsgrössen ------------------------------- */
 
+.zimmerblock { margin-bottom: 18px; }
+.zimmerblock:last-child { margin-bottom: 0; }
+.zimmertitel {
+  font-size: 12px; font-weight: 600; margin-bottom: 6px;
+  padding-bottom: 4px; border-bottom: 1px solid var(--line);
+}
+.zimmertitel.gesamt {
+  text-transform: uppercase; letter-spacing: .05em; color: var(--kopf);
+  border-bottom-color: var(--line2);
+}
+
 .zimmermix {
   display: flex; gap: 26px; align-items: center; flex-wrap: wrap;
 }

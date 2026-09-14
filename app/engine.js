@@ -261,20 +261,47 @@ window.APP = window.APP || {};
           /* Eine Zeile kann mehrere gleichwertige Wohnungen abbilden.
              Fläche und Preis gelten je Einheit. */
           var anz = Math.max(1, Math.round(num(e.anzahl) || 1));
-          if (!o.spiegel[zid]) o.spiegel[zid] = { flaeche: 0, erloes: 0, anzahl: 0 };
+          if (!o.spiegel[zid]) {
+            o.spiegel[zid] = { flaeche: 0, erloes: 0, anzahl: 0, miete_a: 0 };
+          }
           o.spiegel[zid].flaeche += num(e.flaeche) * anz;
           o.spiegel[zid].erloes  += num(e.preis) * anz;
+          /* Die Miete wird je Monat geführt — hier auf das Jahr
+             gebracht, weil die Erträge in Jahreswerten rechnen. */
+          o.spiegel[zid].miete_a += num(e.miete) * 12 * anz;
           o.spiegel[zid].anzahl  += anz;
+          /* Eine Mietwohnung ohne erfasste Miete zählt mit ihrer Fläche
+             in die Rendite, bringt aber nichts ein — sie drückt die
+             Bruttorendite, ohne dass man sähe, warum. Deshalb gezählt
+             und weiter unten gemeldet. */
+          if (num(e.miete) <= 0) {
+            o.spiegel[zid].ohne_miete = (o.spiegel[zid].ohne_miete || 0) + anz;
+            o.spiegel[zid].ohne_miete_flaeche =
+              (o.spiegel[zid].ohne_miete_flaeche || 0) + num(e.flaeche) * anz;
+          }
           sf += num(e.flaeche) * anz; sp += num(e.preis) * anz;
         });
         Object.keys(o.spiegel).forEach(function (zid) {
           var g = o.spiegel[zid];
           g.preis_m2 = g.flaeche > 0 ? g.erloes / g.flaeche : 0;
+          g.miete_m2_a = g.flaeche > 0 ? g.miete_a / g.flaeche : 0;
           o.nutzungen[zid] = g.flaeche;
         });
         o.spiegel_flaeche = sf;
         o.spiegel_erloes = sp;
         o.spiegel_preis_m2 = sf > 0 ? sp / sf : 0;
+
+        /* Meldung erst hier, wo die Verwertung der Zeile bekannt ist:
+           Bei einer Verkaufszeile ist eine fehlende Miete richtig. */
+        (t.nutzungen || []).forEach(function (n) {
+          var g = o.spiegel[n.id];
+          if (!g || !g.ohne_miete || n.verwertung === 'stwe') return;
+          if (!(g.miete_a > 0)) return;   // gar keine Miete: Zeilendurchschnitt gilt
+          warn.push({ art: 'warn', text: T.label + ' · ' + (n.bezeichnung || 'Nutzungszeile') +
+            ': ' + g.ohne_miete + (g.ohne_miete === 1 ? ' Wohnung' : ' Wohnungen') +
+            ' im Spiegel ohne Miete (' + A.fmt(g.ohne_miete_flaeche, 0) + ' m²). ' +
+            'Ihre Fläche zählt in die Rendite, ihr Ertrag fehlt.' });
+        });
       }
 
       if (t.aktiv && Math.abs(summeFlaeche - 100) > 0.5) {
@@ -698,6 +725,11 @@ window.APP = window.APP || {};
 
         /* Parkplätze werden je Monat erfasst, Flächen je Jahr und m². */
         var miete_a = istPP ? menge * num(n.miete) * 12 : menge * num(n.miete);
+        /* Auch die Miete kommt aus dem Spiegel, sobald dort eine
+           erfasst ist — sonst stünde bei einer einzeln bepreisten
+           Wohnung die Fläche aus dem Spiegel neben dem Mietdurchschnitt
+           der Zeile. Ohne Eintrag bleibt es beim Durchschnitt. */
+        if (!istPP && sp && sp.miete_a > 0) miete_a = sp.miete_a;
 
         var pos = {
           teil: T.id, teil_label: T.label,

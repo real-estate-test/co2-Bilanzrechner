@@ -1230,7 +1230,7 @@ window.APP = window.APP || {};
        in der Liste steht, wird als eigener Eintrag aufgenommen; sonst
        spränge er beim ersten Zeichnen still auf einen anderen Wert. */
     function zimmerWahl(e) {
-      var sel = el('select');
+      var sel = el('select', { style: 'min-width:64px' });
       var werte = A.ZIMMER.slice();
       var jetzt = A.num ? A.num(e.zimmer) : Number(e.zimmer);
       if (jetzt > 0 && werte.indexOf(jetzt) < 0) {
@@ -1267,9 +1267,56 @@ window.APP = window.APP || {};
 
       U.derived.push(function () {
         U.leeren(box);
+
+        /* Ein Bild je Nutzungszeile, untereinander — und darüber eines
+           über alles. Die Frage «welche Wohnungsgrössen bauen wir?»
+           stellt sich für den Verkauf anders als für den Bestand: Im
+           Verkauf zählt, was der Markt aufnimmt, im Bestand, was sich
+           dauerhaft vermieten lässt. Nur zusammengezählt sähe man
+           keines von beidem. */
+        var einheiten = p.spiegel.einheiten || [];
+        var bloecke = [];
+
+        if (einheiten.length) {
+          var nachZeile = {}, folgeZeilen = [];
+          einheiten.forEach(function (e) {
+            var k = e.zeile || '_ohne';
+            if (!nachZeile[k]) { nachZeile[k] = []; folgeZeilen.push(k); }
+            nachZeile[k].push(e);
+          });
+          /* Über alles nur, wenn es mehr als eine Nutzung gibt — sonst
+             stünde dasselbe Bild zweimal. */
+          if (folgeZeilen.length > 1) {
+            bloecke.push({ titel: 'Alle Wohnungen', einheiten: einheiten, gesamt: true });
+          }
+          folgeZeilen.forEach(function (k) {
+            var zn = (spiegelTeil.nutzungen || []).find(function (n) { return n.id === k; });
+            var verw = zn ? (A.VERWERTUNG.find(function (x) { return x.id === zn.verwertung; }) || {}).label : '';
+            bloecke.push({
+              titel: zn ? zn.bezeichnung : 'ohne Nutzungszeile',
+              untertitel: verw,
+              einheiten: nachZeile[k]
+            });
+          });
+        }
+
+        if (!bloecke.length) {
+          box.appendChild(el('div', { class: 'muted',
+            text: 'Sobald Einheiten mit Zimmerzahl erfasst sind, steht hier ihre Verteilung.' }));
+          return;
+        }
+
+        bloecke.forEach(function (bl, ix) {
+          var teil = einBild(bl);
+          if (teil) box.appendChild(teil);
+        });
+      });
+
+      /* Ein Kreis samt Legende für eine Menge von Einheiten. */
+      function einBild(bl) {
         var gruppen = {}, folge = [], gesamt = 0, flaecheGesamt = 0;
 
-        (p.spiegel.einheiten || []).forEach(function (e) {
+        bl.einheiten.forEach(function (e) {
           var z = Number(e.zimmer) || 0;
           var n = Math.max(1, Math.round(Number(e.anzahl) || 1));
           var schluessel = z > 0 ? String(z) : 'ohne';
@@ -1284,11 +1331,14 @@ window.APP = window.APP || {};
           flaecheGesamt += (Number(e.flaeche) || 0) * n;
         });
 
-        if (!gesamt) {
-          box.appendChild(el('div', { class: 'muted',
-            text: 'Sobald Einheiten mit Zimmerzahl erfasst sind, steht hier ihre Verteilung.' }));
-          return;
-        }
+        if (!gesamt) return null;
+        var block = el('div', { class: 'zimmerblock' });
+        block.appendChild(el('div', { class: 'zimmertitel' + (bl.gesamt ? ' gesamt' : '') }, [
+          el('span', { text: bl.titel }),
+          bl.untertitel ? el('span', { class: 'muted', text: ' · ' + bl.untertitel }) : null,
+          el('span', { class: 'muted', text: ' · ' + gesamt +
+            (gesamt === 1 ? ' Wohnung' : ' Wohnungen') })
+        ].filter(Boolean)));
 
         /* Kleine Wohnungen zuerst — die Reihenfolge der Zimmerzahl ist
            die, in der man einen Mix liest. Ohne Angabe zuletzt. */
@@ -1367,8 +1417,9 @@ window.APP = window.APP || {};
             text: gesamt > 0 ? fmt(flaecheGesamt / gesamt, 0) + ' m² ⌀' : '' })
         ]));
 
-        box.appendChild(el('div', { class: 'zimmermix' }, [svg, legende]));
-      });
+        block.appendChild(el('div', { class: 'zimmermix' }, [svg, legende]));
+        return block;
+      }
 
       return box;
     }
@@ -1419,11 +1470,60 @@ window.APP = window.APP || {};
       ]);
     }
 
+    /* Dasselbe für die Miete — nur heisst die zweite Erfassungsart hier
+       «CHF/m² und Jahr», wie man Gewerbe und grössere Bestände rechnet,
+       während eine Wohnung im Monat gedacht wird. */
+    function mietmodusWahl(p) {
+      var seg = el('div', { class: 'seg noprint' });
+      [{ id: 'monat', label: 'Miete je Monat', hilfe: 'CHF/m²/Jahr wird berechnet' },
+       { id: 'm2', label: 'Miete je m²/Jahr', hilfe: 'Monatsmiete wird berechnet' }
+      ].forEach(function (m) {
+        var b = el('button', { type: 'button', text: m.label, title: m.hilfe,
+          class: (p.spiegel.mietmodus || 'monat') === m.id ? 'on' : '' });
+        b.addEventListener('click', function () {
+          if ((p.spiegel.mietmodus || 'monat') === m.id) return;
+          p.spiegel.mietmodus = m.id;
+          if (m.id === 'm2') {
+            (p.spiegel.einheiten || []).forEach(function (e) {
+              var f = Number(e.flaeche) || 0;
+              if (!(Number(e.miete_m2) > 0)) {
+                e.miete_m2 = f > 0 ? (Number(e.miete) || 0) * 12 / f : 0;
+              }
+            });
+          }
+          A.recompute(); A.markDirty(); A.render();
+        });
+        seg.appendChild(b);
+      });
+      return el('div', { class: 'f' }, [
+        el('label', {}, [el('span', { text: 'Mieten erfassen als' })]),
+        seg,
+        el('div', { class: 'hilfe',
+          text: (p.spiegel.mietmodus === 'm2')
+            ? 'Die Monatsmiete ergibt sich aus Fläche × CHF/m²/Jahr ÷ 12.'
+            : 'Die Jahresmiete je m² ergibt sich aus Monatsmiete × 12 ÷ Fläche.' })
+      ]);
+    }
+
     /* Im Modus «m2» führt der Quadratmeterpreis: Ändert sich er oder die
-       Fläche, wird der Preis je Einheit neu gebildet. */
+       Fläche, wird der Preis je Einheit neu gebildet. Für die Miete
+       gilt dasselbe. */
     function preisNachfuehren(e) {
-      if (p.spiegel.preismodus !== 'm2') return;
-      e.preis = (Number(e.preis_m2) || 0) * (Number(e.flaeche) || 0);
+      if (p.spiegel.preismodus === 'm2') {
+        e.preis = (Number(e.preis_m2) || 0) * (Number(e.flaeche) || 0);
+      }
+      if (p.spiegel.mietmodus === 'm2') {
+        e.miete = (Number(e.miete_m2) || 0) * (Number(e.flaeche) || 0) / 12;
+      }
+    }
+
+    /* Was diese Einheit einbringt, hängt an der Verwertung ihrer
+       Nutzungszeile: Beim Verkauf zählt der Preis, beim Halten und beim
+       Exit die Miete. Ohne Zuordnung gilt der Verkauf als Vorgabe — so
+       war es bisher, und die meisten Spiegel sind Verkaufsspiegel. */
+    function istMietEinheit(e) {
+      var z = (spiegelTeil.nutzungen || []).find(function (n) { return n.id === e.zeile; });
+      return !!z && z.verwertung !== 'stwe';
     }
 
     var spiegelKoerper = [U.body([
@@ -1431,8 +1531,80 @@ window.APP = window.APP || {};
       p.spiegel.aktiv ? U.sel(p, 'spiegel.teil',
         aktiveTeile.map(function (T) { return { id: T.id, label: T.label }; }),
         'gilt für', { ohneBadge: true }) : null,
-      p.spiegel.aktiv ? preismodusWahl(p) : null
+      p.spiegel.aktiv ? preismodusWahl(p) : null,
+      p.spiegel.aktiv ? mietmodusWahl(p) : null
     ], 'c3')];
+
+    /* Die bereits vergebenen Hausbezeichnungen als Vorschlagsliste —
+       so heisst «Haus A» nicht in der einen Zeile «A» und in der
+       nächsten «Haus A». */
+    var hausListe = U.datalist('haeuser', (function () {
+      var gesehen = {}, raus = [];
+      (p.spiegel.einheiten || []).forEach(function (e) {
+        var h = String(e.haus || '').trim();
+        if (h && !gesehen[h]) { gesehen[h] = true; raus.push(h); }
+      });
+      return raus.sort();
+    })());
+
+    /* Ob verkauft oder vermietet wird, entscheidet sich je Haus. Hier
+       lässt sich das in einem Zug setzen, statt in jeder Zeile einzeln
+       — bei zwanzig Wohnungen je Haus sind das zwanzig Klicks weniger. */
+    function hausZuordnung(p) {
+      var haeuser = {};
+      (p.spiegel.einheiten || []).forEach(function (e) {
+        var h = String(e.haus || '').trim();
+        if (!h) return;
+        if (!haeuser[h]) haeuser[h] = { anzahl: 0, zeilen: {} };
+        haeuser[h].anzahl += Math.max(1, Math.round(Number(e.anzahl) || 1));
+        haeuser[h].zeilen[e.zeile || ''] = true;
+      });
+      var namen = Object.keys(haeuser).sort();
+      if (!namen.length || !zeilenAuswahl.length) return null;
+
+      var zeilen = namen.map(function (h) {
+        var g = haeuser[h];
+        var verschieden = Object.keys(g.zeilen).length > 1;
+        var jetzt = verschieden ? '' : Object.keys(g.zeilen)[0];
+
+        var sel = el('select');
+        sel.appendChild(el('option', { value: '',
+          text: verschieden ? '— gemischt —' : '— ohne —', selected: jetzt ? null : '' }));
+        zeilenAuswahl.forEach(function (za) {
+          sel.appendChild(el('option', { value: za.id, text: za.label,
+            selected: jetzt === za.id ? '' : null }));
+        });
+        sel.addEventListener('change', function () {
+          if (!sel.value) return;
+          var n = 0;
+          p.spiegel.einheiten.forEach(function (e) {
+            if (String(e.haus || '').trim() === h) { e.zeile = sel.value; n++; }
+          });
+          A.recompute(); A.markDirty(); A.render();
+          A.meldung('ok', n + (n === 1 ? ' Einheit' : ' Einheiten') + ' in «' + h +
+            '» zugeordnet.');
+        });
+
+        return el('tr', {}, [
+          el('td', { text: h }),
+          el('td', { class: 'n muted', text: g.anzahl + (g.anzahl === 1 ? ' Wohnung' : ' Wohnungen') }),
+          el('td', { style: 'width:220px' }, [sel]),
+          el('td', { class: 'muted', text: verschieden
+            ? 'Die Einheiten dieses Hauses sind verschiedenen Zeilen zugeordnet.' : '' })
+        ]);
+      });
+
+      return el('div', { class: 'panelbody' }, [
+        U.tabelle([
+          { label: 'Haus' }, { label: 'Umfang', n: true },
+          { label: 'alle zuordnen zu' }, { label: '' }
+        ], zeilen),
+        el('div', { class: 'hilfe',
+          text: 'Die Wahl setzt alle Einheiten dieses Hauses auf dieselbe Nutzungszeile — ' +
+                'damit erben sie Art und Verwertung. Einzelne Zeilen lassen sich danach ' +
+                'weiterhin abweichend zuordnen.' })
+      ]);
+    }
 
     if (p.spiegel.aktiv) {
       var zs = p.spiegel.einheiten.map(function (e, i) {
@@ -1443,12 +1615,26 @@ window.APP = window.APP || {};
           inp.addEventListener('input', function () { e.nr = inp.value; A.markDirty(); });
           return inp;
         })()]));
+        /* Haus — eine freie Bezeichnung. Über sie lassen sich alle
+           Einheiten eines Hauses auf einmal einer Nutzungszeile
+           zuordnen; ob verkauft oder vermietet wird, entscheidet sich
+           in der Regel je Haus, nicht je Wohnung. */
+        tr.appendChild(el('td', { style: 'width:96px' }, [(function () {
+          var inp = el('input', { type: 'text', value: e.haus || '',
+            placeholder: '—', list: hausListe, style: 'min-width:78px' });
+          inp.addEventListener('input', function () { e.haus = inp.value; A.markDirty(); });
+          /* Erst beim Verlassen neu zeichnen: Die Sammelzuordnung oben
+             führt die Häuser nach, und ein Neuaufbau mitten im Wort
+             nähme dem Feld den Cursor. */
+          inp.addEventListener('blur', function () { A.render(); });
+          return inp;
+        })()]));
         /* Anzahl gleichwertiger Wohnungen. Fläche und Preis gelten je
            Einheit — so wird ein Wohnungstyp nur einmal erfasst. */
         tr.appendChild(el('td', { style: 'width:62px' }, [
           U.zelleNum(e, 'anzahl', { dez: 0, platzhalter: '1' })]));
         tr.appendChild(el('td', { style: 'width:66px' }, [U.zelleNum(e, 'geschoss', { dez: 0 })]));
-        tr.appendChild(el('td', { style: 'width:80px' }, [zimmerWahl(e)]));
+        tr.appendChild(el('td', { style: 'width:92px' }, [zimmerWahl(e)]));
         var flaecheFeld = U.zelleNum(e, 'flaeche', { dez: 0 });
         /* Nach dem eingebauten Zuhörer: dort steht der neue Wert bereits
            im Objekt, hier zieht der abgeleitete Preis nach. */
@@ -1457,7 +1643,28 @@ window.APP = window.APP || {};
         });
         tr.appendChild(el('td', { style: 'width:86px' }, [flaecheFeld]));
 
-        if (p.spiegel.preismodus === 'm2') {
+        /* Die beiden Wertspalten. Bei einer Mietwohnung steht hier die
+           Miete, beim Verkauf der Preis — das eine wird erfasst, das
+           andere gerechnet. Der jeweils andere Wert bleibt im
+           Datensatz erhalten; ein Projekt wechselt die Verwertung im
+           Verlauf oft noch. */
+        if (istMietEinheit(e)) {
+          if (p.spiegel.mietmodus === 'm2') {
+            tr.appendChild(U.dTd(function () {
+              return e.miete > 0 ? fmt(e.miete) + ' /Mt.' : '—';
+            }, 'muted'));
+            var mm2 = U.zelleNum(e, 'miete_m2', { dez: 0 });
+            mm2.addEventListener('input', function () { preisNachfuehren(e); A.recompute(); });
+            tr.appendChild(el('td', { style: 'width:106px' }, [mm2]));
+          } else {
+            var mMt = U.zelleNum(e, 'miete', { dez: 0, gross: true });
+            mMt.addEventListener('input', function () { preisNachfuehren(e); A.recompute(); });
+            tr.appendChild(el('td', { style: 'width:106px' }, [mMt]));
+            tr.appendChild(U.dTd(function () {
+              return e.flaeche > 0 ? fmt(e.miete * 12 / e.flaeche) : '—';
+            }, 'muted'));
+          }
+        } else if (p.spiegel.preismodus === 'm2') {
           /* Der Quadratmeterpreis führt — der Preis je Einheit folgt. */
           tr.appendChild(U.dTd(function () {
             return e.flaeche > 0 ? fmt(e.preis) : '—';
@@ -1476,7 +1683,9 @@ window.APP = window.APP || {};
         /* Summe der Zeile, damit die Wirkung der Anzahl sichtbar bleibt */
         tr.appendChild(U.dTd(function () {
           var a = Math.max(1, Math.round(e.anzahl || 1));
-          return a > 1 ? fmt(e.flaeche * a) + ' m² · ' + fmt(e.preis * a) : '—';
+          if (a <= 1) return '—';
+          return fmt(e.flaeche * a) + ' m² · ' +
+            (istMietEinheit(e) ? fmt(e.miete * a) + ' /Mt.' : fmt(e.preis * a));
         }, 'muted'));
         tr.appendChild(el('td', { style: 'width:180px' }, [
           zeilenAuswahl.length
@@ -1490,18 +1699,28 @@ window.APP = window.APP || {};
         return tr;
       });
 
-      /* Zwischentotale je Nutzungszeile */
+      /* Zwischentotale je Nutzungszeile. Bei einer Mietzeile stehen
+         Jahresmiete und CHF/m²/Jahr statt Erlös und Verkaufspreis —
+         die Summe eines Verkaufspreises wäre dort ohne Bedeutung. */
       zeilenAuswahl.forEach(function (za) {
+        var zn = (spiegelTeil.nutzungen || []).find(function (n) { return n.id === za.id; });
+        var miet = !!zn && zn.verwertung !== 'stwe';
+        function gruppe(r) { return (r.flaechen.teile[p.spiegel.teil].spiegel || {})[za.id]; }
         zs.push(U.el('tr', { class: 'sum' }, [
-          el('td', { colspan: 4, text: 'Total ' + za.label }),
-          U.dTd(function (r) { var g = (r.flaechen.teile[p.spiegel.teil].spiegel || {})[za.id];
-            return g ? fmt(g.flaeche) : '—'; }),
-          U.dTd(function (r) { var g = (r.flaechen.teile[p.spiegel.teil].spiegel || {})[za.id];
-            return g ? fmt(g.erloes) : '—'; }),
-          U.dTd(function (r) { var g = (r.flaechen.teile[p.spiegel.teil].spiegel || {})[za.id];
-            return g ? fmt(g.preis_m2) : '—'; }),
+          el('td', { colspan: 5, text: 'Total ' + za.label }),
+          U.dTd(function (r) { var g = gruppe(r); return g ? fmt(g.flaeche) : '—'; }),
+          U.dTd(function (r) {
+            var g = gruppe(r);
+            if (!g) return '—';
+            return miet ? fmt(g.miete_a) + ' /a' : fmt(g.erloes);
+          }),
+          U.dTd(function (r) {
+            var g = gruppe(r);
+            if (!g) return '—';
+            return miet ? fmt(g.miete_m2_a, 0) : fmt(g.preis_m2);
+          }),
           el('td', { colspan: 4, class: 'muted' }, [U.d(function (r) {
-            var g = (r.flaechen.teile[p.spiegel.teil].spiegel || {})[za.id];
+            var g = gruppe(r);
             return g ? g.anzahl + ' Einheiten' : '';
           }, 'muted')])
         ]));
@@ -1511,12 +1730,31 @@ window.APP = window.APP || {};
          — dort, wo sonst der abgeleitete Wert stünde. Die Beschriftung
          sagt, welche das ist. */
       var m2fuehrt = p.spiegel.preismodus === 'm2';
+      var mietM2 = p.spiegel.mietmodus === 'm2';
+      /* Der Spiegel kann Verkauf und Miete zugleich enthalten. Die
+         Überschrift nennt deshalb beides — welches Feld eine Zeile
+         zeigt, sagt ihre Verwertung. */
+      var gemischt = p.spiegel.einheiten.some(istMietEinheit) &&
+                     p.spiegel.einheiten.some(function (e) { return !istMietEinheit(e); });
+      var nurMiete = p.spiegel.einheiten.length &&
+                     p.spiegel.einheiten.every(istMietEinheit);
+
+      var spalteA = nurMiete
+        ? (mietM2 ? 'Miete CHF/Mt. · gerechnet' : 'Miete CHF/Mt.')
+        : (gemischt ? 'Preis CHF bzw. Miete CHF/Mt.'
+                    : (m2fuehrt ? 'Preis CHF je Einheit · gerechnet' : 'Preis CHF je Einheit'));
+      var spalteB = nurMiete
+        ? (mietM2 ? 'CHF/m²/Jahr' : 'CHF/m²/Jahr · gerechnet')
+        : (gemischt ? 'CHF/m² bzw. CHF/m²/Jahr'
+                    : (m2fuehrt ? 'CHF/m²' : 'CHF/m² · gerechnet'));
+
       spiegelKoerper.push(el('div', { class: 'panelbody' }, [U.tabelle([
-        { label: 'Nr.' }, { label: 'Anzahl', n: true }, { label: 'Geschoss', n: true },
+        { label: 'Nr.' }, { label: 'Haus' },
+        { label: 'Anzahl', n: true }, { label: 'Geschoss', n: true },
         { label: 'Zimmer', n: true },
         { label: 'Fläche m² je Einheit', n: true },
-        { label: m2fuehrt ? 'Preis CHF je Einheit · gerechnet' : 'Preis CHF je Einheit', n: true },
-        { label: m2fuehrt ? 'CHF/m²' : 'CHF/m² · gerechnet', n: true },
+        { label: spalteA, n: true },
+        { label: spalteB, n: true },
         { label: 'Total Zeile', n: true },
         { label: 'Nutzungszeile' }, { label: 'Art · Verwertung' }, { label: '' }
       ], zs)]));
@@ -1539,6 +1777,9 @@ window.APP = window.APP || {};
           '<b>ersetzt</b>, ebenso deren Preis je m². Gewerbe, Lager und Parkplätze laufen weiterhin ' +
           'über die Nutzungszeilen.')
       ]));
+
+      var hz = hausZuordnung(p);
+      if (hz) spiegelKoerper.push(hz);
 
       spiegelKoerper.push(zimmerVerteilung(p));
     }

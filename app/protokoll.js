@@ -640,10 +640,46 @@ window.APP = window.APP || {};
       /* Wer vergibt, will später nachfassen können. */
       erfasst_von: A.meineMail()
     }));
+    /* Damit der Cursor nach dem Zeichnen im leeren Textfeld steht. */
+    S.zuletztNeu = s.punkte[s.punkte.length - 1].id;
     P.speichern(s).then(function (ok) {
       if (ok) { S.ansicht = S.ansicht === 'themen' ? 'liste' : S.ansicht; A.render(); }
+      else S.zuletztNeu = null;
     });
   }
+
+  /* Der Wortlaut einer Aufgabe.
+
+     Eine Aufgabe aus einem Protokoll ist dort geschrieben worden und
+     gehört dorthin — sie wird hier nur angezeigt. Eine ohne Protokoll
+     entsteht dagegen in dieser Liste; ohne ein Eingabefeld liesse sie
+     sich nie beschriften. Deshalb genau dann bearbeitbar, wenn sie
+     nirgendwo sonst zu Hause ist.
+
+     Gespeichert wird beim Verlassen des Feldes, nicht beim Tippen: Ein
+     Neuzeichnen mitten im Wort tauscht das Element unter dem Cursor aus
+     und verschluckt den Rest. */
+  function aufgabenTextFeld(o) {
+    var frei = A.istManuell(o.sitzung) && !o.punkt.aus_sitzung;
+    if (!frei) return el('div', { text: o.punkt.text || '—' });
+
+    var box = U.zelleArea(o.punkt, 'text', {
+      platzhalter: 'Was ist zu tun?',
+      min: 30, max: 120,
+      onblur: function () { P.speichern(o.sitzung); }
+    });
+    box.feld.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); box.feld.blur(); }
+    });
+    /* Eine frisch angelegte Aufgabe ist leer — der Cursor gehört
+       hinein, sonst sucht man das Feld. */
+    if (!o.punkt.text && S.zuletztNeu === o.punkt.id) {
+      S.zuletztNeu = null;
+      setTimeout(function () { box.feld.focus(); }, 0);
+    }
+    return box;
+  }
+  P.aufgabenTextFeld = aufgabenTextFeld;
 
   function pendenzenListe(p) {
     var offen = offeneUndGefragte();
@@ -664,7 +700,7 @@ window.APP = window.APP || {};
           el('span', { text: ' ' + t.label })
         ] : [el('span', { class: 'muted', text: '—' })]),
         el('td', {}, [
-          el('div', { text: o.punkt.text || '—' }),
+          aufgabenTextFeld(o),
           antwortenBlock(o.punkt, o.sitzung)
         ].filter(Boolean)),
         el('td', { style: 'width:74px' }, pr.id
@@ -763,7 +799,7 @@ window.APP = window.APP || {};
             el('span', { text: ' ' + t.label })
           ] : [el('span', { class: 'muted', text: '—' })]),
           el('td', {}, [
-            el('div', { text: o.punkt.text || '—' }),
+            aufgabenTextFeld(o),
             antwortenBlock(o.punkt, o.sitzung)
           ].filter(Boolean)),
           el('td', { style: 'width:74px' }, pr.id
@@ -891,7 +927,19 @@ window.APP = window.APP || {};
     });
     k.addEventListener('dragend', function () { k.classList.remove('zieht'); });
 
-    k.appendChild(el('div', { class: 'ktext', text: pt.text || '(ohne Text)' }));
+    /* Auf der Karte gilt dasselbe wie in der Liste: Was ohne Protokoll
+       entstanden ist, lässt sich hier beschriften. */
+    if (A.istManuell(o.sitzung) && !pt.aus_sitzung) {
+      var feld = aufgabenTextFeld(o);
+      feld.classList.add('ktext');
+      /* Eine ziehbare Karte verschluckt jede Textmarkierung darin —
+         solange im Feld geschrieben wird, ruht das Ziehen. */
+      feld.feld.addEventListener('focus', function () { k.draggable = false; });
+      feld.feld.addEventListener('blur', function () { k.draggable = true; });
+      k.appendChild(feld);
+    } else {
+      k.appendChild(el('div', { class: 'ktext', text: pt.text || '(ohne Text)' }));
+    }
 
     var marken = el('div', { class: 'kmarken' });
     if (t) {

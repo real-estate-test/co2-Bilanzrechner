@@ -282,13 +282,34 @@ window.APP = window.APP || {};
     return el('span', { class: klasse, text: text });
   }
 
+  /* Der Wortlaut. Aus einem Protokoll stammende Aufgaben sind dort
+     geschrieben worden und bleiben unverändert; eine ohne Protokoll
+     erfasste lässt sich hier beschriften — sie hat sonst keinen Ort
+     dafür. Gespeichert beim Verlassen des Feldes, nicht beim Tippen. */
+  function textFeld(o) {
+    var frei = A.istManuell(o.sitzung) && !o.punkt.aus_sitzung;
+    if (!frei) return el('div', {}, [el('span', { text: o.punkt.text || '(ohne Text)' })]);
+
+    var box = U.zelleArea(o.punkt, 'text', {
+      platzhalter: 'Was ist zu tun?', min: 30, max: 120,
+      onblur: function () {
+        speichern(o, function () { /* der Text steht bereits im Punkt */ },
+                  function () { /* beim Fehlschlag meldet speichern() selbst */ });
+      }
+    });
+    box.feld.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); box.feld.blur(); }
+    });
+    return box;
+  }
+
   function zeile(o, sicht) {
     var pt = o.punkt;
     var beteiligte = A.beteiligteListe(o.projekt);
     var b = beteiligte.find(function (x) { return x.id === pt.beteiligter; });
 
     var kopf = el('td', {}, [
-      el('div', {}, [el('span', { text: pt.text || '(ohne Text)' })]),
+      textFeld(o),
       el('div', { class: 'muted', style: 'font-size:10.5px' }, [
         el('span', { text: o.projekt.name || 'ohne Namen' }),
         el('span', { text: ' · ' + o.herkunft }),
@@ -459,7 +480,16 @@ window.APP = window.APP || {};
     });
     k.addEventListener('dragend', function () { k.classList.remove('zieht'); });
 
-    k.appendChild(el('div', { class: 'ktext', text: pt.text || '(ohne Text)' }));
+    if (A.istManuell(o.sitzung) && !pt.aus_sitzung) {
+      var tf = textFeld(o);
+      tf.classList.add('ktext');
+      /* Eine ziehbare Karte verschluckt jede Textmarkierung darin. */
+      tf.feld.addEventListener('focus', function () { k.draggable = false; });
+      tf.feld.addEventListener('blur', function () { k.draggable = true; });
+      k.appendChild(tf);
+    } else {
+      k.appendChild(el('div', { class: 'ktext', text: pt.text || '(ohne Text)' }));
+    }
 
     var marken = el('div', { class: 'kmarken' });
     if (t) marken.appendChild(el('span', { class: 'tag', style: 'border-color:' + t.farbe,

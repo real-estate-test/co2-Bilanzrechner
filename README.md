@@ -384,6 +384,16 @@ sich in der firmenweiten Adressliste wieder, und die Beteiligten der Projekte
 verweisen auf genau diesen Eintrag. Wer dort nicht mit seiner Anmeldeadresse
 steht, sieht eine leere Liste und den Hinweis, woran es liegt.
 
+Drei Darstellungen: **Liste** nach Dringlichkeit, **Kanban** mit den drei
+Spalten offen / warten / erledigt (Karten ziehbar, wie im Projekt), und bei den
+vergebenen Aufgaben **nach Zuständigkeit**. Diese dritte ist für das Telefonat
+gebaut: Je Person stehen alle ihre Aufgaben beisammen — über Projektgrenzen
+hinweg, denn dieselbe Person hat in jedem Projekt eine eigene Beteiligten-Id,
+zusammengeführt wird über ihren Adresseintrag. Im Gruppenkopf die Firma, die
+Rolle, die Zahl der offenen und überfälligen Aufgaben und **Telefonnummer und
+Mailadresse als Verweis**, sodass ein Klick genügt. Wer am meisten offen hat,
+steht oben.
+
 Ein **versendetes Protokoll ist unveränderlich** — die Rechteregel der Datenbank
 lässt Änderungen daran nicht zu, und das soll so bleiben. Damit eine Aufgabe
 daraus trotzdem weiterlebt, zieht sie bei der ersten Änderung in die

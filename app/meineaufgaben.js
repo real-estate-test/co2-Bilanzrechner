@@ -26,8 +26,10 @@ window.APP = window.APP || {};
     fehler: '',
     sitzungen: [],
     sicht: 'meine',        // meine | vergeben
+    form: 'liste',         // liste | kanban | person
     zeigeErledigte: false,
-    fragtNach: null        // Aufgabe, zu der ein Rückmeldungsfeld offensteht
+    fragtNach: null,       // Aufgabe, zu der ein Rückmeldungsfeld offensteht
+    zu: {}                 // aufgeklappte Personengruppen
   };
   A.meineAufgaben = M;
 
@@ -378,6 +380,235 @@ window.APP = window.APP || {};
     ]);
   }
 
+  /* ---------------------------------------------------------------
+     Kanban — dieselben drei Spalten wie im Projekt, nur über alle
+     Projekte hinweg. Die Karte nennt deshalb zusätzlich das Projekt.
+     --------------------------------------------------------------- */
+
+  function kanban(liste, sicht) {
+    var spalten = A.PUNKT_STATUS.map(function (st) {
+      return { id: st.id, label: st.label, karten: [] };
+    });
+
+    liste.forEach(function (o) {
+      var st = o.punkt.status || 'offen';
+      /* Übernommene sind abgeschlossen — sie stehen bei den erledigten,
+         mit eigenem Vermerk auf der Karte. */
+      if (st === A.STATUS_UEBERNOMMEN) st = 'erledigt';
+      var sp = spalten.find(function (x) { return x.id === st; }) || spalten[0];
+      sp.karten.push(o);
+    });
+    spalten.forEach(function (sp) { sp.karten = sortieren(sp.karten); });
+
+    var tafel = el('div', { class: 'kanban' });
+    spalten.forEach(function (sp) {
+      var spalte = el('div', { class: 'kanban-spalte' });
+      spalte.appendChild(el('div', { class: 'kanban-kopf' }, [
+        el('span', { text: sp.label }),
+        el('span', { class: 'zahl', text: String(sp.karten.length) })
+      ]));
+
+      var feld = el('div', { class: 'kanban-feld' });
+      sp.karten.forEach(function (o) { feld.appendChild(karte(o, spalten, sp, sicht)); });
+      if (!sp.karten.length) {
+        feld.appendChild(el('div', { class: 'kanban-leer', text: 'nichts hier' }));
+      }
+
+      feld.addEventListener('dragover', function (e) {
+        e.preventDefault(); feld.classList.add('ueber');
+      });
+      feld.addEventListener('dragleave', function () { feld.classList.remove('ueber'); });
+      feld.addEventListener('drop', function (e) {
+        e.preventDefault();
+        feld.classList.remove('ueber');
+        var id = e.dataTransfer.getData('text/plain');
+        var o = liste.find(function (x) { return x.punkt.id === id; });
+        if (!o) return;
+        var jetzt = o.punkt.status === A.STATUS_UEBERNOMMEN ? 'erledigt' : (o.punkt.status || 'offen');
+        if (jetzt === sp.id) return;
+        statusSetzen(o, sp.id);
+      });
+
+      spalte.appendChild(feld);
+      tafel.appendChild(spalte);
+    });
+
+    return el('div', {}, [
+      tafel,
+      el('div', { class: 'hilfe', style: 'margin-top:10px',
+        text: 'Karten lassen sich zwischen den Spalten ziehen; die Pfeile auf der Karte tun ' +
+              'dasselbe. Überfällige Karten sind rot hinterlegt. Jede Änderung wird sofort ' +
+              'gespeichert — dort, wo die Aufgabe steht.' })
+    ]);
+  }
+
+  function karte(o, spalten, aktuell, sicht) {
+    var pt = o.punkt;
+    var t = A.thema(pt.thema);
+    var pr = A.prioritaet(pt.prio);
+    var b = personVon(o);
+    var ueberfaellig = pt.termin && pt.termin < A.heute() && A.statusOffen(pt.status);
+
+    var k = el('div', { class: 'kanban-karte' + (ueberfaellig ? ' spaet' : ''),
+      draggable: 'true' });
+    k.style.borderLeftColor = t ? t.farbe : 'var(--line2)';
+    k.addEventListener('dragstart', function (e) {
+      e.dataTransfer.setData('text/plain', pt.id);
+      e.dataTransfer.effectAllowed = 'move';
+      k.classList.add('zieht');
+    });
+    k.addEventListener('dragend', function () { k.classList.remove('zieht'); });
+
+    k.appendChild(el('div', { class: 'ktext', text: pt.text || '(ohne Text)' }));
+
+    var marken = el('div', { class: 'kmarken' });
+    if (t) marken.appendChild(el('span', { class: 'tag', style: 'border-color:' + t.farbe,
+      text: t.label }));
+    if (pr.id) marken.appendChild(el('span', { class: 'tag' + (pr.klasse ? ' ' + pr.klasse : ''),
+      text: pr.label }));
+    if (pt.status === A.STATUS_UEBERNOMMEN) {
+      marken.appendChild(el('span', { class: 'tag', text: 'übernommen' }));
+    }
+    if (marken.childNodes.length) k.appendChild(marken);
+
+    k.appendChild(el('div', { class: 'kfuss' }, [
+      /* In der eigenen Sicht ist die Zuständigkeit immer ich — dort
+         steht das Projekt an ihrer Stelle. */
+      el('span', { text: sicht === 'vergeben'
+        ? (b.name || 'ohne Zuständigkeit') : (o.projekt.name || '') }),
+      el('span', { class: ueberfaellig ? 'spaet' : '',
+        text: pt.termin ? A.datum(pt.termin) : 'ohne Termin' })
+    ]));
+
+    var stand = P.antwortenListe(pt, { nurLetzte: true });
+    if (stand) k.appendChild(stand);
+    if (M.fragtNach === pt.id) k.appendChild(antwortFeld(o));
+    else k.appendChild(el('button', { class: 'ghost sm schreibend noprint antwortplus',
+      text: '+ Rückmeldung',
+      onclick: function () { M.fragtNach = pt.id; A.render(); } }));
+
+    k.appendChild(el('div', { class: 'kherkunft',
+      text: (sicht === 'vergeben' ? o.projekt.name + ' · ' : '') + o.herkunft }));
+
+    var ix = spalten.findIndex(function (x) { return x.id === aktuell.id; });
+    var knoepfe = el('div', { class: 'kknoepfe noprint' });
+    if (ix > 0) knoepfe.appendChild(el('button', { class: 'ghost sm schreibend', text: '‹',
+      title: 'nach ' + spalten[ix - 1].label,
+      onclick: function () { statusSetzen(o, spalten[ix - 1].id); } }));
+    if (ix < spalten.length - 1) knoepfe.appendChild(el('button', { class: 'ghost sm schreibend',
+      text: '›', title: 'nach ' + spalten[ix + 1].label,
+      onclick: function () { statusSetzen(o, spalten[ix + 1].id); } }));
+    knoepfe.appendChild(el('button', { class: 'ghost sm', text: 'öffnen',
+      onclick: function () { springen(o); } }));
+    k.appendChild(knoepfe);
+
+    return k;
+  }
+
+  /* ---------------------------------------------------------------
+     Nach Zuständigkeit — für das Telefonat
+
+     Wer mit jemandem spricht, will dessen Aufgaben beisammen haben,
+     über alle Projekte hinweg und mit der Nummer gleich daneben.
+
+     Dieselbe Person hat in jedem Projekt eine eigene Beteiligten-Id.
+     Zusammengeführt wird deshalb über den Adresseintrag; wer keinen
+     hat, über seinen Namen.
+     --------------------------------------------------------------- */
+
+  function personVon(o) {
+    var b = A.beteiligteListe(o.projekt).find(function (x) {
+      return x.id === o.punkt.beteiligter;
+    });
+    if (!b) return { schluessel: '_ohne', name: '', firma: '', mail: '', telefon: '' };
+    return {
+      schluessel: b.adresse || ('name:' + String(b.name || '').trim().toLowerCase()) || '_ohne',
+      name: b.name || b.kuerzel || '',
+      kuerzel: b.kuerzel || '',
+      firma: b.firma || '', mail: b.mail || '', telefon: b.telefon || '',
+      rolle: b.rolle || ''
+    };
+  }
+
+  function nachPerson(liste) {
+    var gruppen = {}, folge = [];
+    liste.forEach(function (o) {
+      var pn = personVon(o);
+      if (!gruppen[pn.schluessel]) {
+        gruppen[pn.schluessel] = { person: pn, aufgaben: [], projekte: {} };
+        folge.push(pn.schluessel);
+      }
+      gruppen[pn.schluessel].aufgaben.push(o);
+      gruppen[pn.schluessel].projekte[o.projekt.id] = true;
+    });
+
+    /* Wer am meisten offen hat, steht oben — dort lohnt der Anruf. */
+    folge.sort(function (a, b) {
+      var d = gruppen[b].aufgaben.length - gruppen[a].aufgaben.length;
+      if (d) return d;
+      return String(gruppen[a].person.name).localeCompare(String(gruppen[b].person.name));
+    });
+
+    var out = el('div', {});
+    folge.forEach(function (k) {
+      var g = gruppen[k], pn = g.person;
+      var zu = !!M.zu[k];
+      var offen = g.aufgaben.filter(function (o) { return A.statusOffen(o.punkt.status); }).length;
+      var spaet = g.aufgaben.filter(function (o) {
+        return o.punkt.termin && o.punkt.termin < A.heute() && A.statusOffen(o.punkt.status);
+      }).length;
+      var projektzahl = Object.keys(g.projekte).length;
+
+      var kopf = el('div', { class: 'personenkopf',
+        style: 'cursor:pointer;display:flex;gap:10px;align-items:center;flex-wrap:wrap' });
+      kopf.addEventListener('click', function () { M.zu[k] = !zu; A.render(); });
+      kopf.appendChild(el('span', { style: 'font-weight:600',
+        text: (zu ? '▸ ' : '▾ ') + (pn.name || 'ohne Zuständigkeit') }));
+      if (pn.firma) kopf.appendChild(el('span', { class: 'muted', text: pn.firma }));
+      if (pn.rolle) kopf.appendChild(el('span', { class: 'tag', text: pn.rolle }));
+      kopf.appendChild(el('span', { class: 'tag' + (offen ? '' : ' pos'),
+        text: offen + (offen === 1 ? ' offen' : ' offen') }));
+      if (spaet) kopf.appendChild(el('span', { class: 'tag neg', text: spaet + ' überfällig' }));
+      kopf.appendChild(el('span', { class: 'muted', style: 'font-size:11px',
+        text: projektzahl + (projektzahl === 1 ? ' Projekt' : ' Projekte') }));
+
+      /* Die Kontaktangaben gehören in den Kopf — genau dafür ist die
+         Ansicht da. Telefon und Mail als Verweis, damit ein Klick
+         genügt. */
+      var kontakt = el('span', { style: 'margin-left:auto;display:flex;gap:12px' });
+      if (pn.telefon) {
+        kontakt.appendChild(el('a', { href: 'tel:' + String(pn.telefon).replace(/\s/g, ''),
+          style: 'font-weight:600', text: pn.telefon,
+          onclick: function (e) { e.stopPropagation(); } }));
+      }
+      if (pn.mail) {
+        kontakt.appendChild(el('a', { href: 'mailto:' + pn.mail, class: 'muted', text: pn.mail,
+          onclick: function (e) { e.stopPropagation(); } }));
+      }
+      if (!pn.telefon && !pn.mail) {
+        kontakt.appendChild(el('span', { class: 'muted', style: 'font-size:11px',
+          text: 'keine Kontaktangaben in der Adressliste' }));
+      }
+      kopf.appendChild(kontakt);
+
+      out.appendChild(kopf);
+      if (zu) return;
+
+      var zeilen = [];
+      sortieren(g.aufgaben).forEach(function (o) {
+        zeile(o, 'person').forEach(function (tr) { zeilen.push(tr); });
+      });
+      out.appendChild(U.tabelle([
+        { label: 'Aufgabe' },
+        { label: 'Termin', w: '16%' },
+        { label: '', w: '13%' },
+        { label: 'Status', w: '14%' },
+        { label: '', w: '1%' }
+      ], zeilen));
+    });
+    return out;
+  }
+
   function springen(o) {
     var p = o.projekt;
     if (A.state.p && A.state.p.id === p.id) {
@@ -466,9 +697,24 @@ window.APP = window.APP || {};
       M.zeigeErledigte = erl.checked; A.render();
     });
 
+    /* Darstellung. «nach Zuständigkeit» ergibt nur bei den vergebenen
+       Aufgaben Sinn — bei den eigenen bin immer ich zuständig. */
+    var formen = [{ id: 'liste', label: 'Liste' }, { id: 'kanban', label: 'Kanban' }];
+    if (M.sicht === 'vergeben') formen.push({ id: 'person', label: 'nach Zuständigkeit' });
+    if (M.form === 'person' && M.sicht !== 'vergeben') M.form = 'liste';
+
+    var formSeg = el('div', { class: 'seg noprint' });
+    formen.forEach(function (f) {
+      var b = el('button', { type: 'button', text: f.label,
+        class: M.form === f.id ? 'on' : '' });
+      b.addEventListener('click', function () { M.form = f.id; A.render(); });
+      formSeg.appendChild(b);
+    });
+
     var werkzeuge = el('div', { class: 'panelbody noprint',
       style: 'display:flex;gap:14px;align-items:center;flex-wrap:wrap' }, [
       seg,
+      formSeg,
       el('label', { style: 'display:flex;gap:6px;align-items:center;font-size:12px' }, [
         erl, el('span', { text: 'erledigte zeigen' })
       ]),
@@ -476,20 +722,31 @@ window.APP = window.APP || {};
         onclick: function () { A.meineAufgabenNeuLaden(); A.render(); } })
     ]);
 
-    var inhalt = M.sicht === 'meine'
-      ? tafel(meineListe, 'meine',
-          adressIds.length
-            ? 'Ihnen ist zurzeit nichts zugewiesen — oder alles ist erledigt.'
-            : 'Ohne Eintrag in der Adressliste lässt sich nichts zuordnen.')
-      : tafel(vergebenListe, 'vergeben',
-          'Sie haben zurzeit nichts offen an andere vergeben. Aufgaben zählen hier, wenn Sie ' +
-          'sie erfasst haben oder als Protokollführung im Protokoll stehen.');
+    var liste = M.sicht === 'meine' ? meineListe : vergebenListe;
+    var leer = M.sicht === 'meine'
+      ? (adressIds.length
+          ? 'Ihnen ist zurzeit nichts zugewiesen — oder alles ist erledigt.'
+          : 'Ohne Eintrag in der Adressliste lässt sich nichts zuordnen.')
+      : 'Sie haben zurzeit nichts offen an andere vergeben. Aufgaben zählen hier, wenn Sie ' +
+        'sie erfasst haben oder als Protokollführung im Protokoll stehen.';
+
+    var inhalt;
+    if (!liste.length) inhalt = U.hinweis('info', leer);
+    else if (M.form === 'kanban') inhalt = kanban(liste, M.sicht);
+    else if (M.form === 'person') inhalt = nachPerson(liste);
+    else inhalt = tafel(liste, M.sicht, leer);
+
+    var untertitel = M.form === 'person'
+      ? 'alle Aufgaben je Person, über alle Projekte — mit Nummer für den Anruf'
+      : (M.form === 'kanban'
+          ? 'nach Stand, über alle Projekte'
+          : (M.sicht === 'meine'
+              ? 'nach Dringlichkeit — Termin und Priorität zusammen'
+              : 'zum Nachfassen, nach Dringlichkeit'));
 
     out.appendChild(U.panel(
       M.sicht === 'meine' ? 'Mir zugewiesen' : 'Von mir vergeben',
-      M.sicht === 'meine'
-        ? 'nach Dringlichkeit — Termin und Priorität zusammen'
-        : 'zum Nachfassen, nach Dringlichkeit',
+      untertitel,
       [werkzeuge, el('div', { class: 'panelbody' }, [inhalt])]));
 
     out.appendChild(U.panel('Wie diese Liste entsteht', null, [

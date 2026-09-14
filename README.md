@@ -373,6 +373,29 @@ Sitzungen hinweg erhalten.
 - **Kapitalbedarf** — gebundene Eigen- und Fremdmittel je Jahr
 - **Cashflow** — Ausgaben, Einnahmen und kumulierter Saldo je Jahr
 
+**Meine Aufgaben** Ein Sammelordner über alle Projekte: was mir aufgetragen ist,
+und was ich vergeben habe — Nachfassen ist eine Aufgabe für sich. Sortiert nach
+Dringlichkeit, Termin und Priorität zusammen. Status und Rückmeldungen lassen
+sich hier eintragen; **neue** Aufgaben entstehen weiterhin im Projekt, weil sie
+ihren Zusammenhang brauchen.
+
+Die Zuordnung läuft über die **Mailadresse**: Der angemeldete Benutzer findet
+sich in der firmenweiten Adressliste wieder, und die Beteiligten der Projekte
+verweisen auf genau diesen Eintrag. Wer dort nicht mit seiner Anmeldeadresse
+steht, sieht eine leere Liste und den Hinweis, woran es liegt.
+
+Ein **versendetes Protokoll ist unveränderlich** — die Rechteregel der Datenbank
+lässt Änderungen daran nicht zu, und das soll so bleiben. Damit eine Aufgabe
+daraus trotzdem weiterlebt, zieht sie bei der ersten Änderung in die
+Sammelsitzung des Projekts um: als Kopie unter derselben Id, mit Verweis auf ihr
+Protokoll. Das Protokoll bleibt Zeile für Zeile, wie es versendet wurde; die
+Aufgabenlisten zeigen die lebende Fassung und blenden die erstarrte aus, sodass
+nichts doppelt erscheint. Die Herkunft («BH 3 · 14.10.2026») bleibt sichtbar.
+
+Bearbeiten zwei Personen gleichzeitig Aufgaben desselben Protokolls, wird die
+eigene Änderung auf die fremde Fassung **übertragen** statt verworfen — eine
+Rückmeldung betrifft immer nur eine Aufgabe von vielen in derselben Zeile.
+
 **Tracking** Soll-Ist-Vergleich je Kostenposition mit CSV-Einlesung sowie
 Snapshots, die einen Projektstand einfrieren und gegen heute stellen. Die
 Snapshot-Tabelle vergleicht Anlagekosten, Erlöse, Sollmiete, EBT STWE,

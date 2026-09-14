@@ -21,6 +21,9 @@ window.APP = window.APP || {};
 
   A.SEITEN = [
     { id: 'portfolio',    ix: '0',  label: 'Portfolio' },
+    /* Projektübergreifend: was mir aufgetragen ist und was ich vergeben
+       habe. Steht bewusst ganz oben — der Arbeitstag beginnt hier. */
+    { id: 'meineaufgaben', ix: '★', label: 'Meine Aufgaben' },
     { id: 'projekt',      ix: '1',  label: 'Projekt' },
     { id: 'adressen',     ix: '1a', label: 'Adressliste' },
     { id: 'protokolle',   ix: '1b', label: 'Protokolle/Aufgaben' },

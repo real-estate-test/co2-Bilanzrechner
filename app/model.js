@@ -892,6 +892,15 @@ window.APP = window.APP || {};
       erledigt_am: '',
       erledigt_in: '',       // Id der Sitzung, in der er geschlossen wurde
       bemerkung: '',
+      /* Wer die Aufgabe vergeben hat — Mailadresse des Erfassers. Für
+         den Sammelreiter «Meine Aufgaben»: Nachfassen ist eine Aufgabe
+         für sich. Ältere Punkte haben das Feld nicht; dort tritt der
+         Verfasser des Protokolls an seine Stelle. */
+      erfasst_von: '',
+      /* Stammt die Aufgabe aus einem versendeten Protokoll, lebt sie in
+         der Sammelsitzung weiter und merkt sich ihre Herkunft. Das
+         Protokoll selbst bleibt unverändert. */
+      aus_sitzung: '',
       /* Was aus der Aufgabe geworden ist: Rückmeldungen mit Datum, in
          der Reihenfolge ihres Eintreffens. Eine Aufgabe läuft oft über
          mehrere Sitzungen — «Bauprofile am 14.10., Bestätigung folgt»
@@ -921,6 +930,72 @@ window.APP = window.APP || {};
     return (p && p.bearbeiter) || '';
   };
 
+  /* ---------------------------------------------------------------
+     Wer bin ich in den Projekten?
+
+     Die Zuständigkeit einer Aufgabe zeigt auf einen Beteiligten, und
+     der ist projektlokal — dieselbe Person hat in jedem Projekt eine
+     andere Id. Die Brücke über alle Projekte hinweg ist die
+     Mailadresse: Der angemeldete Benutzer findet sich in der
+     firmenweiten Adressliste wieder, und die Beteiligten verweisen auf
+     genau diese Adressen.
+
+     Ohne Anmeldung oder ohne passenden Adresseintrag bleibt die Menge
+     leer — der Sammelreiter sagt dann, woran es liegt, statt eine
+     leere Liste zu zeigen.
+     --------------------------------------------------------------- */
+
+  A.meineMail = function () {
+    var pr = A.api && A.api.profil;
+    return pr && pr.email ? String(pr.email).trim().toLowerCase() : '';
+  };
+
+  /* Die Adress-Ids, die zu meiner Mailadresse gehören. Mehrere sind
+     möglich, wenn dieselbe Person doppelt in der Liste steht. */
+  A.meineAdressIds = function () {
+    var mail = A.meineMail();
+    if (!mail) return [];
+    return A.adressenListe()
+      .filter(function (a) { return String(a.mail || '').trim().toLowerCase() === mail; })
+      .map(function (a) { return a.id; });
+  };
+
+  /* Die Beteiligten-Ids, unter denen ich in DIESEM Projekt geführt
+     werde. Ein frei erfasster Beteiligter ohne Adressverweis zählt
+     mit, wenn seine Mailadresse übereinstimmt. */
+  A.meineBeteiligtenIds = function (p, adressIds) {
+    var mail = A.meineMail();
+    if (!mail) return [];
+    var adr = adressIds || A.meineAdressIds();
+    return ((p && p.beteiligte) || []).filter(function (b) {
+      if (!b) return false;
+      if (b.adresse && adr.indexOf(b.adresse) >= 0) return true;
+      return String(b.mail || '').trim().toLowerCase() === mail;
+    }).map(function (b) { return b.id; });
+  };
+
+  /* Mein Anzeigename, wie ihn die Protokollführung schreibt. */
+  A.meinName = function () {
+    var pr = A.api && A.api.profil;
+    return pr && pr.name ? String(pr.name).trim().toLowerCase() : '';
+  };
+
+  /* Habe ich diese Aufgabe vergeben? Neue Aufgaben halten die
+     Mailadresse ihres Erfassers fest. Bei älteren gibt es das Feld
+     nicht — dort tritt die Protokollführung an diese Stelle, die als
+     Name erfasst wird. Deshalb beide Vergleiche. */
+  A.punktVonMir = function (pt, sitzung) {
+    var mail = A.meineMail();
+    if (mail && pt && pt.erfasst_von) {
+      return String(pt.erfasst_von).trim().toLowerCase() === mail;
+    }
+    var name = A.meinName();
+    var v = sitzung && sitzung.verfasser
+      ? String(sitzung.verfasser).trim().toLowerCase() : '';
+    if (!v) return false;
+    return (!!name && v === name) || (!!mail && v === mail);
+  };
+
   /* Die jüngste Rückmeldung einer Aufgabe — für Listen, die nur den
      aktuellen Stand zeigen. */
   A.letzteAntwort = function (pt) {
@@ -936,6 +1011,48 @@ window.APP = window.APP || {};
 
   A.istManuell = function (s) {
     return !!s && s.reihe === A.MANUELL_REIHE;
+  };
+
+  /* Die Sammelsitzung eines Projekts aus einer Sitzungsliste. Die Liste
+     kann die eines Projekts sein oder die aller Projekte — deshalb wird
+     immer auch auf das Projekt geprüft. */
+  A.sammelSitzung = function (projektId, liste, anlegen) {
+    var da = (liste || []).find(function (s) {
+      return A.istManuell(s) && s.projekt_id === projektId;
+    });
+    if (da || !anlegen) return da || null;
+    var s = A.defSitzung(projektId, A.MANUELL_REIHE);
+    s.nummer = 1;
+    s.datum = A.heute();
+    liste.push(s);
+    return s;
+  };
+
+  /* Die Fassung einer Aufgabe, die geschrieben werden darf.
+
+     Ein versendetes Protokoll ist unveränderlich — die Rechteregel der
+     Datenbank lässt Änderungen daran gar nicht zu, und das ist so
+     gewollt. Damit die Aufgabe trotzdem weiterlebt, zieht sie bei der
+     ersten Änderung in die Sammelsitzung des Projekts um: als Kopie
+     unter derselben Id, mit Verweis auf ihr Protokoll. Das Protokoll
+     bleibt Zeile für Zeile, wie es versendet wurde.
+
+     Wer die Kopie anzeigt, muss entdoppeln — sonst stünde die Aufgabe
+     zweimal da. Das erledigen P.allePunkte und P.offenePunkte. */
+  A.aufgabeZumBearbeiten = function (projektId, punkt, sitzung, liste) {
+    if (!sitzung || sitzung.status !== 'versendet') {
+      return { punkt: punkt, sitzung: sitzung };
+    }
+    var m = A.sammelSitzung(projektId, liste, false);
+    if (m) {
+      var da = (m.punkte || []).find(function (x) { return x.id === punkt.id; });
+      if (da) return { punkt: da, sitzung: m };
+    }
+    m = A.sammelSitzung(projektId, liste, true);
+    var kopie = A.defPunkt(Object.assign({}, punkt, { aus_sitzung: sitzung.id }));
+    kopie.id = punkt.id;
+    m.punkte.push(kopie);
+    return { punkt: kopie, sitzung: m, umgezogen: true };
   };
 
   A.defSitzung = function (projektId, reiheId) {
@@ -2364,6 +2481,10 @@ window.APP = window.APP || {};
     sitzungen: function (projektId) {
       var liste = leseSitzungen().filter(function (s) { return s.projekt_id === projektId; });
       return Promise.resolve(liste.map(A.sitzungLesen).filter(Boolean));
+    },
+    /* Alle Sitzungen über alle Projekte — Grundlage des Sammelreiters. */
+    alleSitzungen: function () {
+      return Promise.resolve(leseSitzungen().map(A.sitzungLesen).filter(Boolean));
     },
     sitzungSpeichern: function (s) {
       var alle = leseSitzungen();

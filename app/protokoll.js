@@ -432,12 +432,22 @@ window.APP = window.APP || {};
     return S.liste.reduce(function (n, s) { return n + zaehleOffen(s); }, 0);
   }
 
-  /* Alle offenen Aufgaben — die Pendenzenliste des Projekts */
+  /* Alle offenen Aufgaben — die Pendenzenliste des Projekts.
+     Entdoppelt wie P.allePunkte: Wo eine Aufgabe aus einem versendeten
+     Protokoll in der Sammelsitzung weiterlebt, zählt nur die lebende. */
   P.offenePunkte = function (ausser) {
-    var raus = [];
+    var raus = [], lebend = {};
+    S.liste.forEach(function (s) {
+      if (!A.istManuell(s)) return;
+      (s.punkte || []).forEach(function (pt) {
+        if (pt && pt.aus_sitzung) lebend[pt.id] = true;
+      });
+    });
     S.liste.forEach(function (s) {
       if (ausser && s.id === ausser.id) return;
+      var manuell = A.istManuell(s);
       (s.punkte || []).forEach(function (pt) {
+        if (!manuell && lebend[pt.id]) return;
         if (pt.typ === 'aufgabe' && A.statusOffen(pt.status)) {
           raus.push({ sitzung: s, punkt: pt });
         }
@@ -454,22 +464,67 @@ window.APP = window.APP || {};
      der sie stehen — die gemeinsame Grundlage von Liste, Kanban und
      Themenbild. Der Verweis auf die Sitzung ist nötig, weil ein
      geänderter Punkt dort gespeichert wird, wo er lebt. */
-  P.allePunkte = function (nurTyp) {
+  /* Die Herkunftszeile einer Sitzung — «BH 3 · 14.10.2026». */
+  function herkunftText(s) {
+    if (!s) return '';
+    var r = A.reihe(s.reihe);
+    return (r ? (r.kuerzel || r.label) : s.reihe) + ' ' + s.nummer + ' · ' + A.datum(s.datum);
+  }
+  P.herkunftText = herkunftText;
+
+  P.allePunkte = function (nurTyp, liste) {
+    var quelle = liste || S.liste;
     var raus = [];
-    S.liste.forEach(function (s) {
+
+    /* Eine Aufgabe aus einem versendeten Protokoll lebt in der
+       Sammelsitzung weiter, sobald jemand sie anfasst — unter derselben
+       Id. Ohne diese Entdopplung stünde sie zweimal da: einmal wie
+       versendet, einmal wie heute. Die lebende Fassung gewinnt. */
+    var lebend = {};
+    quelle.forEach(function (s) {
+      if (!A.istManuell(s)) return;
+      (s.punkte || []).forEach(function (pt) {
+        if (pt && pt.aus_sitzung) lebend[pt.id] = true;
+      });
+    });
+
+    quelle.forEach(function (s) {
       var manuell = A.istManuell(s);
-      var r = A.reihe(s.reihe);
       (s.punkte || []).forEach(function (pt) {
         if (nurTyp && pt.typ !== nurTyp) return;
+        if (!manuell && lebend[pt.id]) return;   // die Kopie zeigt den Stand
         raus.push({
           punkt: pt, sitzung: s, manuell: manuell,
-          herkunft: manuell ? 'manuell erfasst'
-            : (r ? (r.kuerzel || r.label) : s.reihe) + ' ' + s.nummer +
-              ' · ' + A.datum(s.datum)
+          /* Umgezogene Aufgaben behalten ihre Herkunft — sie stammen
+             aus dem Protokoll, auch wenn sie hier gepflegt werden. */
+          aus: pt.aus_sitzung || '',
+          herkunft: pt.aus_sitzung
+            ? (herkunftText(quelle.find(function (x) { return x.id === pt.aus_sitzung; })) ||
+               'aus Protokoll')
+            : (manuell ? 'manuell erfasst' : herkunftText(s))
         });
       });
     });
     return raus;
+  };
+
+  /* Eine Aufgabe zum Bearbeiten holen.
+
+     Ein versendetes Protokoll ist unveränderlich — die Datenbank lässt
+     Änderungen daran gar nicht zu. Damit die Aufgabe trotzdem
+     weiterlebt, zieht sie bei der ersten Änderung in die Sammelsitzung
+     um: als Kopie unter derselben Id, mit Verweis auf ihr Protokoll.
+     Das Protokoll selbst bleibt Zeile für Zeile, wie es versendet
+     wurde.
+
+     Gibt die Fassung zurück, die gespeichert werden darf — und ob dabei
+     ein Umzug stattgefunden hat. */
+  P.zumBearbeiten = function (p, o) {
+    if (!o || !o.sitzung) return null;
+    if (o.sitzung.status !== 'versendet') return o;
+    var f = A.aufgabeZumBearbeiten(p.id, o.punkt, o.sitzung, S.liste);
+    return { punkt: f.punkt, sitzung: f.sitzung, manuell: true,
+             aus: o.sitzung.id, herkunft: o.herkunft, umgezogen: !!f.umgezogen };
   };
 
   /* Die Sammelsitzung dieses Projekts, bei Bedarf angelegt. */
@@ -581,7 +636,9 @@ window.APP = window.APP || {};
     s.punkte.push(A.defPunkt({
       typ: 'aufgabe', text: '', phase: 'allgemein',
       beteiligter: beteiligte.length ? beteiligte[0].id : '',
-      termin: '', status: 'offen'
+      termin: '', status: 'offen',
+      /* Wer vergibt, will später nachfassen können. */
+      erfasst_von: A.meineMail()
     }));
     P.speichern(s).then(function (ok) {
       if (ok) { S.ansicht = S.ansicht === 'themen' ? 'liste' : S.ansicht; A.render(); }
@@ -900,19 +957,49 @@ window.APP = window.APP || {};
     return sel;
   }
 
+  /* Die Fassung einer Aufgabe, die geschrieben werden darf. Steht sie in
+     einem versendeten Protokoll, zieht sie dabei in die Sammelsitzung um
+     — siehe P.zumBearbeiten. Für alles andere bleibt alles beim Alten. */
+  function schreibfassung(pt, sitzung, projekt) {
+    var p = projekt || A.state.p;
+    if (!sitzung || sitzung.status !== 'versendet' || !p) {
+      return { punkt: pt, sitzung: sitzung };
+    }
+    return P.zumBearbeiten(p, { punkt: pt, sitzung: sitzung,
+                                herkunft: herkunftText(sitzung) })
+           || { punkt: pt, sitzung: sitzung };
+  }
+  P.schreibfassung = schreibfassung;
+
+  /* Ein misslungener Umzug darf keine halbe Kopie hinterlassen — sonst
+     verdeckte sie beim nächsten Zeichnen den Protokollpunkt. */
+  function umzugZuruecknehmen(f) {
+    if (!f || !f.umgezogen || !f.sitzung) return;
+    var i = (f.sitzung.punkte || []).findIndex(function (x) { return x.id === f.punkt.id; });
+    if (i >= 0) f.sitzung.punkte.splice(i, 1);
+    if (!f.sitzung.version && !(f.sitzung.punkte || []).length) {
+      var j = S.liste.indexOf(f.sitzung);
+      if (j >= 0) S.liste.splice(j, 1);
+    }
+  }
+  P.umzugZuruecknehmen = umzugZuruecknehmen;
+
   function statusSetzen(pt, sitzung, wert) {
-    pt.status = wert;
+    var f = schreibfassung(pt, sitzung);
+    var ziel = f.punkt, vorher = ziel.status;
+    ziel.status = wert;
     if (wert === 'erledigt') {
-      pt.erledigt_am = pt.erledigt_am || A.heute();
+      ziel.erledigt_am = ziel.erledigt_am || A.heute();
     } else if (wert !== A.STATUS_UEBERNOMMEN) {
-      pt.erledigt_am = ''; pt.erledigt_in = '';
+      ziel.erledigt_am = ''; ziel.erledigt_in = '';
     }
     /* Beim Abschliessen und beim Warten auf jemanden ist die Frage
        «und was kam dabei heraus?» fällig. Das Feld klappt von selbst
        auf; wer nichts einzutragen hat, geht einfach weiter. */
-    if (wert === 'erledigt' || wert === 'warten') S.fragtNach = pt.id;
-    P.speichern(sitzung).then(function (ok) {
-      if (ok) A.render();
+    if (wert === 'erledigt' || wert === 'warten') S.fragtNach = ziel.id;
+    P.speichern(f.sitzung).then(function (ok) {
+      if (!ok) { ziel.status = vorher; umzugZuruecknehmen(f); }
+      A.render();
     });
   }
 
@@ -1017,19 +1104,23 @@ window.APP = window.APP || {};
   function antwortHinzu(pt, sitzung, text) {
     text = String(text || '').trim();
     if (!text) return false;
-    if (!Array.isArray(pt.antworten)) pt.antworten = [];
-    pt.antworten.push(A.defAntwort({ text: text, von: A.werBinIch() }));
+    var f = schreibfassung(pt, sitzung);
+    var ziel = f.punkt;
+    if (!Array.isArray(ziel.antworten)) ziel.antworten = [];
+    ziel.antworten.push(A.defAntwort({ text: text, von: A.werBinIch() }));
     S.fragtNach = null;
-    P.speichern(sitzung).then(function (ok) {
+    P.speichern(f.sitzung).then(function (ok) {
       if (!ok) {
         /* Nicht gespeichert: Der Eintrag darf nicht stehen bleiben und
            Sicherheit vortäuschen. */
-        pt.antworten.pop();
+        ziel.antworten.pop();
+        umzugZuruecknehmen(f);
       }
       A.render();
     });
     return true;
   }
+  P.antwortHinzu = antwortHinzu;
 
   /* Die vorhandenen Rückmeldungen als Block. Wird im Protokoll unter
      der Aufgabe und in den Aufgabenansichten verwendet. */
@@ -1047,6 +1138,9 @@ window.APP = window.APP || {};
       ].filter(Boolean));
     }));
   }
+  /* Reine Anzeige, ohne Zustand — auch der Sammelreiter «Meine
+     Aufgaben» stellt Rückmeldungen so dar. */
+  P.antwortenListe = antwortenListe;
 
   /* Eingabe einer neuen Rückmeldung. Geschrieben wird erst beim
      Absenden — beim Tippen darf nichts neu gezeichnet werden. */
@@ -1678,7 +1772,8 @@ window.APP = window.APP || {};
               phase: letzt ? letzt.phase : 'allgemein',
               beteiligter: letzt ? letzt.beteiligter
                 : (beteiligte[0] ? beteiligte[0].id : ''),
-              typ: 'info'
+              typ: 'info',
+              erfasst_von: A.meineMail()
             }));
             schmutzig(); A.render();
           } })

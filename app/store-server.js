@@ -207,6 +207,17 @@ window.APP = window.APP || {};
         });
     },
 
+    /* Alle Sitzungen über alle Projekte — Grundlage des Sammelreiters
+       «Meine Aufgaben». Die Rechteregel auf «sitzungen» erlaubt jedem
+       angemeldeten Benutzer das Lesen; gefiltert wird erst danach, denn
+       die Zuständigkeit steckt im JSON der Punkte. */
+    alleSitzungen: function () {
+      return API.holen('sitzungen', 'select=*&order=datum.desc,nummer.desc')
+        .then(function (zeilen) {
+          return (zeilen || []).map(A.sitzungLesen).filter(Boolean);
+        });
+    },
+
     /* Speichert mit optimistischem Sperren, wie bei den Projekten: Wer
        eine ältere Fassung in der Hand hat, überschreibt nichts. */
     sitzungSpeichern: function (s) {

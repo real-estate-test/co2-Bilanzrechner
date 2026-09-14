@@ -140,7 +140,9 @@ window.APP = window.APP || {};
      gespeichert — das Protokoll bleibt unberührt.
      --------------------------------------------------------------- */
 
-  function speichern(o, aendern, zurueck) {
+  /* «still» heisst: nicht neu zeichnen. Beim Tippen in ein Textfeld
+     würde ein Neuaufbau das Element unter dem Cursor austauschen. */
+  function speichern(o, aendern, zurueck, still) {
     var f = A.aufgabeZumBearbeiten(o.projekt.id, o.punkt, o.sitzung, M.sitzungen);
     aendern(f.punkt);
 
@@ -149,9 +151,16 @@ window.APP = window.APP || {};
       .then(function (erg) {
         if (erg && erg.ok) {
           /* Die gespeicherte Fassung trägt die neue Version — ohne sie
-             scheitert der nächste Schreibvorgang am Versionsschutz. */
-          if (erg.sitzung) ersetzen(erg.sitzung);
-          A.render();
+             scheitert der nächste Schreibvorgang am Versionsschutz.
+             Der Verweis in «o» muss mitwandern, sonst schreibt der
+             nächste Tastendruck in ein verwaistes Objekt. */
+          if (erg.sitzung) {
+            ersetzen(erg.sitzung);
+            o.sitzung = erg.sitzung;
+            var neu = (erg.sitzung.punkte || []).find(function (x) { return x.id === o.punkt.id; });
+            if (neu) o.punkt = neu;
+          }
+          if (!still) A.render();
           return;
         }
         if (erg && erg.konflikt && erg.fremd) {
@@ -290,12 +299,28 @@ window.APP = window.APP || {};
     var frei = A.istManuell(o.sitzung) && !o.punkt.aus_sitzung;
     if (!frei) return el('div', {}, [el('span', { text: o.punkt.text || '(ohne Text)' })]);
 
+    /* Nur auf «blur» zu speichern reicht nicht: Wer tippt und die Seite
+       neu lädt, ohne das Feld zu verlassen, verlöre seinen Text. Also
+       zusätzlich ein verzögerter Lauf. Neu gezeichnet wird dabei nicht —
+       das Element unter dem Cursor würde ausgetauscht. */
+    var timer = null;
+    var vorher = o.punkt.text;
+
+    function sichern(v) {
+      if (timer) { clearTimeout(timer); timer = null; }
+      speichern(o, function (pt) { pt.text = v; },
+                function (pt) { pt.text = vorher; }, true);
+    }
+
     var box = U.zelleArea(o.punkt, 'text', {
       platzhalter: 'Was ist zu tun?', min: 30, max: 120,
-      onblur: function () {
-        speichern(o, function () { /* der Text steht bereits im Punkt */ },
-                  function () { /* beim Fehlschlag meldet speichern() selbst */ });
-      }
+      eigen: true,
+      onchange: function (v) {
+        o.punkt.text = v;
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(function () { timer = null; sichern(v); }, 1200);
+      },
+      onblur: sichern
     });
     box.feld.addEventListener('keydown', function (e) {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); box.feld.blur(); }

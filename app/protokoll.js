@@ -119,6 +119,10 @@ window.APP = window.APP || {};
      --------------------------------------------------------------- */
 
   V.protokolle = function (p) {
+    /* Die Felder der alten Zeichnung sind gleich verschwunden; ihre
+       ausstehenden Sicherungen laufen entweder schon oder gehören zu
+       Feldern, die es nicht mehr gibt. */
+    offeneSicherungen = [];
     var out = el('div', {}, [U.kopf('Protokolle',
       'Sitzungsprotokolle dieses Projekts. Aufgaben mit Termin gehen in den Terminplan über.')]);
 
@@ -659,17 +663,75 @@ window.APP = window.APP || {};
      Gespeichert wird beim Verlassen des Feldes, nicht beim Tippen: Ein
      Neuzeichnen mitten im Wort tauscht das Element unter dem Cursor aus
      und verschluckt den Rest. */
+  /* Noch nicht geschriebene Eingaben. Jedes Textfeld hinterlegt hier
+     seine ausstehende Sicherung; beim Verlassen der Seite werden sie
+     alle nachgeholt. Ein einziger Zuhörer für alle Felder — einer je
+     Feld würde sich bei jedem Neuzeichnen anhäufen.
+
+     Die Liste wird vor jedem Neuaufbau geleert: Was dann noch im
+     Dokument steht, meldet sich beim Zeichnen erneut an. */
+  var offeneSicherungen = [];
+
+  P.sicherungenLeeren = function () { offeneSicherungen = []; };
+
+  window.addEventListener('pagehide', function () {
+    offeneSicherungen.forEach(function (f) { try { f(); } catch (e) { /* zu spät */ } });
+  });
+
   function aufgabenTextFeld(o) {
     var frei = A.istManuell(o.sitzung) && !o.punkt.aus_sitzung;
     if (!frei) return el('div', { text: o.punkt.text || '—' });
 
+    /* Beim Tippen darf nicht neu gezeichnet werden — das Element unter
+       dem Cursor würde ausgetauscht. Nur auf «blur» zu speichern reicht
+       aber nicht: Wer tippt und die Seite neu lädt, ohne das Feld zu
+       verlassen, verlöre seinen Text. Deshalb zusätzlich ein
+       verzögerter Lauf, der still im Hintergrund sichert.
+
+       Gespeichert wird immer in die Fassung, die gerade in der Liste
+       steht: Ein erfolgreicher Schreibvorgang ersetzt das Sitzungs-
+       objekt (neue Version), und die alte Referenz wäre verwaist. */
+    var timer = null;
+
+    function jetzt() {
+      var s = S.liste.find(function (x) { return x.id === o.sitzung.id; }) || o.sitzung;
+      var pt = (s.punkte || []).find(function (x) { return x.id === o.punkt.id; }) || o.punkt;
+      return { sitzung: s, punkt: pt };
+    }
+
+    function uebernehmen(v) {
+      var a = jetzt();
+      a.punkt.text = v;
+      return a.sitzung;
+    }
+
+    function sichern(v) {
+      if (timer) { clearTimeout(timer); timer = null; }
+      P.speichern(uebernehmen(v));
+    }
+
     var box = U.zelleArea(o.punkt, 'text', {
       platzhalter: 'Was ist zu tun?',
       min: 30, max: 120,
-      onblur: function () { P.speichern(o.sitzung); }
+      eigen: true,        // der Wert wird hier gezielt gesetzt, nicht blind
+      onchange: function (v) {
+        uebernehmen(v);
+        A.markDirty();
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(function () { timer = null; P.speichern(jetzt().sitzung); }, 600);
+      },
+      onblur: sichern
     });
     box.feld.addEventListener('keydown', function (e) {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); box.feld.blur(); }
+    });
+
+    /* Wer mitten im Wort neu lädt oder den Reiter schliesst, gibt dem
+       verzögerten Lauf keine Gelegenheit mehr. Die ausstehende
+       Sicherung wird deshalb hinterlegt und beim Verlassen der Seite
+       nachgeholt — siehe unten, ein einziger Zuhörer für alle Felder. */
+    offeneSicherungen.push(function () {
+      if (timer) { clearTimeout(timer); timer = null; P.speichern(jetzt().sitzung); }
     });
     /* Eine frisch angelegte Aufgabe ist leer — der Cursor gehört
        hinein, sonst sucht man das Feld. */

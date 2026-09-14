@@ -1381,11 +1381,57 @@ window.APP = window.APP || {};
       .filter(function (n) { return n.art !== 'parkplatz'; })
       .map(function (n) { return { id: n.id, label: n.bezeichnung }; });
 
+    /* Womit der Preis erfasst wird. Beide Wege führen zum selben
+       Ergebnis — gerechnet wird immer mit dem Preis je Einheit. Wer nach
+       Quadratmeterpreis kalkuliert, gibt diesen ein und sieht den
+       Einheitspreis; wer eine Preisliste hat, macht es umgekehrt. */
+    function preismodusWahl(p) {
+      var seg = el('div', { class: 'seg noprint' });
+      [{ id: 'einheit', label: 'Preis je Einheit', hilfe: 'CHF/m² wird berechnet' },
+       { id: 'm2', label: 'Preis je m²', hilfe: 'Preis je Einheit wird berechnet' }
+      ].forEach(function (m) {
+        var b = el('button', { type: 'button', text: m.label, title: m.hilfe,
+          class: (p.spiegel.preismodus || 'einheit') === m.id ? 'on' : '' });
+        b.addEventListener('click', function () {
+          if ((p.spiegel.preismodus || 'einheit') === m.id) return;
+          p.spiegel.preismodus = m.id;
+          /* Beim Wechsel auf den Quadratmeterpreis den heutigen Stand
+             übernehmen, damit keine Zahl springt. */
+          if (m.id === 'm2') {
+            (p.spiegel.einheiten || []).forEach(function (e) {
+              var f = Number(e.flaeche) || 0;
+              if (!(Number(e.preis_m2) > 0)) {
+                e.preis_m2 = f > 0 ? (Number(e.preis) || 0) / f : 0;
+              }
+            });
+          }
+          A.recompute(); A.markDirty(); A.render();
+        });
+        seg.appendChild(b);
+      });
+      return el('div', { class: 'f' }, [
+        el('label', {}, [el('span', { text: 'Preise erfassen als' })]),
+        seg,
+        el('div', { class: 'hilfe',
+          text: (p.spiegel.preismodus === 'm2')
+            ? 'Der Preis je Einheit ergibt sich aus Fläche × CHF/m².'
+            : 'Der Quadratmeterpreis ergibt sich aus Preis ÷ Fläche.' })
+      ]);
+    }
+
+    /* Im Modus «m2» führt der Quadratmeterpreis: Ändert sich er oder die
+       Fläche, wird der Preis je Einheit neu gebildet. */
+    function preisNachfuehren(e) {
+      if (p.spiegel.preismodus !== 'm2') return;
+      e.preis = (Number(e.preis_m2) || 0) * (Number(e.flaeche) || 0);
+    }
+
     var spiegelKoerper = [U.body([
       U.chk(p, 'spiegel.aktiv', 'Wohnungsspiegel verwenden'),
       p.spiegel.aktiv ? U.sel(p, 'spiegel.teil',
         aktiveTeile.map(function (T) { return { id: T.id, label: T.label }; }),
-        'gilt für', { ohneBadge: true }) : null
+        'gilt für', { ohneBadge: true }) : null,
+      p.spiegel.aktiv ? preismodusWahl(p) : null
     ], 'c3')];
 
     if (p.spiegel.aktiv) {
@@ -1403,9 +1449,30 @@ window.APP = window.APP || {};
           U.zelleNum(e, 'anzahl', { dez: 0, platzhalter: '1' })]));
         tr.appendChild(el('td', { style: 'width:66px' }, [U.zelleNum(e, 'geschoss', { dez: 0 })]));
         tr.appendChild(el('td', { style: 'width:80px' }, [zimmerWahl(e)]));
-        tr.appendChild(el('td', { style: 'width:86px' }, [U.zelleNum(e, 'flaeche', { dez: 0 })]));
-        tr.appendChild(el('td', { style: 'width:106px' }, [U.zelleNum(e, 'preis', { gross: true })]));
-        tr.appendChild(U.dTd(function () { return e.flaeche > 0 ? fmt(e.preis / e.flaeche) : '—'; }, 'muted'));
+        var flaecheFeld = U.zelleNum(e, 'flaeche', { dez: 0 });
+        /* Nach dem eingebauten Zuhörer: dort steht der neue Wert bereits
+           im Objekt, hier zieht der abgeleitete Preis nach. */
+        flaecheFeld.addEventListener('input', function () {
+          preisNachfuehren(e); A.recompute();
+        });
+        tr.appendChild(el('td', { style: 'width:86px' }, [flaecheFeld]));
+
+        if (p.spiegel.preismodus === 'm2') {
+          /* Der Quadratmeterpreis führt — der Preis je Einheit folgt. */
+          tr.appendChild(U.dTd(function () {
+            return e.flaeche > 0 ? fmt(e.preis) : '—';
+          }, 'muted'));
+          var m2Feld = U.zelleNum(e, 'preis_m2', { dez: 0, gross: true });
+          m2Feld.addEventListener('input', function () {
+            preisNachfuehren(e); A.recompute();
+          });
+          tr.appendChild(el('td', { style: 'width:106px' }, [m2Feld]));
+        } else {
+          tr.appendChild(el('td', { style: 'width:106px' }, [U.zelleNum(e, 'preis', { gross: true })]));
+          tr.appendChild(U.dTd(function () {
+            return e.flaeche > 0 ? fmt(e.preis / e.flaeche) : '—';
+          }, 'muted'));
+        }
         /* Summe der Zeile, damit die Wirkung der Anzahl sichtbar bleibt */
         tr.appendChild(U.dTd(function () {
           var a = Math.max(1, Math.round(e.anzahl || 1));
@@ -1440,19 +1507,32 @@ window.APP = window.APP || {};
         ]));
       });
 
+      /* Die führende Grösse steht in der zweiten der beiden Preisspalten
+         — dort, wo sonst der abgeleitete Wert stünde. Die Beschriftung
+         sagt, welche das ist. */
+      var m2fuehrt = p.spiegel.preismodus === 'm2';
       spiegelKoerper.push(el('div', { class: 'panelbody' }, [U.tabelle([
         { label: 'Nr.' }, { label: 'Anzahl', n: true }, { label: 'Geschoss', n: true },
         { label: 'Zimmer', n: true },
-        { label: 'Fläche m² je Einheit', n: true }, { label: 'Preis CHF je Einheit', n: true },
-        { label: 'CHF/m²', n: true }, { label: 'Total Zeile', n: true },
+        { label: 'Fläche m² je Einheit', n: true },
+        { label: m2fuehrt ? 'Preis CHF je Einheit · gerechnet' : 'Preis CHF je Einheit', n: true },
+        { label: m2fuehrt ? 'CHF/m²' : 'CHF/m² · gerechnet', n: true },
+        { label: 'Total Zeile', n: true },
         { label: 'Nutzungszeile' }, { label: 'Art · Verwertung' }, { label: '' }
       ], zs)]));
 
       spiegelKoerper.push(el('div', { class: 'panelbody' }, [
         el('button', { class: 'schreibend', text: '+ Einheit', onclick: function () {
-          p.spiegel.einheiten.push({ nr: String(p.spiegel.einheiten.length + 1), anzahl: 1, geschoss: 0,
+          /* Der Vorgabepreis folgt der Erfassungsart — im m²-Modus ist
+             der Quadratmeterpreis die führende Grösse. */
+          var neu = { nr: String(p.spiegel.einheiten.length + 1), anzahl: 1, geschoss: 0,
             zimmer: 3.5, flaeche: 95, preis: 900000,
-            zeile: zeilenAuswahl.length ? zeilenAuswahl[0].id : null });
+            zeile: zeilenAuswahl.length ? zeilenAuswahl[0].id : null };
+          if (p.spiegel.preismodus === 'm2') {
+            neu.preis_m2 = 9500;
+            neu.preis = neu.preis_m2 * neu.flaeche;
+          }
+          p.spiegel.einheiten.push(neu);
           A.recompute(); A.render();
         } }),
         U.hinweis('info', 'Die Flächen der zugeordneten Nutzungszeilen werden durch den Spiegel ' +

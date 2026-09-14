@@ -1803,9 +1803,15 @@ window.APP = window.APP || {};
       spiegel: {
         aktiv: false,
         teil: 'neubau',
+        /* Womit der Preis erfasst wird. Gerechnet wird immer mit «preis»
+           je Einheit; im Modus «m2» führt der Quadratmeterpreis, und
+           «preis» wird daraus abgeleitet. Zwei Wahrheiten nebeneinander
+           gäbe es damit nicht — nur zwei Wege, zur selben zu kommen. */
+        preismodus: 'einheit',           // einheit | m2
         /* Je Einheit: {nr, anzahl, geschoss, zimmer, flaeche, preis, zeile}
            «anzahl» fasst gleichwertige Wohnungen zusammen — Fläche und
            Preis gelten je Einheit und werden mit der Anzahl multipliziert.
+           Im Modus «m2» kommt «preis_m2» als führende Grösse dazu.
            «zeile» verweist auf eine Nutzungszeile — darüber erbt die
            Einheit Art und Verwertung. Ohne Spiegel gilt der
            Durchschnittspreis der Zeile. */

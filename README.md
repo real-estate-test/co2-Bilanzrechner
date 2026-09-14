@@ -274,6 +274,13 @@ sollen: Jede Einheit wird einer Nutzungszeile zugeordnet und erbt von dort Art
 und Verwertung; Fläche und Durchschnittspreis der Zeile ergeben sich dann aus den
 Einheiten. Ohne Spiegel gilt der erfasste Durchschnittswert.
 
+Ein Umschalter bestimmt, **womit der Preis erfasst wird**: *Preis je Einheit*
+(dann wird CHF/m² gerechnet) oder *Preis je m²* (dann der Einheitspreis). Beide
+Wege führen zum selben Ergebnis — gerechnet wird immer mit dem Preis je Einheit,
+im m²-Modus wird er aus Fläche × CHF/m² gebildet. Dort führt der
+Quadratmeterpreis: Ändert sich die Fläche, wächst der Einheitspreis mit. Beim
+Umschalten wird der bestehende Stand übernommen, sodass keine Zahl springt.
+
 Die **Zimmerzahl** ist eine Auswahl von 1.5 bis 6.5 — eine feste Liste, weil sie
 die Verteilung darunter erst auswertbar macht. Ein Bestandswert ausserhalb der
 Liste (etwa 4.0) wird als eigener Eintrag aufgenommen, nicht stillschweigend

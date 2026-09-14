@@ -763,6 +763,35 @@ tr.brentfaellt input { color: var(--muted); }
    Inhaltsbereich den ganzen Bildschirm. */
 body.seite-termine #inhalt { max-width: none; }
 
+
+/* --- Verteilung der Wohnungsgrössen ------------------------------- */
+
+.zimmermix {
+  display: flex; gap: 26px; align-items: center; flex-wrap: wrap;
+}
+.zimmerkreis { flex: 0 0 auto; }
+
+.zimmerlegende { flex: 1 1 320px; min-width: 300px; }
+.zimmerzeile {
+  display: grid;
+  grid-template-columns: 14px 96px 62px 112px 74px 74px;
+  align-items: baseline; gap: 8px;
+  padding: 3px 0; font-size: 12.5px;
+  border-bottom: 1px solid var(--line);
+}
+.zimmerzeile:last-child { border-bottom: 0; }
+.zimmerzeile.total { font-weight: 600; border-top: 1px solid var(--line2); margin-top: 3px; }
+.zimmerpunkt {
+  width: 11px; height: 11px; border-radius: 3px; display: inline-block;
+  align-self: center;
+}
+.zimmerzeile .zp, .zimmerzeile .zn, .zimmerzeile .zf { text-align: right; font-variant-numeric: tabular-nums; }
+
+@media (max-width: 720px) {
+  .zimmerzeile { grid-template-columns: 14px 1fr 62px; }
+  .zimmerzeile .zn, .zimmerzeile .zf { display: none; }
+}
+
 @media print {
   /* Auf Papier zählt das Bild, nicht die Eingabe: Die schmalen Spalten
      für Abhängigkeit, Verzögerung und Farbe entfallen, und die Tafel

@@ -274,6 +274,19 @@ sollen: Jede Einheit wird einer Nutzungszeile zugeordnet und erbt von dort Art
 und Verwertung; Fläche und Durchschnittspreis der Zeile ergeben sich dann aus den
 Einheiten. Ohne Spiegel gilt der erfasste Durchschnittswert.
 
+Die **Zimmerzahl** ist eine Auswahl von 1.5 bis 6.5 — eine feste Liste, weil sie
+die Verteilung darunter erst auswertbar macht. Ein Bestandswert ausserhalb der
+Liste (etwa 4.0) wird als eigener Eintrag aufgenommen, nicht stillschweigend
+ersetzt.
+
+Darunter zeigt ein Kreisdiagramm den **Wohnungsmix** nach Anzahl Wohnungen —
+danach fragt der Markt, nicht nach Quadratmetern; die Fläche und der
+Flächendurchschnitt stehen in der Legende daneben. Die Farbskala läuft von hell
+nach dunkel mit steigender Zimmerzahl und hängt an der Zahl selbst, nicht an der
+Reihenfolge im Projekt: Dasselbe Blau bedeutet in jedem Projekt dieselbe
+Wohnungsgrösse. Einheiten ohne Zimmerzahl bilden eine graue Gruppe am Schluss,
+statt aus der Rechnung zu fallen.
+
 **Finanzierung** Eigenkapitalquote und Belehnungsdeckel, getrennte Zinssätze vor
 und nach der Baubewilligung, Bereitstellungskommission, kalkulatorische
 Eigenkapitalverzinsung. Der Vorverkauf wirkt zweifach: über eine frei definierbare

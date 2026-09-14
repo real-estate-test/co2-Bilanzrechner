@@ -1224,6 +1224,155 @@ window.APP = window.APP || {};
       ]));
     });
 
+    /* Die Zimmerzahl als Auswahl statt als freie Zahl — 1.5 bis 6.5
+       deckt den Wohnungsbau ab, und eine feste Liste macht die
+       Verteilung darunter erst auswertbar. Ein Bestandswert, der nicht
+       in der Liste steht, wird als eigener Eintrag aufgenommen; sonst
+       spränge er beim ersten Zeichnen still auf einen anderen Wert. */
+    function zimmerWahl(e) {
+      var sel = el('select');
+      var werte = A.ZIMMER.slice();
+      var jetzt = A.num ? A.num(e.zimmer) : Number(e.zimmer);
+      if (jetzt > 0 && werte.indexOf(jetzt) < 0) {
+        werte.push(jetzt);
+        werte.sort(function (a, b) { return a - b; });
+      }
+      if (!(jetzt > 0)) {
+        sel.appendChild(el('option', { value: '', text: '—', selected: '' }));
+      }
+      werte.forEach(function (z) {
+        sel.appendChild(el('option', { value: String(z), text: A.fmt(z, 1),
+          selected: jetzt === z ? '' : null }));
+      });
+      sel.addEventListener('change', function () {
+        /* Als Zahl ablegen — der Verkaufsstand und der Bericht rechnen
+           damit weiter. */
+        e.zimmer = sel.value === '' ? 0 : parseFloat(sel.value);
+        A.recompute(); A.markDirty(); A.render();
+      });
+      return sel;
+    }
+
+    /* ---------------------------------------------------------------
+       Verteilung der Wohnungsgrössen
+
+       Ein Wohnungsmix ist eine Entscheidung, keine Nebensache: Er
+       bestimmt, an wen verkauft wird und wie schnell. Das Bild zeigt
+       ihn nach Anzahl Wohnungen — danach fragt der Markt, nicht nach
+       Quadratmetern. Die Fläche steht in der Legende daneben.
+       --------------------------------------------------------------- */
+
+    function zimmerVerteilung(p) {
+      var box = el('div', { class: 'panelbody' });
+
+      U.derived.push(function () {
+        U.leeren(box);
+        var gruppen = {}, folge = [], gesamt = 0, flaecheGesamt = 0;
+
+        (p.spiegel.einheiten || []).forEach(function (e) {
+          var z = Number(e.zimmer) || 0;
+          var n = Math.max(1, Math.round(Number(e.anzahl) || 1));
+          var schluessel = z > 0 ? String(z) : 'ohne';
+          if (!gruppen[schluessel]) {
+            gruppen[schluessel] = { zimmer: z, anzahl: 0, flaeche: 0, erloes: 0 };
+            folge.push(schluessel);
+          }
+          gruppen[schluessel].anzahl += n;
+          gruppen[schluessel].flaeche += (Number(e.flaeche) || 0) * n;
+          gruppen[schluessel].erloes += (Number(e.preis) || 0) * n;
+          gesamt += n;
+          flaecheGesamt += (Number(e.flaeche) || 0) * n;
+        });
+
+        if (!gesamt) {
+          box.appendChild(el('div', { class: 'muted',
+            text: 'Sobald Einheiten mit Zimmerzahl erfasst sind, steht hier ihre Verteilung.' }));
+          return;
+        }
+
+        /* Kleine Wohnungen zuerst — die Reihenfolge der Zimmerzahl ist
+           die, in der man einen Mix liest. Ohne Angabe zuletzt. */
+        folge.sort(function (a, b) {
+          if (a === 'ohne') return 1;
+          if (b === 'ohne') return -1;
+          return gruppen[a].zimmer - gruppen[b].zimmer;
+        });
+
+        var R = 78, M = 86, D = 2 * M;
+        var svg = U.s('svg', { viewBox: '0 0 ' + D + ' ' + D, width: D, height: D,
+          class: 'zimmerkreis' });
+
+        var winkel = -Math.PI / 2;   // oben beginnen, im Uhrzeigersinn
+        folge.forEach(function (k, i) {
+          var g = gruppen[k];
+          var anteil = g.anzahl / gesamt;
+          var farbe = k === 'ohne' ? '#c8ccd2' : A.zimmerFarbe(g.zimmer);
+          g.farbe = farbe;
+          g.anteil = anteil;
+
+          if (anteil >= 0.9999) {
+            /* Ein einziger Typ: Ein Pfad über den vollen Kreis wäre
+               entartet (Anfang = Ende), deshalb ein Kreis. */
+            svg.appendChild(U.s('circle', { cx: M, cy: M, r: R, fill: farbe }));
+            winkel += 2 * Math.PI;
+            return;
+          }
+          var bis = winkel + anteil * 2 * Math.PI;
+          var x1 = M + R * Math.cos(winkel), y1 = M + R * Math.sin(winkel);
+          var x2 = M + R * Math.cos(bis),    y2 = M + R * Math.sin(bis);
+          var gross = anteil > 0.5 ? 1 : 0;
+          svg.appendChild(U.s('path', {
+            d: 'M ' + M + ' ' + M + ' L ' + x1.toFixed(2) + ' ' + y1.toFixed(2) +
+               ' A ' + R + ' ' + R + ' 0 ' + gross + ' 1 ' +
+               x2.toFixed(2) + ' ' + y2.toFixed(2) + ' Z',
+            fill: farbe, stroke: '#fff', 'stroke-width': '1.5' }));
+
+          /* Der Prozentwert im Segment — nur wo er Platz hat. */
+          if (anteil >= 0.07) {
+            var mitte = (winkel + bis) / 2, rr = R * 0.62;
+            var t = U.s('text', {
+              x: (M + rr * Math.cos(mitte)).toFixed(2),
+              y: (M + rr * Math.sin(mitte)).toFixed(2),
+              'text-anchor': 'middle', 'dominant-baseline': 'central',
+              /* Auf hellen Segmenten wäre Weiss unlesbar. */
+              fill: A.schriftAuf(farbe), 'font-size': '12', 'font-weight': '600'
+            }, A.fmt(anteil * 100, 0) + '%');
+            svg.appendChild(t);
+          }
+          winkel = bis;
+        });
+
+        var legende = el('div', { class: 'zimmerlegende' });
+        folge.forEach(function (k) {
+          var g = gruppen[k];
+          legende.appendChild(el('div', { class: 'zimmerzeile' }, [
+            el('span', { class: 'zimmerpunkt', style: 'background:' + g.farbe }),
+            el('span', { class: 'zl', text: k === 'ohne' ? 'ohne Angabe'
+              : A.fmt(g.zimmer, 1) + ' Zimmer' }),
+            el('span', { class: 'zp', text: A.fmtPct(g.anteil * 100, 1) }),
+            el('span', { class: 'zn muted',
+              text: g.anzahl + (g.anzahl === 1 ? ' Wohnung' : ' Wohnungen') }),
+            el('span', { class: 'zf muted', text: fmt(g.flaeche, 0) + ' m²' }),
+            el('span', { class: 'zf muted',
+              text: g.flaeche > 0 ? fmt(g.flaeche / g.anzahl, 0) + ' m² ⌀' : '' })
+          ]));
+        });
+        legende.appendChild(el('div', { class: 'zimmerzeile total' }, [
+          el('span', { class: 'zimmerpunkt', style: 'background:transparent' }),
+          el('span', { class: 'zl', text: 'Total' }),
+          el('span', { class: 'zp', text: '100.0 %' }),
+          el('span', { class: 'zn', text: gesamt + ' Wohnungen' }),
+          el('span', { class: 'zf', text: fmt(flaecheGesamt, 0) + ' m²' }),
+          el('span', { class: 'zf muted',
+            text: gesamt > 0 ? fmt(flaecheGesamt / gesamt, 0) + ' m² ⌀' : '' })
+        ]));
+
+        box.appendChild(el('div', { class: 'zimmermix' }, [svg, legende]));
+      });
+
+      return box;
+    }
+
     /* Wohnungsspiegel — jede Einheit ist einer Nutzungszeile zugeordnet und
        erbt von dort Art und Verwertung. */
     var aktiveTeile = A.TEILE.filter(function (T) { return p.teile[T.id].aktiv; });
@@ -1253,7 +1402,7 @@ window.APP = window.APP || {};
         tr.appendChild(el('td', { style: 'width:62px' }, [
           U.zelleNum(e, 'anzahl', { dez: 0, platzhalter: '1' })]));
         tr.appendChild(el('td', { style: 'width:66px' }, [U.zelleNum(e, 'geschoss', { dez: 0 })]));
-        tr.appendChild(el('td', { style: 'width:66px' }, [U.zelleNum(e, 'zimmer', { dez: 1 })]));
+        tr.appendChild(el('td', { style: 'width:80px' }, [zimmerWahl(e)]));
         tr.appendChild(el('td', { style: 'width:86px' }, [U.zelleNum(e, 'flaeche', { dez: 0 })]));
         tr.appendChild(el('td', { style: 'width:106px' }, [U.zelleNum(e, 'preis', { gross: true })]));
         tr.appendChild(U.dTd(function () { return e.flaeche > 0 ? fmt(e.preis / e.flaeche) : '—'; }, 'muted'));
@@ -1310,6 +1459,8 @@ window.APP = window.APP || {};
           '<b>ersetzt</b>, ebenso deren Preis je m². Gewerbe, Lager und Parkplätze laufen weiterhin ' +
           'über die Nutzungszeilen.')
       ]));
+
+      spiegelKoerper.push(zimmerVerteilung(p));
     }
 
     out.appendChild(U.panel('Wohnungsspiegel', p.spiegel.aktiv

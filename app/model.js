@@ -45,6 +45,39 @@ window.APP = window.APP || {};
     { id: 'erweiterung', label: 'Erweiterung / Aufstockung' }
   ];
 
+  /* Wohnungsgrössen des Spiegels. Die halbe Zimmerzahl ist in der
+     Schweiz die Regel — das Zimmer mit dem halben Punkt ist der
+     Wohnraum. Ältere Einträge mit abweichender Zahl bleiben erhalten:
+     Die Auswahl nimmt einen fremden Wert als zusätzlichen Eintrag auf,
+     statt ihn stillschweigend zu ersetzen. */
+  A.ZIMMER = [1.5, 2.5, 3.5, 4.5, 5.5, 6.5];
+
+  /* Die Zimmerzahl ist eine Ordnung, keine blosse Aufzählung — deshalb
+     eine Skala von hell nach dunkel statt beliebiger Farben: klein
+     links, gross rechts, auf einen Blick lesbar. Die Farbe hängt an der
+     Zimmerzahl, nicht an der Reihenfolge im Projekt; so bedeutet
+     dasselbe Blau überall dieselbe Wohnungsgrösse. */
+  A.ZIMMER_FARBEN = {
+    '1.5': '#cfe0f7', '2.5': '#9dc0ec', '3.5': '#6b9fe0',
+    '4.5': '#3b7dd4', '5.5': '#2a5aa8', '6.5': '#1c3c73'
+  };
+
+  A.zimmerFarbe = function (z) {
+    var f = A.ZIMMER_FARBEN[A.fmt(z, 1)];
+    if (f) return f;
+    /* Etwas Grösseres als 6.5 oder eine krumme Zahl: dunkelster Ton. */
+    return z > 6.5 ? '#14294d' : '#8fa6c4';
+  };
+
+  /* Weisse Schrift erst, wenn der Grund dunkel genug ist. */
+  A.schriftAuf = function (hex) {
+    var m = /^#([0-9a-f]{6})$/i.exec(String(hex || ''));
+    if (!m) return '#1a1a1a';
+    var n = parseInt(m[1], 16);
+    var r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+    return (0.299 * r + 0.587 * g + 0.114 * b) > 150 ? '#12243d' : '#ffffff';
+  };
+
   A.VERWERTUNG = [
     { id: 'halten_vermietet', label: 'Halten · vermietet' },
     { id: 'halten_selbst',    label: 'Halten · selbstgenutzt' },

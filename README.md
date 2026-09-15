@@ -331,6 +331,14 @@ pauschal, die Musterwohnung pauschal. Früher wurde die Erstvermietung in
 Monatsmieten erfasst — dieselbe Grösse in anderer Einheit; bestehende Projekte
 werden wertneutral umgerechnet.
 
+**Unter jedem Prozentsatz steht der Betrag**, den er ergibt — sonst müsste man
+bis zur Tabelle darunter blättern, um zu sehen, was ein Zehntelprozent bewirkt.
+Bei der Käuferbetreuung zusätzlich die **Kosten je Wohnung**: Sie fällt zu 100 %
+auf die verkauften Einheiten, und je Wohnung ist die Zahl, mit der man einen
+Betreuungsvertrag vergleicht. Die Wohnungszahl kommt aus dem Wohnungsspiegel,
+sonst aus dem Verkaufsstand (ohne Parkplätze); fehlt beides, sagt das Feld das,
+statt eine Zahl zu erfinden.
+
 **Finanzierung** Eigenkapitalquote und Belehnungsdeckel, getrennte Zinssätze vor
 und nach der Baubewilligung, Bereitstellungskommission, kalkulatorische
 Eigenkapitalverzinsung. Der Vorverkauf wirkt zweifach: über eine frei definierbare

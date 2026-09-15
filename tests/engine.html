@@ -529,6 +529,34 @@
   pruefe('die verteilte Vermarktung ergibt wieder das Total',
     rvm.vermarktung.total, vmt.stwe + vmt.miete + vmt.exit, 1);
 
+  /* Die Käuferbetreuung fällt je Wohnung an — die Bezugsgrösse kommt
+     aus dem Spiegel, sonst aus dem Verkaufsstand. Parkplätze zählen
+     nicht als Wohnung. */
+  var kw = A.defaultProject();
+  kw.teile.neubau.nutzungen = [
+    A.defNutzung({ bezeichnung: 'STWE', art: 'wohnen', anteil: 100, preis: 10000, verwertung: 'stwe' })
+  ];
+  pruefe('ohne Quelle ist die Wohnungszahl null', 0, A.stweWohnungen(kw).anzahl);
+  kw.verkauf.modus = 'manuell';
+  kw.verkauf.manuell = [
+    { id: '1', art: 'unit', status: 'available', preis: 0 },
+    { id: '2', art: 'unit', status: 'sold', preis: 0 },
+    { id: 'P1', art: 'parking', status: 'available', preis: 0 }
+  ];
+  pruefe('der Verkaufsstand zählt ohne Parkplätze', 2, A.stweWohnungen(kw).anzahl);
+  var kwS = kw.teile.neubau.nutzungen[0].id;
+  kw.spiegel.aktiv = true;
+  kw.spiegel.teil = 'neubau';
+  kw.spiegel.haeuser = [
+    { id: 'k1', name: 'A', zeile: kwS, preismodus: 'einheit', mietmodus: 'monat',
+      einheiten: [{ nr: 'A1', anzahl: 7, flaeche: 90, preis: 900000 }] }
+  ];
+  pruefe('der Spiegel geht dem Verkaufsstand vor', 7, A.stweWohnungen(kw).anzahl);
+  /* Ein Miethaus zählt nicht mit — betreut werden Käufer. */
+  kw.spiegel.haeuser.push({ id: 'k2', name: 'B', zeile: null, preismodus: 'einheit',
+    mietmodus: 'monat', einheiten: [] });
+  pruefe('leere Häuser ändern nichts', 7, A.stweWohnungen(kw).anzahl);
+
   /* Monatsmieten waren dieselbe Grösse in anderer Einheit: Eine
      Monatsmiete ist ein Zwölftel der Jahressollmiete. */
   var vmAlt = A.defaultProject();

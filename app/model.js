@@ -92,6 +92,31 @@ window.APP = window.APP || {};
     return raus;
   };
 
+  /* Wie viele Wohnungen verkauft werden — Bezugsgrösse für alles, was
+     je Einheit anfällt. Erste Quelle ist der Wohnungsspiegel, weil er
+     die Einheiten einzeln kennt; sonst der Verkaufsstand. Ohne beides
+     null, und der Aufrufer sagt dann, dass die Zahl fehlt, statt durch
+     null zu teilen. */
+  A.stweWohnungen = function (p) {
+    var n = 0;
+    A.spiegelEinheiten(p).forEach(function (x) {
+      if (A.hausIstMiete(p, x.haus)) return;
+      n += Math.max(1, Math.round(Number(x.einheit.anzahl) || 1));
+    });
+    if (n > 0) return { anzahl: n, quelle: 'Wohnungsspiegel' };
+
+    var v = p && p.verkauf;
+    var liste = v && (v.modus === 'manuell'
+      ? (Array.isArray(v.manuell) ? v.manuell : [])
+      : ((v.stand && v.stand.einheiten) || []));
+    if (liste && liste.length) {
+      /* Parkplätze und Nebenräume zählen nicht als Wohnung. */
+      var w = liste.filter(function (u) { return u.art !== 'parking' && u.art !== 'pp'; });
+      if (w.length) return { anzahl: w.length, quelle: 'Verkaufsstand' };
+    }
+    return { anzahl: 0, quelle: '' };
+  };
+
   /* Ein Verkaufshaus trägt Preise, jedes andere Mieten. Ohne
      Nutzungszeile gilt der Verkauf — so war es bisher, und die meisten
      Spiegel sind Verkaufsspiegel. */

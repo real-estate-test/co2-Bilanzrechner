@@ -2103,25 +2103,59 @@ window.APP = window.APP || {};
       'Provisionen, Marketing, Verkaufsstand und der Zahlungsplan beim Verkauf von ' +
       'Stockwerkeigentum.')]);
 
+    /* Unter jedem Prozentsatz der Betrag, den er ergibt — sonst muss
+       man bis zur Tabelle darunter blättern, um zu sehen, was eine
+       Zehntelprozent-Änderung bewirkt. Gelesen wird aus der gerechneten
+       Vermarktungszeile, damit hier und dort dieselbe Zahl steht. */
+    function vbetrag(id) {
+      return function (r) {
+        var z = (r.vermarktung.zeilen || []).find(function (x) { return x.id === id; });
+        return z ? fmt(z.betrag) + ' CHF' : '';
+      };
+    }
+
+    /* Die Käuferbetreuung fällt zu 100 % auf die verkauften Wohnungen.
+       Was sie je Wohnung kostet, ist die Zahl, mit der man einen
+       Betreuungsvertrag vergleicht. */
+    function kaeuferbetreuungText(r, pp) {
+      var z = (r.vermarktung.zeilen || []).find(function (x) { return x.id === 'kaeuferbetreuung'; });
+      var betrag = z ? z.betrag : 0;
+      var w = A.stweWohnungen(pp);
+      if (!w.anzahl) {
+        return fmt(betrag) + ' CHF · je Wohnung erst mit Wohnungsspiegel oder Verkaufsstand';
+      }
+      return fmt(betrag) + ' CHF · ' + fmt(betrag / w.anzahl) + ' je Wohnung (' +
+        w.anzahl + ' aus ' + w.quelle + ')';
+    }
+
     out.appendChild(U.panel('Provisionen & Marketing', null, [
       U.body([
-        U.num(p, 'vermarktung.verkauf_pct', 'Verkaufsprovision Stockwerkeigentum', { unit: '% Erlös', dez: 2 }),
-        U.num(p, 'vermarktung.beurkundung_verkauf', 'Beurkundung Verkauf', { unit: '% Erlös', dez: 2, stufe: 'standard' }),
-        U.num(p, 'vermarktung.exit_nebenkosten', 'Nebenkosten Exit an Investor', { unit: '% Erlös', dez: 2, stufe: 'standard' }),
+        U.num(p, 'vermarktung.verkauf_pct', 'Verkaufsprovision Stockwerkeigentum',
+          { unit: '% Erlös', dez: 2, derive: vbetrag('verkauf') }),
+        U.num(p, 'vermarktung.beurkundung_verkauf', 'Beurkundung Verkauf',
+          { unit: '% Erlös', dez: 2, stufe: 'standard', derive: vbetrag('beurkundung') }),
+        U.num(p, 'vermarktung.exit_nebenkosten', 'Nebenkosten Exit an Investor',
+          { unit: '% Erlös', dez: 2, stufe: 'standard', derive: vbetrag('exit_nk') }),
         U.num(p, 'vermarktung.vermietung_pct', 'Erstvermietungsprovision',
           { unit: '% Sollmiete', dez: 2, stufe: 'standard',
             hilfe: 'Prozent der Jahressollmiete der vermieteten Flächen. Eine Monatsmiete ' +
-                   'entspricht 8.33 %.' }),
+                   'entspricht 8.33 %.',
+            derive: vbetrag('vermietung') }),
         U.num(p, 'vermarktung.kaeuferbetreuung_pct', 'Käuferbetreuung',
           { unit: '% Erlös', dez: 2, stufe: 'standard',
-            hilfe: 'Prozent des Verkaufserlöses Stockwerkeigentum.' }),
+            hilfe: 'Prozent des Verkaufserlöses Stockwerkeigentum — fällt zu 100 % auf die ' +
+                   'verkauften Wohnungen.',
+            derive: kaeuferbetreuungText }),
         U.sel(p, 'vermarktung.marketing_basis', [
           { id: 'pct', label: '% vom Erlös' }, { id: 'pauschal', label: 'Pauschal' }
         ], 'Marketing — Basis', { stufe: 'standard' }),
         p.vermarktung.marketing_basis === 'pauschal'
-          ? U.num(p, 'vermarktung.marketing_fix', 'Marketing / Werbung', { unit: 'CHF', gross: true, stufe: 'standard' })
-          : U.num(p, 'vermarktung.marketing_pct', 'Marketing / Werbung', { unit: '%', dez: 2, stufe: 'standard' }),
-        U.num(p, 'vermarktung.muster', 'Musterwohnung / Visualisierung', { unit: 'CHF', gross: true, stufe: 'standard' })
+          ? U.num(p, 'vermarktung.marketing_fix', 'Marketing / Werbung',
+              { unit: 'CHF', gross: true, stufe: 'standard', derive: vbetrag('marketing') })
+          : U.num(p, 'vermarktung.marketing_pct', 'Marketing / Werbung',
+              { unit: '%', dez: 2, stufe: 'standard', derive: vbetrag('marketing') }),
+        U.num(p, 'vermarktung.muster', 'Musterwohnung / Visualisierung',
+          { unit: 'CHF', gross: true, stufe: 'standard', derive: vbetrag('muster') })
       ], 'c4')
     ]));
 

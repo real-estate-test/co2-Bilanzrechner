@@ -405,6 +405,58 @@
   pruefe('ein deckender Spiegel meldet nichts', false,
     voll.warnungen.some(function (w) { return /Wohnungsspiegel erfasst/.test(w.text); }));
 
+  /* Wer einen Spiegel führt, lässt die Prozentanteile der
+     Nutzungszeilen oft leer — die Flächen kommen ja von dort. Dann
+     müssen auch die Kostengruppen der BKP 20–29 dem Spiegel folgen,
+     sonst hätten die Zeilen «Gebäude oberirdisch …» keine Menge und
+     die halben Baukosten fielen weg. */
+  function spiegelOhneProzent(mitProzent) {
+    var q = A.defaultProject();
+    q.grundstueck.geschosse = 5;
+    q.teile.neubau.nutzungen = [
+      A.defNutzung({ bezeichnung: 'STWE', art: 'wohnen', anteil: mitProzent ? 70 : 0,
+        preis: 10000, verwertung: 'stwe' }),
+      A.defNutzung({ bezeichnung: 'Miete', art: 'wohnen', anteil: mitProzent ? 30 : 0,
+        miete: 320, verwertung: 'halten_vermietet' })
+    ];
+    var s2 = q.teile.neubau.nutzungen[0].id, m2 = q.teile.neubau.nutzungen[1].id;
+    q.spiegel.aktiv = true;
+    q.spiegel.teil = 'neubau';
+    q.spiegel.haeuser = [
+      { id: 'y1', name: 'A', zeile: s2, preismodus: 'einheit', mietmodus: 'monat',
+        einheiten: [{ nr: 'A1', anzahl: 1, zimmer: 3.5, flaeche: 1229, preis: 12290000 }] },
+      { id: 'y2', name: 'B', zeile: m2, preismodus: 'einheit', mietmodus: 'monat',
+        einheiten: [{ nr: 'B1', anzahl: 1, zimmer: 3.5, flaeche: 526, miete: 14026 }] }
+    ];
+    return q;
+  }
+  var mitP = E.compute(spiegelOhneProzent(true));
+  var ohneP = E.compute(spiegelOhneProzent(false));
+  pruefe('ohne Prozentanteile füllt der Spiegel die Kostengruppe STWE', true,
+    ohneP.flaechen.teile.neubau.gruppen.oi_stwe > 1000);
+  pruefe('Kostengruppen sind mit und ohne Prozentanteile gleich',
+    mitP.flaechen.teile.neubau.gruppen.oi_stwe,
+    ohneP.flaechen.teile.neubau.gruppen.oi_stwe, 1);
+  function b2(res, id) {
+    var z = res.bau.bloecke.neubau.zeilen.find(function (x) { return x.id === id; });
+    return z ? z.betrag : 0;
+  }
+  pruefe('BKP 20–29 Stockwerkeigentum bleibt bepreist', true, b2(ohneP, 'b2_oi_stwe') > 1e6);
+  pruefe('BKP 20–29 Miete bleibt bepreist', true, b2(ohneP, 'b2_oi_miete') > 1e6);
+  pruefe('und die Anlagekosten sind dieselben',
+    mitP.kpi.anlagekosten, ohneP.kpi.anlagekosten, 1);
+  /* Die Prozentwarnung wäre hier ein Fehlalarm — der Spiegel liefert
+     die Flächen, die Anteile dürfen leer bleiben. */
+  pruefe('keine Prozentwarnung, wenn der Spiegel die Flächen liefert', false,
+    ohneP.warnungen.some(function (w) { return /Flächenanteile ergeben/.test(w.text); }));
+  var ohneSpiegel = A.defaultProject();
+  ohneSpiegel.teile.neubau.nutzungen = [
+    A.defNutzung({ bezeichnung: 'A', art: 'wohnen', anteil: 60, preis: 10000, verwertung: 'stwe' })
+  ];
+  pruefe('ohne Spiegel warnt sie weiterhin', true,
+    E.compute(ohneSpiegel).warnungen.some(function (w) {
+      return /Flächenanteile ergeben/.test(w.text); }));
+
   /* Ein Stand von gestern wird verlustfrei in Häuser überführt. */
   var alt21 = A.defaultProject();
   alt21.schema = 21;

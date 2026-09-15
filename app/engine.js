@@ -292,6 +292,35 @@ window.APP = window.APP || {};
           g.miete_m2_a = g.flaeche > 0 ? g.miete_a / g.flaeche : 0;
           o.nutzungen[zid] = g.flaeche;
         });
+
+        /* Die Kostengruppen der BKP 20–29 müssen mitziehen.
+
+           Sie entstehen weiter oben aus dem Prozentanteil der
+           Nutzungszeile — wer aber einen Wohnungsspiegel führt, lässt
+           diese Anteile oft leer, weil der Spiegel die Flächen ja
+           bestimmt. Dann blieben die Gruppen null, die Zeilen «Gebäude
+           oberirdisch · Stockwerkeigentum / Miete / Gewerbe» hätten
+           keine Menge, und die halben Baukosten fielen weg.
+
+           Der Anteil an der Nutzfläche überträgt sich auf die
+           Geschossfläche: Was 70 % der NWF ausmacht, belegt auch 70 %
+           der oberirdischen Geschossfläche. Zeilen ohne Spiegeleintrag
+           behalten ihren Prozentanteil. */
+        if (o.nwf > 0 && o.gf_oi > 0) {
+          o.gruppen = { oi_stwe: 0, oi_miete: 0, oi_gewerbe: 0 };
+          o.gruppen_verw = leereGruppenVerw();
+          (t.nutzungen || []).forEach(function (n) {
+            if (n.art === 'parkplatz') return;
+            var gr = n.kostengruppe || A.kostengruppeFuer(n.art, n.verwertung);
+            var sp2 = o.spiegel[n.id];
+            var gf_n = (sp2 && sp2.flaeche > 0)
+              ? o.gf_oi * (sp2.flaeche / o.nwf)
+              : o.gf_oi * pct(n.anteil);
+            o.gruppen[gr] = (o.gruppen[gr] || 0) + gf_n;
+            if (!o.gruppen_verw[gr]) o.gruppen_verw[gr] = { stwe: 0, miete: 0, exit: 0 };
+            o.gruppen_verw[gr][E.blockFuer(n.verwertung)] += gf_n;
+          });
+        }
         o.spiegel_flaeche = sf;
         o.spiegel_erloes = sp;
         o.spiegel_preis_m2 = sf > 0 ? sp / sf : 0;
@@ -309,7 +338,14 @@ window.APP = window.APP || {};
         });
       }
 
-      if (t.aktiv && Math.abs(summeFlaeche - 100) > 0.5) {
+      /* Die Prozentanteile müssen 100 % ergeben — ausser der
+         Wohnungsspiegel liefert die Flächen. Dann bleiben sie
+         absichtlich leer, und diese Meldung wäre ein Fehlalarm bei
+         jedem Aufruf. An ihre Stelle tritt der Abgleich der erfassten
+         Fläche gegen die Nutzfläche, gleich darunter. */
+      var spiegelHier = p.spiegel.aktiv && p.spiegel.teil === T.id &&
+        Object.keys(o.spiegel || {}).length > 0;
+      if (t.aktiv && !spiegelHier && Math.abs(summeFlaeche - 100) > 0.5) {
         warn.push({ art: 'warn', text: T.label + ': Flächenanteile ergeben ' +
           A.fmt(summeFlaeche, 1) + ' % statt 100 %.' });
       }

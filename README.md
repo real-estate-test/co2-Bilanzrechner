@@ -351,6 +351,16 @@ zu welchen Konditionen das möglich wäre: Ertragswert, Gewinn gegenüber der
 anteiligen Investition und das EBT darauf. Sie doppelt den Exit-Block bewusst —
 dort steht der geplante Verkauf, hier die Möglichkeit.
 
+Auch die **Kostengruppen der BKP 20–29 folgen dem Spiegel**. Sie entstehen sonst
+aus dem Prozentanteil der Nutzungszeile — wer aber einen Spiegel führt, lässt
+diese Anteile oft leer, weil der Spiegel die Flächen ja bestimmt. Der Anteil an
+der Nutzfläche überträgt sich deshalb auf die Geschossfläche: Was 70 % der NWF
+ausmacht, belegt auch 70 % der oberirdischen Geschossfläche. Zeilen ohne
+Spiegeleintrag behalten ihren Prozentanteil, sodass sich Spiegel und
+Nutzungszeilen im selben Gebäudeteil mischen lassen. Solange ein Spiegel die
+Flächen liefert, entfällt die Meldung «Flächenanteile ergeben X % statt 100 %» —
+sie wäre dann ein Fehlalarm bei jedem Aufruf.
+
 Der **Flächenschlüssel folgt dem Wohnungsspiegel**, sobald einer vorliegt: Er
 ersetzt die Flächen der zugeordneten Nutzungszeilen, und damit richten sich auch
 die Verwertungsanteile nach den einzeln erfassten Wohnungen statt nach den

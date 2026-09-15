@@ -502,6 +502,45 @@
     E.compute(hl).warnungen.some(function (w) {
       return /keiner Nutzungszeile zugeordnet/.test(w.text); }));
 
+  /* Erstvermietung in Prozent der Sollmiete, Käuferbetreuung auf den
+     Verkaufserlös. Beide tragen ihren Verursacher bei sich. */
+  var vm = A.defaultProject();
+  vm.grundstueck.geschosse = 5;
+  vm.teile.neubau.nutzungen = [
+    A.defNutzung({ bezeichnung: 'STWE', art: 'wohnen', anteil: 60, preis: 10000, verwertung: 'stwe' }),
+    A.defNutzung({ bezeichnung: 'Miete', art: 'wohnen', anteil: 40, miete: 320, verwertung: 'halten_vermietet' })
+  ];
+  vm.vermarktung.vermietung_pct = 12.50;
+  vm.vermarktung.kaeuferbetreuung_pct = 0.30;
+  var rvm = E.compute(vm);
+  function vz(id) {
+    return rvm.vermarktung.zeilen.find(function (x) { return x.id === id; }) || { betrag: 0 };
+  }
+  pruefe('Erstvermietung = % der Sollmiete',
+    rvm.ertraege.sollmiete_halten * 0.125, vz('vermietung').betrag, 1);
+  pruefe('Käuferbetreuung = % des STWE-Erlöses',
+    rvm.ertraege.stwe_erloes * 0.003, vz('kaeuferbetreuung').betrag, 1);
+  pruefe('die Käuferbetreuung trägt den STWE-Anteil', true,
+    vz('kaeuferbetreuung').traeger === 'stwe');
+  pruefe('die Erstvermietung trägt die Ertragsflächen', true,
+    vz('vermietung').traeger === 'ertrag');
+  /* Verteilt bleibt die Summe der Vermarktung erhalten. */
+  var vmt = E.vermarktungAufteilen(rvm.vermarktung, rvm.ertraege);
+  pruefe('die verteilte Vermarktung ergibt wieder das Total',
+    rvm.vermarktung.total, vmt.stwe + vmt.miete + vmt.exit, 1);
+
+  /* Monatsmieten waren dieselbe Grösse in anderer Einheit: Eine
+     Monatsmiete ist ein Zwölftel der Jahressollmiete. */
+  var vmAlt = A.defaultProject();
+  vmAlt.schema = 22;
+  vmAlt.vermarktung.vermietung_monate = 1.50;
+  delete vmAlt.vermarktung.vermietung_pct;
+  var vmNeu = A.migrate(A.clone(vmAlt));
+  pruefe('Migration: 1.5 Monatsmieten werden 12.5 %', 12.5,
+    vmNeu.vermarktung.vermietung_pct, 0.01);
+  pruefe('Migration: das alte Feld ist geräumt', true,
+    vmNeu.vermarktung.vermietung_monate === undefined);
+
   /* Ein Stand von gestern wird verlustfrei in Häuser überführt. */
   var alt21 = A.defaultProject();
   alt21.schema = 21;

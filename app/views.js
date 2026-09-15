@@ -2108,7 +2108,13 @@ window.APP = window.APP || {};
         U.num(p, 'vermarktung.verkauf_pct', 'Verkaufsprovision Stockwerkeigentum', { unit: '% Erlös', dez: 2 }),
         U.num(p, 'vermarktung.beurkundung_verkauf', 'Beurkundung Verkauf', { unit: '% Erlös', dez: 2, stufe: 'standard' }),
         U.num(p, 'vermarktung.exit_nebenkosten', 'Nebenkosten Exit an Investor', { unit: '% Erlös', dez: 2, stufe: 'standard' }),
-        U.num(p, 'vermarktung.vermietung_monate', 'Erstvermietungsprovision', { unit: 'Monatsmieten', dez: 2, stufe: 'standard' }),
+        U.num(p, 'vermarktung.vermietung_pct', 'Erstvermietungsprovision',
+          { unit: '% Sollmiete', dez: 2, stufe: 'standard',
+            hilfe: 'Prozent der Jahressollmiete der vermieteten Flächen. Eine Monatsmiete ' +
+                   'entspricht 8.33 %.' }),
+        U.num(p, 'vermarktung.kaeuferbetreuung_pct', 'Käuferbetreuung',
+          { unit: '% Erlös', dez: 2, stufe: 'standard',
+            hilfe: 'Prozent des Verkaufserlöses Stockwerkeigentum.' }),
         U.sel(p, 'vermarktung.marketing_basis', [
           { id: 'pct', label: '% vom Erlös' }, { id: 'pauschal', label: 'Pauschal' }
         ], 'Marketing — Basis', { stufe: 'standard' }),

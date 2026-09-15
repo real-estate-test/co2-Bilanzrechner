@@ -917,9 +917,15 @@ window.APP = window.APP || {};
       A.fmt(v.beurkundung_verkauf, 2) + ' %', ERT.stwe_erloes * pct(v.beurkundung_verkauf), 'stwe');
     zeile('exit_nk', 'Verkaufsnebenkosten Exit an Investor',
       A.fmt(v.exit_nebenkosten, 2) + ' %', ERT.exit_wert * pct(v.exit_nebenkosten), 'exit');
+    /* Die Erstvermietung bemisst sich an der Jahressollmiete der
+       vermieteten Flächen — verkaufte STWE wird nicht vermietet. */
     zeile('vermietung', 'Erstvermietungsprovision',
-      A.fmt(v.vermietung_monate, 2) + ' Monatsmieten',
-      ERT.sollmiete_halten / 12 * num(v.vermietung_monate), 'ertrag');
+      A.fmt(v.vermietung_pct, 2) + ' % der Sollmiete',
+      ERT.sollmiete_halten * pct(v.vermietung_pct), 'ertrag');
+    /* Die Betreuung der Käufer entsteht nur dort, wo verkauft wird. */
+    zeile('kaeuferbetreuung', 'Käuferbetreuung',
+      A.fmt(v.kaeuferbetreuung_pct, 2) + ' %',
+      ERT.stwe_erloes * pct(v.kaeuferbetreuung_pct), 'stwe');
     zeile('marketing', 'Marketing / Werbung',
       v.marketing_basis === 'pauschal' ? 'pauschal' : A.fmt(v.marketing_pct, 2) + ' %',
       v.marketing_basis === 'pauschal' ? num(v.marketing_fix)

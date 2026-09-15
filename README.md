@@ -322,6 +322,15 @@ Reihenfolge im Projekt: Dasselbe Blau bedeutet in jedem Projekt dieselbe
 Wohnungsgrösse. Einheiten ohne Zimmerzahl bilden eine graue Gruppe am Schluss,
 statt aus der Rechnung zu fallen.
 
+**Vermarktung** Sieben Posten, jeder mit eigener Bezugsgrösse:
+Verkaufsprovision, Beurkundung (Anteil Verkäufer) und **Käuferbetreuung** in
+Prozent des Verkaufserlöses STWE, Exit-Nebenkosten in Prozent des Exit-Erlöses,
+die **Erstvermietungsprovision** in Prozent der Jahressollmiete der vermieteten
+Flächen (eine Monatsmiete entspricht 8.33 %), Marketing wahlweise prozentual oder
+pauschal, die Musterwohnung pauschal. Früher wurde die Erstvermietung in
+Monatsmieten erfasst — dieselbe Grösse in anderer Einheit; bestehende Projekte
+werden wertneutral umgerechnet.
+
 **Finanzierung** Eigenkapitalquote und Belehnungsdeckel, getrennte Zinssätze vor
 und nach der Baubewilligung, Bereitstellungskommission, kalkulatorische
 Eigenkapitalverzinsung. Der Vorverkauf wirkt zweifach: über eine frei definierbare
@@ -394,10 +403,11 @@ Drei Wege führen in die Blöcke. Baukostenzeilen **BKP 20–29**, die eine
 **Kostengruppe** bemessen, folgen den Flächen, die sie bauen — was der
 Gewerbeausbau kostet, hat mit dem Wohnungsverkauf nichts zu tun. Die
 **Vermarktungskosten**
-folgen ihrem Verursacher: Verkaufsprovision und Beurkundung auf den STWE-Anteil,
-die Exit-Nebenkosten auf den Exit-Anteil, die Erstvermietung auf die vermieteten
-Flächen nach ihrer Miete, Marketing und Musterwohnung nach Fläche; sonst trüge
-der Mietanteil einen Teil der Verkaufsprovision, die für ihn gar nicht anfällt.
+folgen ihrem Verursacher: Verkaufsprovision, Beurkundung und Käuferbetreuung auf
+den STWE-Anteil, die Exit-Nebenkosten auf den Exit-Anteil, die Erstvermietung auf
+die vermieteten Flächen nach ihrer Miete, Marketing und Musterwohnung nach
+Fläche; sonst trüge der Mietanteil einen Teil der Verkaufsprovision, die für ihn
+gar nicht anfällt.
 Alles Übrige — Erwerb, Finanzierung, BKP 1/3/4/5/9 und die nicht zugeordneten
 Baukosten — wird nach Nutzfläche verteilt. Brutto- und Nettorendite verwenden
 dieselbe Grundlage wie die EBT-Kennzahlen, damit nicht zwei Zahlen für dieselbe

@@ -6,7 +6,7 @@ window.APP = window.APP || {};
 (function (A) {
   'use strict';
 
-  A.SCHEMA = 22;
+  A.SCHEMA = 23;
 
   /* ---------------------------------------------------------------
      Stammlisten
@@ -1859,7 +1859,8 @@ window.APP = window.APP || {};
 
       vermarktung: {
         verkauf_pct: 1.90,               // % Verkaufserlös STWE
-        vermietung_monate: 1.50,         // Monatsmieten je Erstvermietung
+        vermietung_pct: 12.50,           // % der Sollmiete je Erstvermietung
+        kaeuferbetreuung_pct: 0.30,      // % Verkaufserlös STWE
         marketing_basis: 'pct',          // pct | pauschal
         marketing_pct: 0.50,             // % vom Erlös
         marketing_fix: 0,
@@ -2537,6 +2538,19 @@ window.APP = window.APP || {};
         if (h.mietmodus !== 'm2') h.mietmodus = 'monat';
       });
     }
+
+    /* --- Schema 22 -> 23: Erstvermietungsprovision in Prozent -----
+
+       Sie wurde in Monatsmieten erfasst, was dieselbe Grösse in einer
+       anderen Einheit ist: Eine Monatsmiete ist ein Zwölftel der
+       Jahressollmiete. Umgerechnet bleibt der Betrag deshalb gleich —
+       1.5 Monatsmieten werden zu 12.5 %. */
+    if (p.vermarktung && p.vermarktung.vermietung_monate !== undefined &&
+        p.vermarktung.vermietung_pct === undefined) {
+      p.vermarktung.vermietung_pct =
+        Math.round((num(p.vermarktung.vermietung_monate) / 12) * 10000) / 100;
+    }
+    if (p.vermarktung) delete p.vermarktung.vermietung_monate;
 
     /* Startdatum aus einem vorhandenen Startjahr ableiten */
     if (!p.startdatum && p.startjahr) p.startdatum = p.startjahr + '-01-01';

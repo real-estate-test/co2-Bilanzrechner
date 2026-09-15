@@ -178,12 +178,17 @@ window.APP = window.APP || {};
       : ((v.stand && v.stand.einheiten) || []);
     if (einheit.preis > 0) return { wert: einheit.preis, quelle: 'Preis der Quelle' };
 
-    if (p.spiegel && p.spiegel.aktiv && Array.isArray(p.spiegel.einheiten)) {
+    if (p.spiegel && p.spiegel.aktiv) {
       var nr = String(einheit.id).trim().toLowerCase();
-      var sp = p.spiegel.einheiten.find(function (e) {
-        return String(e.nr || '').trim().toLowerCase() === nr;
+      var treffer = A.spiegelEinheiten(p).find(function (x) {
+        return String(x.einheit.nr || '').trim().toLowerCase() === nr;
       });
-      if (sp && num(sp.preis) > 0) return { wert: num(sp.preis), quelle: 'Wohnungsspiegel Nr. ' + sp.nr };
+      var sp = treffer && treffer.einheit;
+      if (sp && num(sp.preis) > 0) {
+        return { wert: num(sp.preis),
+                 quelle: 'Wohnungsspiegel ' + (treffer.haus.name ? treffer.haus.name + ' · ' : '') +
+                         'Nr. ' + sp.nr };
+      }
     }
 
     var frei = alle.filter(function (u) {

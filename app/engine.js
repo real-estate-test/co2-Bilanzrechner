@@ -253,10 +253,15 @@ window.APP = window.APP || {};
          Zeile zugeordnet und erbt von dort Art und Verwertung. Solange kein
          Spiegel vorliegt, gilt der Durchschnittspreis der Zeile. */
       o.spiegel = {};
-      if (p.spiegel.aktiv && p.spiegel.teil === T.id && p.spiegel.einheiten.length) {
+      var spiegelListe = A.spiegelEinheiten(p);
+      if (p.spiegel.aktiv && p.spiegel.teil === T.id && spiegelListe.length) {
         var sf = 0, sp = 0;
-        p.spiegel.einheiten.forEach(function (e) {
-          var zid = e.zeile;
+        spiegelListe.forEach(function (x) {
+          var e = x.einheit;
+          /* Die Zuordnung trägt das Haus, nicht mehr die einzelne
+             Wohnung — ob verkauft oder vermietet wird, entscheidet
+             sich je Haus. */
+          var zid = x.haus.zeile;
           if (!zid || o.nutzungen[zid] === undefined) return;
           /* Eine Zeile kann mehrere gleichwertige Wohnungen abbilden.
              Fläche und Preis gelten je Einheit. */
@@ -1909,11 +1914,18 @@ window.APP = window.APP || {};
         A.TEILE.forEach(function (T) {
           (p.teile[T.id].nutzungen || []).forEach(function (n) { n.preis *= f; });
         });
-        p.spiegel.einheiten.forEach(function (e) { e.preis *= f; });
+        A.spiegelEinheiten(p).forEach(function (x) {
+          x.einheit.preis *= f;
+          if (x.einheit.preis_m2) x.einheit.preis_m2 *= f;
+        });
       } },
     { id: 'mieten', label: 'Mietzinsen', apply: function (p, f) {
         A.TEILE.forEach(function (T) {
           (p.teile[T.id].nutzungen || []).forEach(function (n) { n.miete *= f; });
+        });
+        A.spiegelEinheiten(p).forEach(function (x) {
+          x.einheit.miete *= f;
+          if (x.einheit.miete_m2) x.einheit.miete_m2 *= f;
         });
       } },
     { id: 'landpreis', label: 'Landpreis', apply: function (p, f) {

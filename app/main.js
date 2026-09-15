@@ -228,16 +228,48 @@ window.APP = window.APP || {};
       return d;
     }
 
+    /* Die Leiste beantwortet die Frage, die bei jedem Blick auf ein
+       Projekt zuerst kommt: Was kostet es, was bringt der Verkauf, was
+       der Bestand — und was wäre er beim Weiterverkauf wert. Gesamtzahlen
+       wie Gewinn und Marge stehen auf der Ergebnisseite; bei einem
+       Mischprojekt sagen sie für sich genommen wenig. */
     bar.appendChild(kpi('Anlagekosten', A.fmtMio(k.anlagekosten)));
-    bar.appendChild(kpi('Erlöse', A.fmtMio(k.erloese + k.mietertrag_projekt)));
-    bar.appendChild(kpi('Gewinn', A.fmtMio(k.gewinn), k.gewinn >= 0 ? 'pos' : 'neg'));
-    bar.appendChild(kpi('Marge', A.fmtPct(k.marge_ak),
-      k.marge_ak >= p.ziele.marge ? 'pos' : 'warnc'));
-    bar.appendChild(kpi('Rendite EK', A.fmtPct(k.roe)));
-    bar.appendChild(kpi('IRR', k.irr === null ? '–' : A.fmtPct(k.irr)));
-    bar.appendChild(kpi('Kapitalspitze', A.fmtMio(k.kapital_peak)));
-    bar.appendChild(kpi('Bruttorendite', A.fmtPct(k.bruttorendite, 2),
-      k.bruttorendite >= p.ziele.bruttorendite ? 'pos' : ''));
+
+    bar.appendChild(kpi('Erlöse STWE', A.fmtMio(k.stwe_erloes)));
+    bar.appendChild(kpi('EBT STWE', k.gi_stwe > 0 ? A.fmtPct(k.ebt_stwe) : '–',
+      k.gi_stwe > 0 ? (k.ebt_stwe >= p.ziele.marge ? 'pos' : 'neg') : ''));
+
+    bar.appendChild(kpi('Sollmiete', k.sollmiete > 0 ? A.fmt(k.sollmiete) : '–',
+      '', k.sollmiete > 0 ? '/a' : ''));
+    bar.appendChild(kpi('Bruttomietrendite',
+      k.ak_ertrag > 0 ? A.fmtPct(k.bruttorendite, 2) : '–',
+      k.ak_ertrag > 0 && k.bruttorendite >= p.ziele.bruttorendite ? 'pos' : ''));
+
+    /* Zwei Wege führen zum Endinvestor, und ein Projekt hat meist nur
+       einen davon: Der Mietanteil wird gerechnet, als bliebe er im
+       Bestand — sein Verkauf ist eine Möglichkeit. Der Exit-Anteil ist
+       von vornherein für den Verkauf bestimmt. Gezeigt wird der Weg,
+       den dieses Projekt geht; der Untertitel sagt, welcher es ist. */
+    var exitGewinn, exitEbt, exitWoher;
+    if (k.gi_miete > 0) {
+      exitGewinn = k.gewinn_miete_verkauf;
+      exitEbt = k.ebt_miete_verkauf;
+      exitWoher = 'Bestand';
+    } else if (k.gi_exit > 0) {
+      exitGewinn = k.exit_wert - k.gi_exit;
+      exitEbt = k.ebt_exit;
+      exitWoher = 'geplant';
+    } else {
+      exitGewinn = null;
+    }
+
+    bar.appendChild(kpi('Gewinn Exit',
+      exitGewinn === null ? '–' : A.fmtMio(exitGewinn),
+      exitGewinn === null ? '' : (exitGewinn >= 0 ? 'pos' : 'neg'),
+      exitGewinn === null ? '' : exitWoher));
+    bar.appendChild(kpi('EBT Exit',
+      exitGewinn === null ? '–' : A.fmtPct(exitEbt),
+      exitGewinn === null ? '' : (exitEbt >= p.ziele.marge ? 'pos' : 'neg')));
 
     var vkStand = A.verkauf.gespeichert();
     var akt = el('div', { class: 'kpi kpi-actions',

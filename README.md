@@ -274,19 +274,23 @@ sollen: Jede Einheit wird einer Nutzungszeile zugeordnet und erbt von dort Art
 und Verwertung; Fläche und Durchschnittspreis der Zeile ergeben sich dann aus den
 Einheiten. Ohne Spiegel gilt der erfasste Durchschnittswert.
 
-Der Spiegel trägt **Verkauf und Miete nebeneinander**. Welches Feld eine Zeile
-zeigt, sagt die Verwertung ihrer Nutzungszeile: Beim Verkauf der Preis, beim
-Halten und beim Exit die Miete. Der jeweils andere Wert bleibt im Datensatz
-erhalten — ein Projekt wechselt die Verwertung im Verlauf oft noch. Zwei
-Tabellen braucht es dafür nicht: Nr., Haus, Geschoss, Zimmer und Fläche sind
-dieselben, und ein Wohnungsmix will zusammen gelesen werden.
+**Häuser sind die Hauptgruppe**, Wohnungen liegen darin. Ob verkauft oder
+vermietet wird, entscheidet sich je Haus — und damit auch, ob eine Wohnung einen
+Preis oder eine Miete trägt und in welcher Einheit. Ein Haus trägt drei
+Entscheidungen: seinen Namen, seine **Nutzungszeile** (von dort erbt es Art und
+Verwertung) und die **Erfassungsart**. Darunter kommen die Wohnungen über einen
+`+`-Knopf dazu. Vorher stand beides nebeneinander in einer Tabelle und die
+Erfassungsart galt für alles zugleich; bei gemischten Projekten war das nicht zu
+lesen.
 
-Je ein Umschalter bestimmt, **womit erfasst wird**: *Preis je Einheit* oder
-*Preis je m²*, *Miete je Monat* oder *Miete je m² und Jahr*. Gerechnet wird immer
-mit dem Preis je Einheit und der Monatsmiete; in den m²-Modi werden sie aus der
-Fläche gebildet. Dort führt der Quadratmeterwert: Ändert sich die Fläche, wächst
-der Betrag je Einheit mit. Beim Umschalten wird der bestehende Stand übernommen,
-sodass keine Zahl springt.
+Die Erfassungsart richtet sich nach der Verwertung: Verkaufshäuser wählen
+zwischen *CHF je Einheit* und *CHF/m²*, Miethäuser zwischen *CHF/Monat* und
+*CHF/m²/Jahr*. Gerechnet wird immer mit dem Preis je Einheit und der Monatsmiete;
+in den m²-Modi werden sie aus der Fläche gebildet, und dort führt der
+Quadratmeterwert: Ändert sich die Fläche, wächst der Betrag je Einheit mit. Beim
+Umschalten wird der bestehende Stand übernommen, sodass keine Zahl springt. Der
+jeweils ungenutzte Wert bleibt erhalten — ein Haus wechselt die Verwertung im
+Verlauf oft noch.
 
 Die **Miete aus dem Spiegel schlägt auf die Nutzungszeile durch**, so wie es der
 Preis schon tat — sonst stünde bei einzeln erfassten Wohnungen deren Fläche neben
@@ -295,11 +299,10 @@ gilt weiterhin der Zeilendurchschnitt. Ist sie nur **teilweise** erfasst, zählt
 nur das Erfasste — und eine Warnung nennt die Wohnungen ohne Miete samt ihrer
 Fläche: Sie zählen in die Rendite, ihr Ertrag fehlt.
 
-Die Spalte **Haus** ist eine freie Bezeichnung. Darunter lassen sich alle
-Einheiten eines Hauses in einem Zug derselben Nutzungszeile zuordnen — ob
-verkauft oder vermietet wird, entscheidet sich in der Regel je Haus, nicht je
-Wohnung. Sind die Einheiten eines Hauses verschieden zugeordnet, steht dort
-*gemischt*; einzelne Zeilen lassen sich weiterhin abweichend setzen.
+Ältere Projekte werden beim Öffnen **verlustfrei überführt**: Die Wohnungen
+werden nach ihrer bisherigen Hausbezeichnung und Nutzungszeile gruppiert, die
+Erfassungsart wandert ans Haus, und wer noch kein Haus vergeben hatte, bekommt
+eines je Nutzungszeile.
 
 Die **Zimmerzahl** ist eine Auswahl von 1.5 bis 6.5 — eine feste Liste, weil sie
 die Verteilung darunter erst auswertbar macht. Ein Bestandswert ausserhalb der
@@ -308,12 +311,12 @@ ersetzt.
 
 Darunter zeigen Kreisdiagramme den **Wohnungsmix** nach Anzahl Wohnungen —
 danach fragt der Markt, nicht nach Quadratmetern; die Fläche und der
-Flächendurchschnitt stehen in der Legende daneben. **Ein Bild je Nutzungszeile**,
-untereinander, und darüber eines über alles: Die Frage «welche Wohnungsgrössen
-bauen wir?» stellt sich für den Verkauf anders als für den Bestand — im Verkauf
-zählt, was der Markt aufnimmt, im Bestand, was sich dauerhaft vermieten lässt.
-Nur zusammengezählt sähe man keines von beidem. Bei nur einer Nutzungszeile
-entfällt das Gesamtbild, sonst stünde dasselbe zweimal. Die Farbskala läuft von hell
+Flächendurchschnitt stehen in der Legende daneben. Genau **drei Bilder**,
+unabhängig von der Zahl der Häuser: eines für den Verkauf, eines für die Miete,
+eines über alles. Fünf Miethäuser ergeben einen Kreis, nicht fünf — die Frage
+ist, was verkauft und was gehalten wird, nicht wie die Baukörper heissen. Gibt es
+nur eine der beiden Seiten, entfällt das Gesamtbild, sonst stünde dasselbe
+zweimal. Die Farbskala läuft von hell
 nach dunkel mit steigender Zimmerzahl und hängt an der Zahl selbst, nicht an der
 Reihenfolge im Projekt: Dasselbe Blau bedeutet in jedem Projekt dieselbe
 Wohnungsgrösse. Einheiten ohne Zimmerzahl bilden eine graue Gruppe am Schluss,
@@ -324,6 +327,16 @@ und nach der Baubewilligung, Bereitstellungskommission, kalkulatorische
 Eigenkapitalverzinsung. Der Vorverkauf wirkt zweifach: über eine frei definierbare
 Staffel senkt er den Zinssatz, über den Zahlungsplan entlasten die Käuferzahlungen
 den Baukredit.
+
+**Die Kennzahlenleiste** über jeder Seite zeigt sieben Werte: *Anlagekosten*,
+*Erlöse STWE*, *EBT STWE*, *Sollmiete*, *Bruttomietrendite*, *Gewinn Exit* und
+*EBT Exit*. Gesamtzahlen wie Gewinn und Marge stehen auf der Ergebnisseite — bei
+einem Mischprojekt sagen sie für sich genommen wenig, weil sie Verkauf und
+Bestand vermengen. Was ein Projekt nicht hat, steht als «–» statt als Null.
+
+Die beiden Exit-Werte zeigen den Weg, den dieses Projekt geht: Gibt es einen
+Mietanteil, ist es dessen Verkauf an einen Endinvestor (Untertitel *Bestand*);
+sonst der von vornherein geplante Exit (*geplant*).
 
 **Ergebnis je Verwertungsart** Bei einem Mischprojekt sagt eine Gesamtmarge über
 alles wenig. Die Gesamtinvestition (Anlagekosten inklusive Vermarktung) wird

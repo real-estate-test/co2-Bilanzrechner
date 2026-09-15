@@ -766,6 +766,28 @@ body.seite-termine #inhalt { max-width: none; }
 
 /* --- Verteilung der Wohnungsgrössen ------------------------------- */
 
+/* --- Wohnungsspiegel: Häuser als Hauptgruppe ---------------------- */
+
+.hausblock {
+  border: 1px solid var(--line2); border-radius: 8px; overflow: hidden;
+  background: var(--panel);
+}
+.hauskopf {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 9px 12px; background: var(--panel2);
+  border-bottom: 1px solid var(--line);
+}
+.hauskopf .sp { margin-left: auto; display: flex; align-items: center; }
+.hausname {
+  font-weight: 600; width: 130px; min-width: 110px;
+}
+.hauskoerper { padding: 0 12px; }
+.hausfuss { padding: 9px 12px 11px; }
+
+@media (max-width: 820px) {
+  .hauskopf .sp { margin-left: 0; width: 100%; }
+}
+
 .zimmerblock { margin-bottom: 18px; }
 .zimmerblock:last-child { margin-bottom: 0; }
 .zimmertitel {

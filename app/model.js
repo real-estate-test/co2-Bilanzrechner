@@ -6,7 +6,7 @@ window.APP = window.APP || {};
 (function (A) {
   'use strict';
 
-  A.SCHEMA = 21;
+  A.SCHEMA = 22;
 
   /* ---------------------------------------------------------------
      Stammlisten
@@ -76,6 +76,34 @@ window.APP = window.APP || {};
     var n = parseInt(m[1], 16);
     var r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
     return (0.299 * r + 0.587 * g + 0.114 * b) > 150 ? '#12243d' : '#ffffff';
+  };
+
+  /* Die Wohnungen des Spiegels als flache Liste, jede mit ihrem Haus.
+     Rechenkern und Oberfläche lesen daraus — so kann keine Einheit in
+     der einen Sicht zählen und in der anderen fehlen. */
+  A.spiegelEinheiten = function (p) {
+    var raus = [];
+    if (!p || !p.spiegel) return raus;
+    (p.spiegel.haeuser || []).forEach(function (h) {
+      (h.einheiten || []).forEach(function (e) {
+        raus.push({ einheit: e, haus: h });
+      });
+    });
+    return raus;
+  };
+
+  /* Ein Verkaufshaus trägt Preise, jedes andere Mieten. Ohne
+     Nutzungszeile gilt der Verkauf — so war es bisher, und die meisten
+     Spiegel sind Verkaufsspiegel. */
+  A.hausVerwertung = function (p, haus) {
+    if (!haus || !haus.zeile) return 'stwe';
+    var teilO = p && p.teile && p.teile[p.spiegel.teil];
+    var zn = teilO && (teilO.nutzungen || []).find(function (n) { return n.id === haus.zeile; });
+    return zn ? zn.verwertung : 'stwe';
+  };
+
+  A.hausIstMiete = function (p, haus) {
+    return A.hausVerwertung(p, haus) !== 'stwe';
   };
 
   A.VERWERTUNG = [
@@ -1807,29 +1835,26 @@ window.APP = window.APP || {};
            je Einheit; im Modus «m2» führt der Quadratmeterpreis, und
            «preis» wird daraus abgeleitet. Zwei Wahrheiten nebeneinander
            gäbe es damit nicht — nur zwei Wege, zur selben zu kommen. */
-        preismodus: 'einheit',           // einheit | m2
-        /* Dasselbe für die Miete. Gerechnet wird mit «miete» je Monat;
-           im Modus «m2» führt die Jahresmiete je Quadratmeter, wie man
-           Gewerbe und grössere Bestände kalkuliert. */
-        mietmodus: 'monat',              // monat | m2
-        /* Je Einheit: {nr, haus, anzahl, geschoss, zimmer, flaeche,
-           preis, miete, zeile}
+        /* Häuser sind die Hauptgruppe, Wohnungen liegen darin. Ob
+           verkauft oder vermietet wird, entscheidet sich je Haus — und
+           damit auch, ob ein Preis oder eine Miete erfasst wird.
+
+           Je Haus: {id, name, zeile, preismodus, mietmodus, einheiten}
+             zeile       — Nutzungszeile; von dort erbt das ganze Haus
+                           Art und Verwertung
+             preismodus  — einheit | m2   (bei Verkaufshäusern)
+             mietmodus   — monat | m2     (bei Miethäusern)
+
+           Je Einheit: {nr, anzahl, geschoss, zimmer, flaeche, preis,
+                        miete, preis_m2, miete_m2}
            «anzahl» fasst gleichwertige Wohnungen zusammen — Fläche,
            Preis und Miete gelten je Einheit und werden mit der Anzahl
-           multipliziert. In den m²-Modi kommen «preis_m2» und
-           «miete_m2» als führende Grössen dazu.
-           «haus» ist eine freie Bezeichnung; über sie lassen sich alle
-           Einheiten eines Hauses auf einmal einer Nutzungszeile
-           zuordnen — ob verkauft oder vermietet wird, entscheidet sich
-           in der Regel je Haus.
-           «zeile» verweist auf eine Nutzungszeile — darüber erbt die
-           Einheit Art und Verwertung. Ohne Spiegel gilt der
-           Durchschnittswert der Zeile.
-           Welches Feld zählt, sagt die Verwertung der Zeile: Beim
-           Verkauf der Preis, beim Halten und beim Exit die Miete. Das
-           jeweils andere bleibt erhalten — ein Projekt wechselt die
-           Verwertung im Verlauf oft noch. */
-        einheiten: []
+           multipliziert. Gerechnet wird mit «preis» und «miete»; in den
+           m²-Modi führen «preis_m2» und «miete_m2», und die ersten
+           beiden werden daraus gebildet. Der jeweils ungenutzte Wert
+           bleibt erhalten — ein Haus wechselt die Verwertung im Verlauf
+           oft noch. */
+        haeuser: []
       },
 
       vermarktung: {
@@ -2436,6 +2461,82 @@ window.APP = window.APP || {};
       p.baurecht.eintraege = {};
     }
     if (!Array.isArray(p.baurecht.eigene)) p.baurecht.eigene = [];
+
+    /* --- Schema 21 -> 22: Häuser als Hauptgruppe des Spiegels -----
+
+       Bisher war jede Wohnung einzeln einer Nutzungszeile zugeordnet,
+       und die Erfassungsart galt für den ganzen Spiegel. Ob verkauft
+       oder vermietet wird, entscheidet sich aber je Haus — und damit
+       auch, ob ein Preis oder eine Miete erfasst wird.
+
+       Die bestehenden Einheiten werden nach ihrer Hausbezeichnung und
+       ihrer Nutzungszeile gruppiert; keine geht verloren. Wer noch kein
+       Haus vergeben hat, bekommt eines je Nutzungszeile. -------------- */
+    /* Die Vorgabe aus defaultProject legt «haeuser» bereits als leeres
+       Array an — entscheidend ist deshalb das alte Feld, nicht das
+       neue: Solange «einheiten» Wohnungen enthält und noch keine
+       Häuser stehen, ist der Datensatz von gestern. */
+    if (p.spiegel && Array.isArray(p.spiegel.einheiten) && p.spiegel.einheiten.length &&
+        !(Array.isArray(p.spiegel.haeuser) && p.spiegel.haeuser.length)) {
+      var alteEinheiten = p.spiegel.einheiten;
+      var altPreis = p.spiegel.preismodus === 'm2' ? 'm2' : 'einheit';
+      var altMiete = p.spiegel.mietmodus === 'm2' ? 'm2' : 'monat';
+      var gruppen = {}, reihenfolge = [];
+
+      alteEinheiten.forEach(function (e) {
+        if (!e || typeof e !== 'object') return;
+        var hn = String(e.haus || '').trim();
+        var zl = e.zeile || '';
+        var k = hn + ' ' + zl;
+        if (!gruppen[k]) {
+          gruppen[k] = {
+            id: A.uid(),
+            name: hn,                  // leer: wird unten benannt
+            zeile: zl || null,
+            preismodus: altPreis,
+            mietmodus: altMiete,
+            einheiten: []
+          };
+          reihenfolge.push(k);
+        }
+        /* Die Einheit behält alles ausser der Zuordnung — die trägt
+           jetzt das Haus. */
+        var kopie = {};
+        Object.keys(e).forEach(function (f) {
+          if (f !== 'haus' && f !== 'zeile') kopie[f] = e[f];
+        });
+        gruppen[k].einheiten.push(kopie);
+      });
+
+      var namenlos = 0;
+      p.spiegel.haeuser = reihenfolge.map(function (k) {
+        var h = gruppen[k];
+        if (!h.name) {
+          /* Ohne eigene Bezeichnung: nach der Nutzungszeile benennen,
+             sonst durchnummerieren. */
+          var teilO = p.teile && p.teile[p.spiegel.teil];
+          var zn = teilO && (teilO.nutzungen || []).find(function (n) { return n.id === h.zeile; });
+          namenlos += 1;
+          h.name = zn && zn.bezeichnung ? zn.bezeichnung : ('Haus ' + namenlos);
+        }
+        return h;
+      });
+    }
+    /* Die alte Liste hat ausgedient, sobald Häuser stehen — ihre
+       Wohnungen sind dort aufgehoben. */
+    if (p.spiegel && Array.isArray(p.spiegel.haeuser) && p.spiegel.haeuser.length) {
+      delete p.spiegel.einheiten;
+      delete p.spiegel.preismodus;
+      delete p.spiegel.mietmodus;
+    }
+    if (p.spiegel && Array.isArray(p.spiegel.haeuser)) {
+      p.spiegel.haeuser.forEach(function (h) {
+        if (!h.id) h.id = A.uid();
+        if (!Array.isArray(h.einheiten)) h.einheiten = [];
+        if (h.preismodus !== 'm2') h.preismodus = 'einheit';
+        if (h.mietmodus !== 'm2') h.mietmodus = 'monat';
+      });
+    }
 
     /* Startdatum aus einem vorhandenen Startjahr ableiten */
     if (!p.startdatum && p.startjahr) p.startdatum = p.startjahr + '-01-01';

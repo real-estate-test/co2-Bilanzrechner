@@ -324,11 +324,14 @@
   var idV = ws.teile.neubau.nutzungen[0].id, idM = ws.teile.neubau.nutzungen[1].id;
   ws.spiegel.aktiv = true;
   ws.spiegel.teil = 'neubau';
-  ws.spiegel.einheiten = [
-    { nr: 'A1', haus: 'A', anzahl: 4, zimmer: 2.5, flaeche: 62, preis: 640000, zeile: idV },
-    { nr: 'A2', haus: 'A', anzahl: 6, zimmer: 3.5, flaeche: 88, preis: 880000, zeile: idV },
-    { nr: 'B1', haus: 'B', anzahl: 5, zimmer: 3.5, flaeche: 85, miete: 2100, zeile: idM },
-    { nr: 'B2', haus: 'B', anzahl: 3, zimmer: 4.5, flaeche: 108, miete: 2650, zeile: idM }
+  /* Häuser sind die Hauptgruppe; die Zuordnung trägt das Haus. */
+  ws.spiegel.haeuser = [
+    { id: 'hA', name: 'Haus A', zeile: idV, preismodus: 'einheit', mietmodus: 'monat', einheiten: [
+      { nr: 'A1', anzahl: 4, zimmer: 2.5, flaeche: 62, preis: 640000 },
+      { nr: 'A2', anzahl: 6, zimmer: 3.5, flaeche: 88, preis: 880000 } ] },
+    { id: 'hB', name: 'Haus B', zeile: idM, preismodus: 'einheit', mietmodus: 'monat', einheiten: [
+      { nr: 'B1', anzahl: 5, zimmer: 3.5, flaeche: 85, miete: 2100 },
+      { nr: 'B2', anzahl: 3, zimmer: 4.5, flaeche: 108, miete: 2650 } ] }
   ];
   var rws = E.compute(ws);
   pruefe('Spiegel: STWE-Erlös aus den Einheitspreisen',
@@ -348,19 +351,45 @@
 
   /* Ohne Miete im Spiegel gilt weiterhin der Durchschnitt der Zeile. */
   var wo = A.clone(ws);
-  wo.spiegel.einheiten.forEach(function (e) { e.miete = 0; });
+  A.spiegelEinheiten(wo).forEach(function (x) { x.einheit.miete = 0; });
   var rwo = E.compute(wo);
   pruefe('ohne Miete im Spiegel gilt der Zeilendurchschnitt',
     (5 * 85 + 3 * 108) * 320, rwo.ertraege.sollmiete, 1);
 
   /* Teilweise erfasst: Die fehlende Miete wird gemeldet, nicht ersetzt. */
   var wt = A.clone(ws);
-  wt.spiegel.einheiten[3].miete = 0;
+  wt.spiegel.haeuser[1].einheiten[1].miete = 0;
   var rwt = E.compute(wt);
   pruefe('teilweise erfasste Miete zählt nur das Erfasste',
     5 * 2100 * 12, rwt.ertraege.sollmiete, 1);
   pruefe('und wird als Lücke gemeldet', true,
     rwt.warnungen.some(function (w) { return /Spiegel ohne Miete/.test(w.text); }));
+
+  /* Ein Stand von gestern wird verlustfrei in Häuser überführt. */
+  var alt21 = A.defaultProject();
+  alt21.schema = 21;
+  alt21.teile.neubau.nutzungen = [
+    A.defNutzung({ bezeichnung: 'STWE', art: 'wohnen', anteil: 100, preis: 10000, verwertung: 'stwe' })
+  ];
+  var altId = alt21.teile.neubau.nutzungen[0].id;
+  alt21.spiegel = { aktiv: true, teil: 'neubau', preismodus: 'm2', mietmodus: 'monat',
+    einheiten: [
+      { nr: 'A1', haus: 'Haus A', anzahl: 4, zimmer: 2.5, flaeche: 62, preis: 640000, zeile: altId },
+      { nr: 'B1', haus: 'Haus B', anzahl: 2, zimmer: 3.5, flaeche: 88, preis: 880000, zeile: altId },
+      { nr: 'X1', haus: '',       anzahl: 1, zimmer: 4.5, flaeche: 99, preis: 990000, zeile: altId }
+    ] };
+  var mig = A.migrate(A.clone(alt21));
+  pruefe('Migration: drei Häuser aus drei Gruppen', 3, mig.spiegel.haeuser.length);
+  pruefe('Migration: keine Wohnung geht verloren', 4 + 2 + 1,
+    A.spiegelEinheiten(mig).reduce(function (s, x) {
+      return s + Math.max(1, Math.round(x.einheit.anzahl || 1)); }, 0));
+  pruefe('Migration: die Erfassungsart wandert ans Haus', true,
+    mig.spiegel.haeuser[0].preismodus === 'm2');
+  pruefe('Migration: die Zuordnung trägt jetzt das Haus', true,
+    mig.spiegel.haeuser[0].zeile === altId);
+  pruefe('Migration: das alte Feld ist geräumt', true, mig.spiegel.einheiten === undefined);
+  pruefe('Migration: ein namenloses Haus wird benannt', true,
+    !!mig.spiegel.haeuser[2].name);
 
   /* ---- Betrieb ohne gehaltene Flächen ---------------------------- */
   var s0 = A.defaultProject();
@@ -451,10 +480,13 @@
     miete: 300, verwertung: 'halten_vermietet' });
   ps.teile.neubau.nutzungen = [zStwe, zMiete];
   ps.spiegel.aktiv = true; ps.spiegel.teil = 'neubau';
-  ps.spiegel.einheiten = [
-    { nr: '1', flaeche: 100, preis: 1000000, zeile: zStwe.id },
-    { nr: '2', flaeche: 120, preis: 1160000, zeile: zStwe.id },
-    { nr: '3', flaeche: 80,  preis: 0,       zeile: zMiete.id }
+  ps.spiegel.haeuser = [
+    { id: 'v', name: 'Verkauf', zeile: zStwe.id, preismodus: 'einheit', mietmodus: 'monat',
+      einheiten: [
+        { nr: '1', flaeche: 100, preis: 1000000 },
+        { nr: '2', flaeche: 120, preis: 1160000 } ] },
+    { id: 'm', name: 'Miete', zeile: zMiete.id, preismodus: 'einheit', mietmodus: 'monat',
+      einheiten: [ { nr: '3', flaeche: 80, preis: 0, miete: 0 } ] }
   ];
   var rs = E.compute(ps), os = rs.flaechen.teile.neubau;
   pruefe('Spiegel setzt Fläche der STWE-Zeile', 220, os.nutzungen[zStwe.id], 0.01);
@@ -507,8 +539,10 @@
   var ps = A.defaultProject();
   var zid = ps.teile.neubau.nutzungen[0].id;
   ps.spiegel.aktiv = true; ps.spiegel.teil = 'neubau';
-  ps.spiegel.einheiten = [
-    { nr: '1', anzahl: 4, geschoss: 1, zimmer: 3.5, flaeche: 90, preis: 800000, zeile: zid }
+  ps.spiegel.haeuser = [
+    { id: 'h', name: 'Haus A', zeile: zid, preismodus: 'einheit', mietmodus: 'monat',
+      einheiten: [
+        { nr: '1', anzahl: 4, geschoss: 1, zimmer: 3.5, flaeche: 90, preis: 800000 } ] }
   ];
   var rsp = E.compute(ps).flaechen.teile.neubau.spiegel[zid];
   pruefe('4 gleiche Wohnungen ergeben 360 m²', 360, rsp.flaeche, 0.01);

@@ -2691,10 +2691,17 @@ window.APP = window.APP || {};
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   };
 
+  /* Kurzform für Kennzahlen: ab einer Million in Millionen, darunter
+     der Betrag selbst.
+
+     Früher wurden Beträge zwischen 1'000 und 1 Mio. auf Tausender
+     gerundet und als «14′000» geschrieben — das las sich wie ein
+     exakter Wert, war aber einer: 13'678 erschien als 14′000, während
+     die Kachel daneben den wahren Betrag zeigte. Sechsstellig ist kurz
+     genug, um ihn auszuschreiben. */
   A.fmtMio = function (n) {
     if (n === undefined || n === null || isNaN(n)) return '–';
     if (Math.abs(n) >= 1e6) return A.fmt(n / 1e6, 2) + ' Mio.';
-    if (Math.abs(n) >= 1e3) return A.fmt(n / 1e3, 0) + '′000';
     return A.fmt(n, 0);
   };
 

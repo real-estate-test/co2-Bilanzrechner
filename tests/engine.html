@@ -391,6 +391,15 @@
   pruefe('Migration: ein namenloses Haus wird benannt', true,
     !!mig.spiegel.haeuser[2].name);
 
+  /* Die Kurzform darf keine Genauigkeit vortäuschen: 13'678 ist nicht
+     14'000. Nur ab einer Million wird gekürzt. */
+  pruefe('Kurzform: unter einer Million steht der Betrag selbst', true,
+    A.fmtMio(13678) === A.fmt(13678, 0));
+  pruefe('Kurzform: ab einer Million in Millionen', true,
+    A.fmtMio(12660000) === A.fmt(12.66, 2) + ' Mio.');
+  pruefe('Kurzform: knapp darunter noch ausgeschrieben', true,
+    A.fmtMio(999999) === A.fmt(999999, 0));
+
   /* ---- Betrieb ohne gehaltene Flächen ---------------------------- */
   var s0 = A.defaultProject();
   pruefe('kein Betriebsaufwand ohne gehaltene Fläche', 0, E.compute(s0).betrieb.total_a);

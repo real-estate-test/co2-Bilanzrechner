@@ -256,6 +256,24 @@ window.APP = window.APP || {};
       var spiegelListe = A.spiegelEinheiten(p);
       if (p.spiegel.aktiv && p.spiegel.teil === T.id && spiegelListe.length) {
         var sf = 0, sp = 0;
+        /* Ein Haus ohne Nutzungszeile hängt in der Luft: Seine
+           Wohnungen erscheinen im Spiegel und im Wohnungsmix, tragen
+           aber weder Erlös noch Miete, weil die Rechnung über die
+           Nutzungszeilen läuft. Gleichzeitig behält die Nutzungszeile
+           ihren Prozentanteil — es sieht also alles normal aus, während
+           die erfassten Wohnungen nirgends ankommen. */
+        (p.spiegel.haeuser || []).forEach(function (h) {
+          var n = (h.einheiten || []).reduce(function (s2, e2) {
+            return s2 + Math.max(1, Math.round(num(e2.anzahl) || 1));
+          }, 0);
+          if (!n) return;
+          if (h.zeile && o.nutzungen[h.zeile] !== undefined) return;
+          warn.push({ art: 'warn', text: T.label + ' · Haus «' + (h.name || 'ohne Namen') +
+            '»: keiner Nutzungszeile zugeordnet — seine ' + n +
+            (n === 1 ? ' Wohnung zählt' : ' Wohnungen zählen') +
+            ' weder beim Erlös noch bei der Miete.' });
+        });
+
         spiegelListe.forEach(function (x) {
           var e = x.einheit;
           /* Die Zuordnung trägt das Haus, nicht mehr die einzelne
@@ -771,7 +789,12 @@ window.APP = window.APP || {};
       nwf_miete: 0, nwf_exit: 0,
       /* Getrennt, weil die Erstvermietungsprovision auf beide
          entfällt und nach Miete verteilt werden muss. */
-      sollmiete_miete: 0, sollmiete_exit: 0
+      sollmiete_miete: 0, sollmiete_exit: 0,
+      /* Woraus die Sollmiete besteht — die Frage «warum stimmt mein
+         Hausto­tal nicht mit der Summe überein?» beantwortet sich
+         damit von selbst. Parkplätze und Nutzungszeilen ohne
+         Spiegeleintrag zählen mit, stehen aber in keinem Haus. */
+      sollmiete_quellen: { spiegel: 0, zeilen: 0, parkplatz: 0 }
     };
 
     A.TEILE.forEach(function (T) {
@@ -793,7 +816,14 @@ window.APP = window.APP || {};
            erfasst ist — sonst stünde bei einer einzeln bepreisten
            Wohnung die Fläche aus dem Spiegel neben dem Mietdurchschnitt
            der Zeile. Ohne Eintrag bleibt es beim Durchschnitt. */
-        if (!istPP && sp && sp.miete_a > 0) miete_a = sp.miete_a;
+        var ausSpiegel = !istPP && sp && sp.miete_a > 0;
+        if (ausSpiegel) miete_a = sp.miete_a;
+
+        /* Nur was auch vermietet wird, zählt in die Aufschlüsselung —
+           eine Verkaufszeile trägt keine Sollmiete. */
+        if (n.verwertung !== 'stwe' && miete_a > 0) {
+          r.sollmiete_quellen[istPP ? 'parkplatz' : (ausSpiegel ? 'spiegel' : 'zeilen')] += miete_a;
+        }
 
         var pos = {
           teil: T.id, teil_label: T.label,
@@ -801,7 +831,8 @@ window.APP = window.APP || {};
           einheit: istPP ? 'Stk.' : 'm²',
           flaeche: menge, miete_m2: num(n.miete), preis_m2: preis,
           verwertung: n.verwertung, sollmiete: 0,
-          erloes: 0, wert: 0, kategorie: ''
+          erloes: 0, wert: 0, kategorie: '',
+          aus_spiegel: !!ausSpiegel
         };
 
         if (n.verwertung === 'stwe') {

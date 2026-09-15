@@ -351,6 +351,23 @@ zu welchen Konditionen das möglich wäre: Ertragswert, Gewinn gegenüber der
 anteiligen Investition und das EBT darauf. Sie doppelt den Exit-Block bewusst —
 dort steht der geplante Verkauf, hier die Möglichkeit.
 
+**Was in der Sollmiete steckt** Sie ist die Jahresmiete aller Miet- und
+Exit-Flächen — verkaufte STWE-Flächen tragen keine. Sie speist sich aus drei
+Quellen, und die Kachel im Zusammenzug nennt sie einzeln:
+
+| Quelle | wann |
+|---|---|
+| Spiegel | Wohnungen mit erfasster Miete, Monatsmiete × 12 |
+| Nutzungszeilen | Mietflächen ohne Spiegeleintrag, Fläche × CHF/m²/Jahr |
+| Parkplätze | Anzahl × CHF/Monat × 12 |
+
+Deshalb ist die Summe der Haustotale im Spiegel **kleiner** als die Sollmiete,
+sobald es Gewerbe über eine Nutzungszeile oder Parkplätze gibt — beide stehen in
+keinem Haus. Ein **Haus ohne Nutzungszeile** trägt dagegen gar nichts bei: Seine
+Wohnungen erscheinen im Spiegel und im Wohnungsmix, laufen aber an der Rechnung
+vorbei, während die Nutzungszeile ihren Prozentanteil behält. Das meldet jetzt
+eine Warnung mit Hausnamen und Wohnungszahl.
+
 Auch die **Kostengruppen der BKP 20–29 folgen dem Spiegel**. Sie entstehen sonst
 aus dem Prozentanteil der Nutzungszeile — wer aber einen Spiegel führt, lässt
 diese Anteile oft leer, weil der Spiegel die Flächen ja bestimmt. Der Anteil an

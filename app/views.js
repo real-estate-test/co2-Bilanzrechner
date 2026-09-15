@@ -1727,8 +1727,20 @@ window.APP = window.APP || {};
         U.kachel('Verkaufserlös Stockwerkeigentum', fmt(e.stwe_erloes)),
         U.kachel('Exit an Investor', fmt(e.exit_wert), 'zählt nicht zum STWE'),
         U.kachel('Marktwert gehaltener Flächen', fmt(e.halten_wert)),
+        /* Woraus die Sollmiete besteht. Ohne diese Aufschlüsselung
+           bleibt unerklärlich, warum die Summe der Haustotale im
+           Wohnungsspiegel kleiner ist: Parkplätze und Nutzungszeilen
+           ohne Spiegeleintrag zählen mit, stehen aber in keinem Haus. */
         U.kachel('Sollmiete Miet- und Exit-Flächen', fmt(e.sollmiete) + ' /a',
-          'ohne verkaufte STWE-Flächen')
+          (function () {
+            var q = e.sollmiete_quellen || {};
+            var teile = [];
+            if (q.spiegel > 0) teile.push('Spiegel ' + fmt(q.spiegel));
+            if (q.zeilen > 0) teile.push('Nutzungszeilen ' + fmt(q.zeilen));
+            if (q.parkplatz > 0) teile.push('Parkplätze ' + fmt(q.parkplatz));
+            return teile.length > 1 ? teile.join(' · ')
+              : 'ohne verkaufte STWE-Flächen';
+          })())
       ]));
     });
     out.appendChild(U.panel('Zusammenzug Verwertung', null, [zus]));

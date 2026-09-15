@@ -457,6 +457,51 @@
     E.compute(ohneSpiegel).warnungen.some(function (w) {
       return /Flächenanteile ergeben/.test(w.text); }));
 
+  /* Woraus die Sollmiete besteht. Ein Haustotal im Spiegel ist nur
+     dann die ganze Sollmiete, wenn es sonst keine Mietflächen gibt —
+     Parkplätze und Nutzungszeilen ohne Spiegeleintrag zählen mit. */
+  var sq = A.defaultProject();
+  sq.grundstueck.geschosse = 5;
+  sq.teile.neubau.pp = 10;
+  sq.teile.neubau.nutzungen = [
+    A.defNutzung({ bezeichnung: 'Wohnen Miete', art: 'wohnen', anteil: 0, miete: 320, verwertung: 'halten_vermietet' }),
+    A.defNutzung({ bezeichnung: 'Gewerbe', art: 'gewerbe', anteil: 20, miete: 250, verwertung: 'halten_vermietet' }),
+    A.defNutzung({ bezeichnung: 'PP', art: 'parkplatz', anteil: 100, miete: 150, verwertung: 'halten_vermietet' })
+  ];
+  var sqW = sq.teile.neubau.nutzungen[0].id;
+  sq.spiegel.aktiv = true;
+  sq.spiegel.teil = 'neubau';
+  sq.spiegel.haeuser = [
+    { id: 'z1', name: 'Haus A', zeile: sqW, preismodus: 'einheit', mietmodus: 'monat',
+      einheiten: [{ nr: '1', anzahl: 5, zimmer: 3.5, flaeche: 85, miete: 2100 }] }
+  ];
+  var rsq = E.compute(sq), qq = rsq.ertraege.sollmiete_quellen;
+  pruefe('Sollmiete aus dem Spiegel: 5 × 2100 × 12', 5 * 2100 * 12, qq.spiegel, 1);
+  pruefe('Sollmiete aus Parkplätzen: 10 × 150 × 12', 10 * 150 * 12, qq.parkplatz, 1);
+  pruefe('die Quellen ergeben zusammen die Sollmiete',
+    rsq.ertraege.sollmiete, qq.spiegel + qq.zeilen + qq.parkplatz, 1);
+
+  /* Ein Haus ohne Nutzungszeile hängt in der Luft — seine Wohnungen
+     tragen nichts bei, und ohne Meldung fiele das niemandem auf. */
+  var hl = A.defaultProject();
+  hl.grundstueck.geschosse = 5;
+  hl.teile.neubau.nutzungen = [
+    A.defNutzung({ bezeichnung: 'Miete', art: 'wohnen', anteil: 100, miete: 320, verwertung: 'halten_vermietet' })
+  ];
+  hl.spiegel.aktiv = true;
+  hl.spiegel.teil = 'neubau';
+  hl.spiegel.haeuser = [
+    { id: 'z2', name: 'Haus A', zeile: null, preismodus: 'einheit', mietmodus: 'monat',
+      einheiten: [{ nr: '1', anzahl: 5, zimmer: 3.5, flaeche: 85, miete: 2100 }] }
+  ];
+  pruefe('Haus ohne Nutzungszeile wird gemeldet', true,
+    E.compute(hl).warnungen.some(function (w) {
+      return /keiner Nutzungszeile zugeordnet/.test(w.text); }));
+  hl.spiegel.haeuser[0].zeile = hl.teile.neubau.nutzungen[0].id;
+  pruefe('mit Zuordnung schweigt die Meldung', false,
+    E.compute(hl).warnungen.some(function (w) {
+      return /keiner Nutzungszeile zugeordnet/.test(w.text); }));
+
   /* Ein Stand von gestern wird verlustfrei in Häuser überführt. */
   var alt21 = A.defaultProject();
   alt21.schema = 21;

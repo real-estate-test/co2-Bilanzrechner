@@ -1119,7 +1119,7 @@ window.APP = window.APP || {};
     var kontrolle = el('div', { class: 'panelbody' });
 
     U.derived.push(function () {
-      var r = A.state.r, auf = A.engine.aufteilung(r), zeilen = [];
+      var r = A.state.r, pp = A.state.p, auf = A.engine.aufteilung(r), zeilen = [];
 
       function summenzeile(klasse, label, s) {
         return el('tr', { class: klasse }, [
@@ -1200,9 +1200,18 @@ window.APP = window.APP || {};
             'exakt die drei Blöcke der Ergebnisseite.')
         : U.hinweis('warn', 'Die Aufstellung geht <b>nicht</b> auf. Die Differenz steht in der ' +
             'letzten Zeile — sie zeigt, wo Kalkulation und Aufteilung auseinanderlaufen.'));
+      /* Woher der Flächenschlüssel stammt. Liegt ein Wohnungsspiegel
+         vor, ersetzt er die Flächen der zugeordneten Nutzungszeilen —
+         und damit richten sich auch die Verwertungsanteile nach den
+         einzeln erfassten Wohnungen, nicht nach den Prozentangaben. */
+      var spiegelAktiv = pp.spiegel && pp.spiegel.aktiv &&
+        A.spiegelEinheiten(pp).length > 0;
+      var herkunft = spiegelAktiv ? 'aus dem Wohnungsspiegel' : 'aus den Nutzungszeilen';
+
       kontrolle.appendChild(el('div', { class: 'cols c4' }, [
         U.kachel('Anteil STWE', A.fmtPct(r.ertraege.anteil_stwe * 100),
-          fmt(r.ertraege.nwf_stwe, 0) + ' m² von ' + fmt(r.ertraege.nwf_total, 0) + ' m² NWF'),
+          fmt(r.ertraege.nwf_stwe, 0) + ' m² von ' + fmt(r.ertraege.nwf_total, 0) +
+          ' m² NWF · ' + herkunft),
         U.kachel('Anteil Miete', A.fmtPct(r.ertraege.anteil_miete * 100),
           fmt(r.ertraege.nwf_miete, 0) + ' m² — gehalten, vermietet'),
         U.kachel('Anteil Exit', A.fmtPct(r.ertraege.anteil_exit * 100),

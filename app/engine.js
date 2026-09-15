@@ -313,6 +313,29 @@ window.APP = window.APP || {};
         warn.push({ art: 'warn', text: T.label + ': Flächenanteile ergeben ' +
           A.fmt(summeFlaeche, 1) + ' % statt 100 %.' });
       }
+
+      /* Deckt der Spiegel weniger Fläche ab, als das Gebäude hergibt,
+         bleibt der Rest unverwertet: Die Baukosten bemessen sich an der
+         Geschossfläche, die Erlöse nur an den erfassten Wohnungen — und
+         die Verwertungsanteile, nach denen die Kosten auf STWE, Miete
+         und Exit verteilt werden, ebenso. Die Prozentangaben der
+         Nutzungszeilen ergeben dann weiterhin brav 100 %, ohne dass
+         etwas auffiele. Deshalb hier der Abgleich gegen die
+         Nutzfläche. */
+      if (t.aktiv && p.spiegel.aktiv && p.spiegel.teil === T.id && o.nwf > 0) {
+        var verwertet = 0;
+        (t.nutzungen || []).forEach(function (n) {
+          if (n.art === 'parkplatz') return;
+          verwertet += o.nutzungen[n.id] || 0;
+        });
+        var luecke = o.nwf - verwertet;
+        if (luecke > o.nwf * 0.02 && luecke > 5) {
+          warn.push({ art: 'warn', text: T.label + ': Der Wohnungsspiegel erfasst ' +
+            A.fmt(verwertet, 0) + ' m² von ' + A.fmt(o.nwf, 0) + ' m² Nutzfläche — ' +
+            A.fmt(luecke, 0) + ' m² sind keiner Wohnung zugeordnet. Sie tragen Baukosten, ' +
+            'aber weder Erlös noch Miete, und zählen nicht in die Verwertungsanteile.' });
+        }
+      }
       if (t.aktiv && o.pp > 0 && Math.abs(summePP - 100) > 0.5) {
         warn.push({ art: 'warn', text: T.label + ': die Parkplätze sind zu ' +
           A.fmt(summePP, 1) + ' % verteilt statt zu 100 %.' });

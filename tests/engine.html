@@ -365,6 +365,46 @@
   pruefe('und wird als Lücke gemeldet', true,
     rwt.warnungen.some(function (w) { return /Spiegel ohne Miete/.test(w.text); }));
 
+  /* Liegt ein Spiegel vor, richten sich die Verwertungsanteile nach
+     den einzeln erfassten Wohnungen — nicht nach den Prozentangaben
+     der Nutzungszeilen. Daran hängt die Kostenverteilung auf STWE,
+     Miete und Exit. */
+  function spiegelMit(stweFl, mietFl) {
+    var q = A.defaultProject();
+    q.grundstueck.geschosse = 5;
+    q.teile.neubau.nutzungen = [
+      A.defNutzung({ bezeichnung: 'STWE', art: 'wohnen', anteil: 70, preis: 10000, verwertung: 'stwe' }),
+      A.defNutzung({ bezeichnung: 'Miete', art: 'wohnen', anteil: 30, miete: 320, verwertung: 'halten_vermietet' })
+    ];
+    var s1 = q.teile.neubau.nutzungen[0].id, m1 = q.teile.neubau.nutzungen[1].id;
+    q.spiegel.aktiv = true;
+    q.spiegel.teil = 'neubau';
+    q.spiegel.haeuser = [
+      { id: 'x1', name: 'A', zeile: s1, preismodus: 'einheit', mietmodus: 'monat',
+        einheiten: [{ nr: 'A1', anzahl: 1, zimmer: 3.5, flaeche: stweFl, preis: stweFl * 10000 }] },
+      { id: 'x2', name: 'B', zeile: m1, preismodus: 'einheit', mietmodus: 'monat',
+        einheiten: [{ nr: 'B1', anzahl: 1, zimmer: 3.5, flaeche: mietFl, miete: mietFl * 320 / 12 }] }
+    ];
+    return q;
+  }
+  /* Die Nutzungszeilen sagen 70/30, der Spiegel 40/60 — er gewinnt. */
+  var rsp40 = E.compute(spiegelMit(400, 600));
+  pruefe('Spiegel bestimmt den Anteil STWE', 0.40, rsp40.kpi.anteil_stwe, 0.001);
+  pruefe('Spiegel bestimmt den Anteil Miete', 0.60, rsp40.kpi.anteil_miete, 0.001);
+  pruefe('und damit die Kostenverteilung', true,
+    rsp40.kpi.gi_miete > rsp40.kpi.gi_stwe * 0.7);
+  pruefe('die Blöcke ergeben weiterhin die Gesamtinvestition',
+    rsp40.kpi.gesamtinvestition,
+    rsp40.kpi.gi_stwe + rsp40.kpi.gi_miete + rsp40.kpi.gi_exit, 1);
+
+  /* Deckt der Spiegel die Nutzfläche nicht ab, bleibt Fläche
+     unverwertet — sie trägt Baukosten, aber keinen Erlös. */
+  pruefe('unvollständiger Spiegel wird gemeldet', true,
+    rsp40.warnungen.some(function (w) { return /Wohnungsspiegel erfasst/.test(w.text); }));
+  var voll = E.compute(spiegelMit(1229, 526));
+  pruefe('ein deckender Spiegel meldet nichts', false,
+    voll.warnungen.some(function (w) { return /Wohnungsspiegel erfasst/.test(w.text); }));
+
   /* Ein Stand von gestern wird verlustfrei in Häuser überführt. */
   var alt21 = A.defaultProject();
   alt21.schema = 21;

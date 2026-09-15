@@ -351,6 +351,18 @@ zu welchen Konditionen das möglich wäre: Ertragswert, Gewinn gegenüber der
 anteiligen Investition und das EBT darauf. Sie doppelt den Exit-Block bewusst —
 dort steht der geplante Verkauf, hier die Möglichkeit.
 
+Der **Flächenschlüssel folgt dem Wohnungsspiegel**, sobald einer vorliegt: Er
+ersetzt die Flächen der zugeordneten Nutzungszeilen, und damit richten sich auch
+die Verwertungsanteile nach den einzeln erfassten Wohnungen statt nach den
+Prozentangaben. Sagen die Nutzungszeilen 70/30 und der Spiegel 40/60, gilt 40/60
+— auch für die Kostenverteilung. Die Prüfansicht nennt die Herkunft bei den
+Anteilskacheln.
+
+Deckt der Spiegel **weniger Fläche ab, als das Gebäude hergibt**, meldet das eine
+Warnung mit beiden Zahlen: Die Differenz trägt Baukosten, aber weder Erlös noch
+Miete, und zählt nicht in die Verwertungsanteile. Ohne diesen Abgleich fiele es
+nicht auf — die Prozentangaben der Nutzungszeilen ergeben weiterhin brav 100 %.
+
 Drei Wege führen in die Blöcke. Baukostenzeilen **BKP 20–29**, die eine
 **Kostengruppe** bemessen, folgen den Flächen, die sie bauen — was der
 Gewerbeausbau kostet, hat mit dem Wohnungsverkauf nichts zu tun. Die

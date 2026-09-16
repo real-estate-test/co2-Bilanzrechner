@@ -683,16 +683,24 @@ window.APP = window.APP || {};
 
   /* Der Eintrag zu einem Prüfpunkt. Er entsteht erst beim ersten
      Anfassen — ein unbearbeitetes Projekt trägt keine 75 leeren
-     Zeilen mit sich herum. */
+     Zeilen mit sich herum.
+
+     «achtung» ist der Merker für einen Punkt, bei dem in diesem
+     Projekt genau hinzuschauen ist — meist, weil die Regel von Kanton
+     zu Kanton anders lautet. Er gilt nur hier: was in Aarau heikel
+     ist, muss es in Zug nicht sein. Alte Einträge haben das Feld
+     nicht; ein fehlendes Feld heisst schlicht «nicht markiert», dafür
+     braucht es keine Migration. */
   A.baurechtEintrag = function (p, punktId, anlegen) {
     if (!p.baurecht || typeof p.baurecht !== 'object') {
       p.baurecht = { eintraege: {}, eigene: [] };
     }
     var e = p.baurecht.eintraege[punktId];
     if (!e && anlegen) {
-      e = p.baurecht.eintraege[punktId] = { wert: '', bemerkung: '', status: 'offen' };
+      e = p.baurecht.eintraege[punktId] =
+        { wert: '', bemerkung: '', status: 'offen', achtung: false };
     }
-    return e || { wert: '', bemerkung: '', status: 'offen' };
+    return e || { wert: '', bemerkung: '', status: 'offen', achtung: false };
   };
 
   /* Die Prüfpunkte eines Projekts, nach Gruppen geordnet: erst die
@@ -711,19 +719,25 @@ window.APP = window.APP || {};
     });
   };
 
-  /* Bearbeitungsstand: geprüft und nicht relevant gelten als erledigt. */
+  /* Bearbeitungsstand: geprüft und nicht relevant gelten als erledigt.
+
+     Gezählt wird nur, was im Katalog steht: Ein Eintrag zu einem
+     inzwischen entfernten Prüfpunkt bleibt zwar gespeichert, taucht
+     in den Zahlen aber nicht auf — sonst zählte der Achtung-Chip
+     Zeilen mit, die niemand mehr sieht. */
   A.baurechtStand = function (p) {
-    var gesamt = 0, fertig = 0, gefuellt = 0;
+    var gesamt = 0, fertig = 0, gefuellt = 0, achtung = 0;
     A.baurechtPunkte(p).forEach(function (bl) {
       bl.punkte.forEach(function (pt) {
         gesamt++;
         var e = A.baurechtEintrag(p, pt.id);
         if (e.status === 'geprueft' || e.status === 'entfaellt') fertig++;
         if (String(e.wert || '').trim()) gefuellt++;
+        if (e.achtung) achtung++;
       });
     });
     return { gesamt: gesamt, fertig: fertig, gefuellt: gefuellt,
-             offen: gesamt - fertig };
+             offen: gesamt - fertig, achtung: achtung };
   };
 
   /* Vier Prüfpunkte kennt die Rechnung bereits. Der Baurecht-Check

@@ -47,15 +47,40 @@
     return !gewaehlt || gewaehlt.indexOf(status || 'offen') >= 0;
   }
 
+  /* Der Achtung-Filter. Eigener Schalter statt eines vierten
+     Statuschips: Achtung ist kein Status, sondern liegt quer dazu —
+     ein markierter Punkt kann offen, geprüft oder nicht relevant
+     sein. Beide Filter greifen zusammen. */
+  var ACHTUNG_KEY = 'projektrechner.baurechtachtung';
+
+  function nurAchtungLesen() {
+    try { return localStorage.getItem(ACHTUNG_KEY) === '1'; }
+    catch (e) { return false; }
+  }
+
+  function nurAchtungSchreiben(an) {
+    try {
+      if (an) localStorage.setItem(ACHTUNG_KEY, '1');
+      else localStorage.removeItem(ACHTUNG_KEY);
+    } catch (e) { /* privater Modus: gilt dann nur für diese Sitzung */ }
+  }
+
+  function zeigen(e, gewaehlt, nurAchtung) {
+    if (nurAchtung && !e.achtung) return false;
+    return sichtbar(e.status, gewaehlt);
+  }
+
   /* Wo der Bearbeitungsstand angezeigt wird. Ein Statuswechsel darf
      die Seite nicht neu zeichnen: Wer gerade tippt, verlöre dabei
      Cursor und Rest der Eingabe. Stattdessen werden genau diese
      Anzeigen nachgeführt, und die Tabelle bleibt stehen. */
-  var anzeige = { balken: null, kacheln: null, gruppen: {} };
+  var anzeige = { balken: null, kacheln: null, gruppen: {}, achtungZahl: null };
 
   function standNachfuehren(p) {
     var stand = A.baurechtStand(p);
     var anteil = stand.gesamt ? stand.fertig / stand.gesamt : 0;
+
+    if (anzeige.achtungZahl) anzeige.achtungZahl.textContent = String(stand.achtung);
 
     if (anzeige.balken) {
       anzeige.balken.style.width = (anteil * 100).toFixed(1) + '%';
@@ -86,16 +111,17 @@
     var out = el('div', {});
     var stand = A.baurechtStand(p);
     var gewaehlt = filterLesen();
-    anzeige = { balken: null, kacheln: null, gruppen: {} };
+    var nurAchtung = nurAchtungLesen();
+    anzeige = { balken: null, kacheln: null, gruppen: {}, achtungZahl: null };
 
     out.appendChild(U.kopf('Baurecht-Check',
       'Das für dieses Grundstück geltende Baurecht. Die Prüfpunkte werden ' +
       'unter Verwaltung gepflegt und gelten für alle Projekte.'));
 
-    out.appendChild(fortschritt(p, stand, gewaehlt));
+    out.appendChild(fortschritt(p, stand, gewaehlt, nurAchtung));
 
     A.baurechtPunkte(p).forEach(function (block) {
-      out.appendChild(gruppenPanel(p, block, gewaehlt));
+      out.appendChild(gruppenPanel(p, block, gewaehlt, nurAchtung));
     });
 
     out.appendChild(el('div', { class: 'panel noprint' }, [
@@ -105,7 +131,11 @@
           'Projekte gleich — gepflegt werden sie unter <b>Verwaltung</b>. Mit ' +
           '<b>+ Prüfpunkt</b> ergänzen Sie eine Zeile, die nur in diesem Projekt gilt; ' +
           'was firmenweit gelten soll, gehört in die Verwaltung. <b>Nicht relevant</b> ' +
-          'ist eine Antwort: Der Punkt wurde geprüft und trifft hier nicht zu.')
+          'ist eine Antwort: Der Punkt wurde geprüft und trifft hier nicht zu. ' +
+          'Mit <b>⚠</b> am Zeilenende markieren Sie einen Punkt, bei dem genau ' +
+          'hinzuschauen ist — etwa weil die Regel von Kanton zu Kanton anders lautet. ' +
+          'Die Zeile wird rot hinterlegt, der Chip <b>⚠ Achtung</b> oben zeigt nur noch ' +
+          'diese Punkte. Die Markierung gilt nur in diesem Projekt.')
       ])
     ]));
 
@@ -130,13 +160,16 @@
      verschwinden aus den Tabellen; die Zahlen im Stand darüber zählen
      weiterhin den ganzen Katalog — sonst sähe eine gefilterte Ansicht
      wie ein fertig geprüftes Projekt aus. */
-  function filterchips(p, gewaehlt) {
+  function filterchips(p, gewaehlt, nurAchtung) {
     var alle = A.BAURECHT_STATUS.map(function (s) { return s.id; });
     var proStatus = {};
+    var markiert = 0;
     A.baurechtPunkte(p).forEach(function (block) {
       block.punkte.forEach(function (pt) {
-        var st = A.baurechtEintrag(p, pt.id).status || 'offen';
+        var e = A.baurechtEintrag(p, pt.id);
+        var st = e.status || 'offen';
         proStatus[st] = (proStatus[st] || 0) + 1;
+        if (e.achtung) markiert++;
       });
     });
 
@@ -162,6 +195,25 @@
       chips.appendChild(c);
     });
 
+    /* Der Achtung-Chip steht abgesetzt hinter den Statuschips — er
+       filtert nach etwas anderem und soll nicht wie ein vierter
+       Status aussehen. Seine Zahl wird beim Markieren am Ort
+       nachgeführt, damit die Tabelle stehen bleibt. */
+    var azahl = el('span', { class: 'zahl', text: String(markiert) });
+    anzeige.achtungZahl = azahl;
+    var ac = el('button', { type: 'button',
+      class: 'chip achtungchip' + (nurAchtung ? ' on' : ''),
+      title: nurAchtung
+        ? 'wieder alle Prüfpunkte zeigen'
+        : 'nur die mit Achtung markierten Prüfpunkte zeigen' }, [
+      el('span', { text: '⚠ Achtung' }), azahl
+    ]);
+    ac.addEventListener('click', function () {
+      nurAchtungSchreiben(!nurAchtung);
+      A.render();
+    });
+    chips.appendChild(ac);
+
     if (gewaehlt) {
       chips.appendChild(el('button', { type: 'button', class: 'chip', text: 'alle zeigen',
         onclick: function () { filterSchreiben(null); A.render(); } }));
@@ -169,7 +221,7 @@
     return chips;
   }
 
-  function fortschritt(p, stand, gewaehlt) {
+  function fortschritt(p, stand, gewaehlt, nurAchtung) {
     var anteil = stand.gesamt ? stand.fertig / stand.gesamt : 0;
     var innen = el('div', { class: 'brbalken-in' + (anteil >= 1 ? ' voll' : ''),
       style: 'width:' + (anteil * 100).toFixed(1) + '%' });
@@ -195,6 +247,7 @@
       ? A.BAURECHT_STATUS.filter(function (s) { return gewaehlt.indexOf(s.id) < 0; })
           .map(function (s) { return s.label; })
       : [];
+    if (nurAchtung) versteckt.push('alles ohne Achtung-Markierung');
 
     return U.panel('Stand der Prüfung', null, [
       el('div', { class: 'panelbody' }, [
@@ -210,7 +263,7 @@
           el('span', { class: 'muted',
             style: 'font-size:11px;letter-spacing:.06em;text-transform:uppercase',
             text: 'zeigen' }),
-          filterchips(p, gewaehlt)
+          filterchips(p, gewaehlt, nurAchtung)
         ]),
         versteckt.length
           ? el('div', { class: 'hilfe nurdruck', style: 'margin-top:8px',
@@ -225,7 +278,7 @@
      Eine Gruppe
      --------------------------------------------------------------- */
 
-  function gruppenPanel(p, block, gewaehlt) {
+  function gruppenPanel(p, block, gewaehlt, nurAchtung) {
     var g = block.gruppe;
     var offen = zaehleOffen(p, block);
 
@@ -233,7 +286,7 @@
        Eine Zeile, deren Status gerade nachrückt, soll einem nicht unter
        dem Cursor verschwinden. Sie steht bis zum nächsten Aufbau. */
     var gezeigt = block.punkte.filter(function (pt) {
-      return sichtbar(A.baurechtEintrag(p, pt.id).status, gewaehlt);
+      return zeigen(A.baurechtEintrag(p, pt.id), gewaehlt, nurAchtung);
     });
     var weg = block.punkte.length - gezeigt.length;
 
@@ -290,14 +343,23 @@
 
   function punktZeile(p, pt) {
     var e = A.baurechtEintrag(p, pt.id, true);
-    var tr = el('tr', { class: e.status === 'entfaellt' ? 'brentfaellt' : '' });
+    var tr = el('tr', {
+      class: (e.status === 'entfaellt' ? 'brentfaellt ' : '') +
+             (e.achtung ? 'brachtung' : '')
+    });
 
     /* Spalte 1: der Prüfpunkt. Aus dem Katalog ist er fester Text, eine
-       projekteigene Zeile lässt sich hier benennen. */
+       projekteigene Zeile lässt sich hier benennen.
+
+       Der Vermerk «Achtung» steht immer in der Zeile, wird aber nur
+       gedruckt und nur, wenn die Zeile markiert ist — geschaltet
+       allein über die Klasse am <tr>. So muss beim Umschalten nichts
+       nachgeführt werden, was auseinanderlaufen könnte. */
     var eigen = pt.eigen
       ? (p.baurecht.eigene || []).find(function (x) { return x.id === pt.id; })
       : null;
     tr.appendChild(el('td', {}, [
+      el('span', { class: 'brachtungmarke', text: 'Achtung' }),
       eigen
         ? U.zelleArea(eigen, 'label', { platzhalter: 'z. B. Lärmschutznachweis' })
         : el('span', { text: pt.label }),
@@ -347,8 +409,35 @@
     /* Spalte 4: Status */
     tr.appendChild(el('td', {}, [statuswahl]));
 
-    /* Spalte 5: projekteigene Zeilen lassen sich wieder entfernen. */
+    /* Spalte 5: der Achtung-Merker, dahinter bei projekteigenen Zeilen
+       das Entfernen.
+
+       Markieren zeichnet die Seite nicht neu — dieselbe Regel wie beim
+       Status: Wer nebenan gerade tippt, verlöre sonst Cursor und Rest
+       der Eingabe. Geändert wird die Klasse an der Zeile, nachgeführt
+       wird die Zahl im Chip. Die Zeile bleibt stehen, auch wenn der
+       Achtung-Filter läuft und sie eigentlich herausfiele: Was man
+       gerade in der Hand hat, soll einem nicht verschwinden. */
+    var aknopf = el('button', { class: 'ghost sm noprint schreibend brachtungknopf', text: '⚠' });
+
+    function aknopfStand() {
+      aknopf.classList.toggle('an', !!e.achtung);
+      aknopf.title = e.achtung
+        ? 'Achtung-Markierung aufheben'
+        : 'Achtung — hier genau hinschauen (z. B. von Kanton zu Kanton verschieden)';
+      aknopf.setAttribute('aria-pressed', e.achtung ? 'true' : 'false');
+    }
+    aknopfStand();
+
+    aknopf.addEventListener('click', function () {
+      e.achtung = !e.achtung;
+      tr.classList.toggle('brachtung', !!e.achtung);
+      aknopfStand();
+      A.markDirty(); standNachfuehren(p);
+    });
+
     tr.appendChild(el('td', { class: 'w1' }, [
+      aknopf,
       eigen
         ? el('button', { class: 'ghost sm schreibend', text: '×',
             title: 'Prüfpunkt entfernen',
@@ -359,8 +448,8 @@
               delete p.baurecht.eintraege[pt.id];
               A.markDirty(); A.render();
             } })
-        : el('span', { class: 'muted', text: '' })
-    ]));
+        : null
+    ].filter(Boolean)));
 
     return tr;
   }

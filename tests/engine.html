@@ -1186,6 +1186,37 @@
   pruefe('Freitext wird für HTML entschärft',
     1, A.escape('<img src=x onerror=1>') === '&lt;img src=x onerror=1&gt;' ? 1 : 0);
 
+  /* ---- Baurecht-Check: Achtung-Markierung -------------------------- */
+  var bp = A.defaultProject();
+  var bs0 = A.baurechtStand(bp);
+  pruefe('Unberührtes Projekt hat keine Achtung-Markierung', 0, bs0.achtung);
+  pruefe('Ein neuer Eintrag ist nicht markiert',
+    true, A.baurechtEintrag(bp, 'wei_waldabstand', true).achtung === false);
+
+  A.baurechtEintrag(bp, 'wei_gewaesserabstand', true).achtung = true;
+  A.baurechtEintrag(bp, 'abs_waldabstand_gibtsnicht', true).achtung = true;
+  var bs1 = A.baurechtStand(bp);
+  pruefe('Markierte Punkte des Katalogs werden gezählt', 1, bs1.achtung);
+  pruefe('Achtung ändert den Prüfstand nicht', bs0.fertig, bs1.fertig);
+  pruefe('Achtung ändert die Zahl der Prüfpunkte nicht', bs0.gesamt, bs1.gesamt);
+
+  /* Ein markierter Punkt bleibt markiert, wenn er abgehakt wird —
+     Status und Merker liegen quer zueinander. */
+  var bge = A.baurechtEintrag(bp, 'wei_gewaesserabstand', true);
+  bge.status = 'entfaellt';
+  var bs2 = A.baurechtStand(bp);
+  pruefe('Nicht relevant hebt die Markierung nicht auf', 1, bs2.achtung);
+  pruefe('Nicht relevant zählt als erledigt', bs0.fertig + 1, bs2.fertig);
+
+  /* Ein alter Eintrag ohne das Feld gilt als nicht markiert — darum
+     braucht die Neuerung keine Migration. */
+  var balt = A.defaultProject();
+  balt.baurecht.eintraege['gst_zone'] = { wert: 'W3', bemerkung: '§ 12 BNO', status: 'geprueft' };
+  pruefe('Alter Eintrag ohne Feld zählt nicht als markiert',
+    0, A.baurechtStand(balt).achtung);
+  pruefe('Alter Eintrag bleibt inhaltlich unangetastet',
+    true, A.baurechtEintrag(balt, 'gst_zone').wert === 'W3');
+
   /* ---- Zusammenfassung -------------------------------------------- */
   var box = document.getElementById('summe');
   box.textContent = gut + ' von ' + (gut + schlecht) + ' Prüfungen bestanden' +

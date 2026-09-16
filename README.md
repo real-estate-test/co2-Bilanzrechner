@@ -225,6 +225,22 @@ ein Vermerk, dass die Aufstellung nicht vollständig ist. Die Zahlen im Kopf
 zählen immer den ganzen Katalog, damit eine gefilterte Ansicht nicht wie ein
 fertig geprüftes Projekt aussieht.
 
+Der Knopf **⚠** am Zeilenende markiert einen Prüfpunkt, bei dem genau
+hinzuschauen ist — typischerweise, weil die Regel von Kanton zu Kanton anders
+lautet und hier regelmässig Fehler passieren. Die Zeile wird rot hinterlegt
+und bekommt links einen Balken; auf Papier bleibt der Balken und über dem
+Prüfpunkt steht **Achtung** — so trägt der Ausdruck die Warnung auch dann,
+wenn ohne Hintergrundgrafiken gedruckt wird. Der Chip **⚠ Achtung** neben den
+Statuschips schaltet die Ansicht auf die markierten Punkte um, für den
+Durchgang vor der Baueingabe.
+
+Die Markierung gilt **nur im jeweiligen Projekt**, nicht firmenweit: Was in
+Aarau heikel ist, muss es in Zug nicht sein. Sie liegt quer zum Status — ein
+markierter Punkt kann offen, geprüft oder nicht relevant sein, und das Abhaken
+löscht die Markierung nicht. Ältere Einträge kennen das Feld nicht; ein
+fehlendes Feld heisst schlicht «nicht markiert», darum braucht die Neuerung
+keine Schema-Migration.
+
 Vier Punkte kennt die Kalkulation ebenfalls — Grundstücksfläche,
 Ausnützungsziffer, anrechenbare Geschossfläche und Vollgeschosse. Der
 Baurecht-Check schreibt sie **nicht**, sondern zeigt daneben, womit gerechnet

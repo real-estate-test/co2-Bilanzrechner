@@ -1,0 +1,43 @@
+# =====================================================================
+#  Wachhalter
+#
+#  Der kostenlose Supabase-Plan pausiert ein Projekt nach sieben Tagen
+#  ohne Datenbankaktivität. Ein Controlling-Werkzeug ist zwischen zwei
+#  Quartalen aber oft ruhig. Dieser Auftrag stellt zweimal wöchentlich
+#  eine Anfrage — damit tritt die Pausierung nie ein.
+#
+#  Einrichtung: unter Settings › Secrets and variables › Actions anlegen
+#    SUPABASE_URL       z. B. https://xxxx.supabase.co
+#    SUPABASE_ANON_KEY  der anon public key
+# =====================================================================
+name: Wachhalter
+
+on:
+  schedule:
+    - cron: '17 6 * * 1,4'    # Montag und Donnerstag, 06:17 UTC
+  workflow_dispatch:
+
+jobs:
+  anfragen:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Datenbank ansprechen
+        env:
+          URL: ${{ secrets.SUPABASE_URL }}
+          KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${URL:-}" ] || [ -z "${KEY:-}" ]; then
+            echo "SUPABASE_URL oder SUPABASE_ANON_KEY fehlt — nichts zu tun."
+            exit 0
+          fi
+          status=$(curl -sS -o /dev/null -w '%{http_code}' \
+            -H "apikey: $KEY" \
+            "$URL/rest/v1/einstellungen?select=schluessel&limit=1")
+          echo "Antwort: HTTP $status"
+          # 200 = erreichbar, 401 = erreichbar aber ohne Leserecht (auch gut:
+          # die Datenbank hat geantwortet und gilt damit als aktiv).
+          case "$status" in
+            200|401|403) exit 0 ;;
+            *) echo "Unerwarteter Status $status"; exit 1 ;;
+          esac

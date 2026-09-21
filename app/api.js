@@ -263,4 +263,73 @@ window.APP = window.APP || {};
     return anfrage(tabelle(name) + '?' + abfrage, { method: 'DELETE' });
   };
 
+  /* ---------------------------------------------------------------
+     Dateiablage
+
+     Für Anhänge, die zu gross sind, um im Projekt-JSON mitzureisen —
+     derzeit die Belege zum Baurecht-Check. Eigener Weg statt
+     «anfrage», weil dort jeder Rumpf durch JSON.stringify geht; hier
+     gehen Binärdaten hinaus und kommen Binärdaten zurück.
+
+     Die Erneuerung eines abgelaufenen Tokens ist nachgebaut: Ein
+     Upload, der nach zwei Minuten Bildbearbeitung losgeht, trifft
+     sonst auf eine Sitzung, die gerade abgelaufen ist, und der Beleg
+     wäre verloren, obwohl der Zugang gültig ist.
+     --------------------------------------------------------------- */
+
+  function ablagePfad(bucket, pfad) {
+    /* Jeder Abschnitt einzeln kodiert: Die Schrägstriche gliedern den
+       Pfad und dürfen nicht mitkodiert werden, ein Dateiname mit
+       Leerzeichen oder Umlaut aber schon. */
+    var teile = String(pfad).split('/').map(encodeURIComponent).join('/');
+    return '/storage/v1/object/' + encodeURIComponent(bucket) + '/' + teile;
+  }
+
+  function ablageAnfrage(pfad, optionen, schonErneuert) {
+    optionen = optionen || {};
+    var s = sitzungLesen();
+    var kopf = { 'apikey': CFG.key };
+    if (s && s.access_token) kopf['Authorization'] = 'Bearer ' + s.access_token;
+    if (optionen.typ) kopf['Content-Type'] = optionen.typ;
+
+    return fetch(CFG.url + pfad, {
+      method: optionen.method || 'GET',
+      headers: kopf,
+      body: optionen.koerper
+    }).then(function (antwort) {
+      if (antwort.status === 401 && !schonErneuert && API.angemeldet()) {
+        return API.erneuern().then(function () {
+          return ablageAnfrage(pfad, optionen, true);
+        });
+      }
+      if (!antwort.ok) {
+        return antwort.text().then(function (text) {
+          var daten = null;
+          try { daten = text ? JSON.parse(text) : null; } catch (e) { daten = text; }
+          var f = new Error(fehlerText(daten, antwort));
+          f.status = antwort.status;
+          throw f;
+        });
+      }
+      return optionen.alsBlob ? antwort.blob() : antwort.json().catch(function () { return null; });
+    });
+  }
+
+  /* Legt eine Datei ab. «x-upsert» bleibt aus: Jeder Beleg bekommt
+     einen eigenen Namen, und ein Namensgleichklang wäre ein Fehler,
+     den man sehen will, statt still das Vorhandene zu überschreiben. */
+  API.dateiHochladen = function (bucket, pfad, blob) {
+    return ablageAnfrage(ablagePfad(bucket, pfad), {
+      method: 'POST', koerper: blob, typ: blob.type || 'application/octet-stream'
+    });
+  };
+
+  API.dateiHolen = function (bucket, pfad) {
+    return ablageAnfrage(ablagePfad(bucket, pfad), { alsBlob: true });
+  };
+
+  API.dateiLoeschen = function (bucket, pfad) {
+    return ablageAnfrage(ablagePfad(bucket, pfad), { method: 'DELETE' });
+  };
+
 })(window.APP);

@@ -241,6 +241,45 @@ löscht die Markierung nicht. Ältere Einträge kennen das Feld nicht; ein
 fehlendes Feld heisst schlicht «nicht markiert», darum braucht die Neuerung
 keine Schema-Migration.
 
+Der Knopf **📎** klappt die **Belege** auf: der Screenshot des Paragraphen, auf
+den sich der Eintrag stützt, der Zonenplanausschnitt, die Seite aus der BNO.
+Ein Bild lässt sich auf die Zeile ziehen, mit Strg+V einfügen oder über
+«Datei wählen» aussuchen; mehrere je Prüfpunkt sind möglich, und die Zeile
+unter jedem Bild hält fest, woher der Ausschnitt stammt («§ 12 Abs. 2 BNO,
+Fassung vom 3.4.2024»). Ein Klick aufs Vorschaubild öffnet es gross. Die Zahl
+am Knopf zeigt, wo etwas liegt, ohne dass man aufklappen muss. Auf dem
+Ausdruck erscheinen die Belege nicht — das Baurechtsblatt geht nach aussen und
+bliebe mit zehn Screenshots keine Übersicht mehr.
+
+Die Bilder liegen **nicht im Projekt**, sondern im Ablageort `baurecht`
+(Supabase Storage); im Projekt-JSON steht nur der Verweis. Das ist kein
+Schönheitsentscheid: Die Projektdatei wird bei jeder Eingabe vollständig
+übertragen und bei jedem Quartalsstichtag vollständig kopiert. Ein Dutzend
+Screenshots darin hiesse, dass jede geänderte Zahl mehrere Megabyte
+verschiebt. Vor dem Ablegen werden Bilder auf 1600 Pixel Breite gebracht und
+als PNG gespeichert — Gesetzestext bleibt dabei scharf, weil eine
+Paragraphenseite aus wenigen Farben besteht. Nur wenn das zu gross wird
+(Fotos, detailreiche Pläne), weicht die Datei auf JPEG aus, mit sinkender
+Qualität bis sie unter 900 KB liegt.
+
+Der Ablageort ist **nicht öffentlich**: Auf den Screenshots stehen
+Projektunterlagen. Gelesen wird mit angemeldetem Zugang, geschrieben nur mit
+Bearbeitungsrecht. Ohne Anmeldung gibt es keine Belege — die Verweise im
+Projekt bleiben dabei unangetastet.
+
+Beim **Duplizieren** eines Projekts bekommt die Variante eigene Dateien. Ohne
+das zeigten zwei Projekte auf denselben Bestand, und wer in der Variante einen
+Beleg entfernt, risse ihn dem Original heraus. Lässt sich ein Beleg nicht
+mitkopieren, fehlt er in der Variante und wird gemeldet — das Original bleibt
+in jedem Fall vollständig.
+
+Einzurichten mit `db/update-03.sql` (Ablageort und Zugriffsregeln). Dasselbe
+Skript findet am Ende verwaiste Belege: Wird ein Projekt gelöscht, bleiben
+seine Dateien liegen, denn die Fremdschlüsselregel der Tabelle reicht nicht in
+die Dateiablage hinein. Aufgeräumt wird von Hand — ein Auslöser, der beim
+Projektlöschen Dateien mitnimmt, schlüge auch dann zu, wenn jemand
+versehentlich löscht und die Zeile aus einer Sicherung zurückholen will.
+
 Vier Punkte kennt die Kalkulation ebenfalls — Grundstücksfläche,
 Ausnützungsziffer, anrechenbare Geschossfläche und Vollgeschosse. Der
 Baurecht-Check schreibt sie **nicht**, sondern zeigt daneben, womit gerechnet
@@ -598,6 +637,7 @@ und ausführen. Das legt Tabellen, Rechteregeln, Auslöser und das Protokoll an.
 > |---|---|
 > | `db/update-01.sql` | schliesst eine Sicherheitslücke (Ansicht `portfolio_sicht`) |
 > | `db/update-02.sql` | Tabelle `sitzungen` — ohne sie bleibt die Seite **Protokolle** leer, dazu Adressbuch und Sitzungsreihen |
+> | `db/update-03.sql` | Ablageort `baurecht` — ohne ihn lassen sich im **Baurecht-Check** keine Belege ablegen |
 
 **3 · Verbinden.** Aus *Project Settings › API* die beiden Werte in `app/config.js`
 eintragen:

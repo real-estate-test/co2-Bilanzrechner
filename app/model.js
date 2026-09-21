@@ -703,6 +703,69 @@ window.APP = window.APP || {};
     return e || { wert: '', bemerkung: '', status: 'offen', achtung: false };
   };
 
+  /* ---------------------------------------------------------------
+     Belege zum Baurecht-Check
+
+     Der Screenshot des Paragraphen, auf den sich ein Eintrag stützt.
+     Im Projekt steht nur der Verweis — die Bilder selbst liegen in der
+     Dateiablage. Läge das Bild hier, ginge es bei jeder geänderten
+     Zahl vollständig über die Leitung und bei jedem Quartalsstand
+     erneut in die Ablage: Die Projektdatei wird immer als Ganzes
+     geschrieben.
+
+     bilder = [{ id, pfad, titel }]
+       pfad  -> <projekt_id>/<pruefpunkt_id>/<id>.<endung> im Bucket
+       titel -> Bildunterschrift, z. B. «§ 12 Abs. 2 BNO, Fassung 2024»
+     --------------------------------------------------------------- */
+
+  A.BAURECHT_BUCKET = 'baurecht';
+
+  A.baurechtBilder = function (p, punktId) {
+    var e = p && p.baurecht && p.baurecht.eintraege
+      ? p.baurecht.eintraege[punktId] : null;
+    return (e && Array.isArray(e.bilder)) ? e.bilder : [];
+  };
+
+  A.baurechtBildPfad = function (p, punktId, bildId, endung) {
+    return [p.id || 'ohne-projekt', punktId, bildId + '.' + endung].join('/');
+  };
+
+  /* Hängt einen Beleg an. Der Eintrag entsteht dabei, falls es ihn noch
+     nicht gibt — ein Bild kann die erste Regung an einem Prüfpunkt
+     sein, noch bevor jemand etwas hineinschreibt. */
+  A.baurechtBildAnlegen = function (p, punktId, bild) {
+    var e = A.baurechtEintrag(p, punktId, true);
+    if (!Array.isArray(e.bilder)) e.bilder = [];
+    e.bilder.push(bild);
+    return bild;
+  };
+
+  A.baurechtBildEntfernen = function (p, punktId, bildId) {
+    var e = p && p.baurecht && p.baurecht.eintraege
+      ? p.baurecht.eintraege[punktId] : null;
+    if (!e || !Array.isArray(e.bilder)) return null;
+    var weg = e.bilder.find(function (b) { return b.id === bildId; }) || null;
+    e.bilder = e.bilder.filter(function (b) { return b.id !== bildId; });
+    return weg;
+  };
+
+  /* Alle Belege eines Projekts, quer über die Prüfpunkte. Gebraucht,
+     wenn ein Projekt gelöscht oder dupliziert wird: Dateien hängen
+     nicht an der Tabellenzeile und müssen eigens behandelt werden. */
+  A.baurechtAlleBilder = function (p) {
+    var raus = [];
+    var eintraege = (p && p.baurecht && p.baurecht.eintraege) || {};
+    Object.keys(eintraege).forEach(function (punktId) {
+      var b = eintraege[punktId];
+      if (b && Array.isArray(b.bilder)) {
+        b.bilder.forEach(function (bild) {
+          raus.push({ punktId: punktId, bild: bild });
+        });
+      }
+    });
+    return raus;
+  };
+
   /* Die Prüfpunkte eines Projekts, nach Gruppen geordnet: erst die
      firmenweiten, danach die projekteigenen Ergänzungen. */
   A.baurechtPunkte = function (p) {
@@ -726,7 +789,7 @@ window.APP = window.APP || {};
      in den Zahlen aber nicht auf — sonst zählte der Achtung-Chip
      Zeilen mit, die niemand mehr sieht. */
   A.baurechtStand = function (p) {
-    var gesamt = 0, fertig = 0, gefuellt = 0, achtung = 0;
+    var gesamt = 0, fertig = 0, gefuellt = 0, achtung = 0, belegt = 0, bilder = 0;
     A.baurechtPunkte(p).forEach(function (bl) {
       bl.punkte.forEach(function (pt) {
         gesamt++;
@@ -734,10 +797,13 @@ window.APP = window.APP || {};
         if (e.status === 'geprueft' || e.status === 'entfaellt') fertig++;
         if (String(e.wert || '').trim()) gefuellt++;
         if (e.achtung) achtung++;
+        var b = Array.isArray(e.bilder) ? e.bilder.length : 0;
+        if (b) { belegt++; bilder += b; }
       });
     });
     return { gesamt: gesamt, fertig: fertig, gefuellt: gefuellt,
-             offen: gesamt - fertig, achtung: achtung };
+             offen: gesamt - fertig, achtung: achtung,
+             belegt: belegt, bilder: bilder };
   };
 
   /* Vier Prüfpunkte kennt die Rechnung bereits. Der Baurecht-Check

@@ -582,7 +582,26 @@ window.APP = window.APP || {};
       kopie.snapshots = [];
       kopie.version = 1;
       kopie.archiviert_am = null;
-      A.store.save(kopie).then(function () { A.projektOeffnen(kopie.id); });
+
+      /* Die Belege des Baurecht-Checks liegen als Dateien neben dem
+         Projekt; geklont wird nur der Verweis. Bekäme die Kopie ihn
+         unverändert, zeigten zwei Projekte auf dieselbe Datei — und
+         ein Entfernen in der Variante nähme dem Original das Bild.
+         Deshalb erst eigene Dateien anlegen, dann speichern. */
+      var belege = (A.baurecht && A.baurecht.belegeUebernehmen)
+        ? A.baurecht.belegeUebernehmen(kopie)
+        : Promise.resolve(null);
+
+      belege.then(function (stand) {
+        return A.store.save(kopie).then(function () {
+          if (stand && stand.verloren) {
+            A.meldung('warn', stand.verloren + ' Beleg(e) liessen sich nicht ' +
+              'mitkopieren und fehlen in der Variante. Das Original ist ' +
+              'unberührt.');
+          }
+          A.projektOeffnen(kopie.id);
+        });
+      });
     });
 
     document.getElementById('btn-export').addEventListener('click', A.exportModal);

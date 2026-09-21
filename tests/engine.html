@@ -1217,6 +1217,47 @@
   pruefe('Alter Eintrag bleibt inhaltlich unangetastet',
     true, A.baurechtEintrag(balt, 'gst_zone').wert === 'W3');
 
+  /* ---- Baurecht-Check: Belege ------------------------------------- */
+  var bb = A.defaultProject();
+  bb.id = 'prj-42';
+  pruefe('Ohne Belege ist die Liste leer', 0, A.baurechtBilder(bb, 'gst_zone').length);
+  pruefe('Ein Projekt ohne Belege meldet keine', 0, A.baurechtAlleBilder(bb).length);
+  pruefe('Alter Eintrag ohne Bilderfeld liefert eine leere Liste',
+    0, A.baurechtBilder(balt, 'gst_zone').length);
+
+  pruefe('Der Pfad trägt Projekt, Prüfpunkt und Endung', true,
+    A.baurechtBildPfad(bb, 'gst_zone', 'b1', 'png') === 'prj-42/gst_zone/b1.png');
+
+  A.baurechtBildAnlegen(bb, 'gst_zone', { id: 'b1', pfad: 'prj-42/gst_zone/b1.png', titel: '§ 12' });
+  A.baurechtBildAnlegen(bb, 'gst_zone', { id: 'b2', pfad: 'prj-42/gst_zone/b2.jpg', titel: '' });
+  A.baurechtBildAnlegen(bb, 'wei_waldabstand', { id: 'b3', pfad: 'prj-42/wei_waldabstand/b3.png', titel: '' });
+  pruefe('Zwei Belege an einem Prüfpunkt', 2, A.baurechtBilder(bb, 'gst_zone').length);
+  pruefe('Drei Belege im ganzen Projekt', 3, A.baurechtAlleBilder(bb).length);
+
+  var bstand = A.baurechtStand(bb);
+  pruefe('Der Stand zählt die belegten Prüfpunkte', 2, bstand.belegt);
+  pruefe('Der Stand zählt alle Belege', 3, bstand.bilder);
+
+  /* Ein Beleg allein macht einen Prüfpunkt nicht zu einem mit Eintrag:
+     Das Bild ist die Quelle, der Eintrag die Antwort. */
+  pruefe('Ein Beleg füllt den Eintrag nicht', 0, bstand.gefuellt);
+
+  var weg = A.baurechtBildEntfernen(bb, 'gst_zone', 'b1');
+  pruefe('Entfernen gibt den Beleg zurück', true, weg && weg.pfad === 'prj-42/gst_zone/b1.png');
+  pruefe('Danach bleibt einer übrig', 1, A.baurechtBilder(bb, 'gst_zone').length);
+  pruefe('Der übrige ist der richtige', true, A.baurechtBilder(bb, 'gst_zone')[0].id === 'b2');
+  pruefe('Ein unbekannter Beleg lässt die Liste in Ruhe',
+    true, A.baurechtBildEntfernen(bb, 'gst_zone', 'gibtsnicht') === null);
+  pruefe('Und entfernt dabei nichts', 1, A.baurechtBilder(bb, 'gst_zone').length);
+  pruefe('Entfernen an einem unberührten Prüfpunkt bricht nicht ab',
+    true, A.baurechtBildEntfernen(bb, 'abs_traufhoehe', 'b9') === null);
+
+  /* Der Verweis wiegt fast nichts — das ist der ganze Grund, warum die
+     Bilder nicht im Projekt-JSON liegen. Ein einzelner Screenshot wäre
+     als Base64 grösser als das vollständige Projekt hier. */
+  pruefe('Ein Beleg im Projekt-JSON bleibt unter 200 Zeichen',
+    true, JSON.stringify(A.baurechtBilder(bb, 'gst_zone')[0]).length < 200);
+
   /* ---- Zusammenfassung -------------------------------------------- */
   var box = document.getElementById('summe');
   box.textContent = gut + ' von ' + (gut + schlecht) + ' Prüfungen bestanden' +

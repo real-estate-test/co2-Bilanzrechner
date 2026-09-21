@@ -273,11 +273,26 @@ Beleg entfernt, risse ihn dem Original heraus. Lässt sich ein Beleg nicht
 mitkopieren, fehlt er in der Variante und wird gemeldet — das Original bleibt
 in jedem Fall vollständig.
 
-Einzurichten mit `db/update-03.sql` (Ablageort und Zugriffsregeln). Dasselbe
-Skript findet am Ende verwaiste Belege: Wird ein Projekt gelöscht, bleiben
-seine Dateien liegen, denn die Fremdschlüsselregel der Tabelle reicht nicht in
-die Dateiablage hinein. Aufgeräumt wird von Hand — ein Auslöser, der beim
-Projektlöschen Dateien mitnimmt, schlüge auch dann zu, wenn jemand
+Einzurichten mit `db/update-03.sql` (Ablageort und Zugriffsregeln). Das Skript
+endet mit einer Prüfliste — sechs Zeilen, die sagen, was steht und was fehlt.
+Sie ist die erste Anlaufstelle, wenn etwas nicht geht.
+
+> **«Bucket not found» beim Ablegen eines Belegs.** Dann fehlt der Ablageort.
+> In neueren Supabase-Projekten ist die Rolle `postgres` im Schema `storage`
+> eingeschränkt und darf `storage.buckets` nicht beschreiben. Das Skript fängt
+> das ab und sagt es (`WARNING`), setzt aber die Zugriffsregeln trotzdem. Der
+> Ablageort kommt dann übers Dashboard: **Storage → New bucket**, Name
+> `baurecht`, **Public ausgeschaltet**, Save — danach das Skript erneut laufen
+> lassen, bis die Prüfliste sechsmal `ok` zeigt.
+>
+> Zeigt die Prüfliste `ACHTUNG: öffentlich`, ist der Bucket falsch angelegt:
+> Die Belege wären ohne Anmeldung abrufbar, sobald jemand den Pfad kennt. Ein
+> erneuter Lauf des Skripts stellt ihn auf privat zurück.
+
+Dasselbe Skript findet am Ende verwaiste Belege: Wird ein Projekt gelöscht,
+bleiben seine Dateien liegen, denn die Fremdschlüsselregel der Tabelle reicht
+nicht in die Dateiablage hinein. Aufgeräumt wird von Hand — ein Auslöser, der
+beim Projektlöschen Dateien mitnimmt, schlüge auch dann zu, wenn jemand
 versehentlich löscht und die Zeile aus einer Sicherung zurückholen will.
 
 Vier Punkte kennt die Kalkulation ebenfalls — Grundstücksfläche,

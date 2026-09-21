@@ -600,6 +600,27 @@
     return A.api.aktiv() && A.api.angemeldet();
   }
 
+  /* Merkt sich, dass der Ablageort in der Datenbank fehlt. Der Server
+     antwortet dann mit «Bucket not found» — richtig, aber für den
+     Anwender nutzlos: Er kann daran nichts erkennen und nichts tun.
+     Nach dem ersten Fehlschlag steht in der Belegzeile, woran es liegt
+     und wer es beheben kann, statt einer Ablagefläche, die nichts
+     annimmt. */
+  var ablageFehlt = false;
+
+  function istBucketFehler(f) {
+    var t = String((f && f.message) || '').toLowerCase();
+    return t.indexOf('bucket') >= 0 && t.indexOf('not found') >= 0;
+  }
+
+  var ABLAGE_FEHLT_TEXT =
+    'Der Ablageort «baurecht» fehlt in der Firmendatenbank — deshalb ' +
+    'lassen sich keine Belege speichern. Ein Verwalter richtet ihn ein: ' +
+    '<b>db/update-03.sql</b> im SQL-Editor von Supabase ausführen, oder im ' +
+    'Dashboard unter <b>Storage</b> einen <b>privaten</b> Bucket namens ' +
+    '«baurecht» anlegen und das Skript danach laufen lassen. Die bereits ' +
+    'erfassten Verweise im Projekt bleiben dabei unangetastet.';
+
   /* ---------------------------------------------------------------
      Ein Bild aufnehmen
 
@@ -750,6 +771,10 @@
         flaeche.textContent = 'Bild nicht abrufbar';
         flaeche.classList.add('brfehlt');
         flaeche.title = f.message;
+        /* Fehlt der Ablageort, ist nicht dieses eine Bild kaputt,
+           sondern die Einrichtung unvollständig. Das gehört unter die
+           Galerie, nicht als Tooltip an ein Vorschaubild. */
+        if (istBucketFehler(f) && !ablageFehlt) { ablageFehlt = true; zeichnen(); }
       });
 
       /* Die Bildunterschrift trägt, worauf sich der Ausschnitt stützt.
@@ -847,6 +872,16 @@
             A.markDirty();
           });
       }).catch(function (f) {
+        if (istBucketFehler(f)) {
+          /* Kein Bedienfehler, sondern eine fehlende Einrichtung. Die
+             Ablagefläche weicht dem Hinweis, damit nicht jeder weitere
+             Versuch dieselbe Meldung erzeugt. */
+          ablageFehlt = true;
+          A.meldung('warn', 'Der Ablageort «baurecht» fehlt in der Datenbank — ' +
+            'ein Verwalter muss ihn einrichten (db/update-03.sql).');
+          zeichnen();
+          return;
+        }
         A.meldung('warn', 'Beleg nicht abgelegt: ' + f.message);
       });
     }
@@ -868,6 +903,11 @@
           'Belege liegen in der Firmenablage und brauchen eine Anmeldung. ' +
           'Im lokalen Modus lassen sich vorhandene Belege weder anzeigen ' +
           'noch ergänzen — die Verweise im Projekt bleiben unangetastet.'));
+        return;
+      }
+
+      if (ablageFehlt) {
+        stapel.appendChild(U.hinweis('warn', ABLAGE_FEHLT_TEXT));
         return;
       }
 

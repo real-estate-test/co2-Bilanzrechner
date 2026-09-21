@@ -38,13 +38,34 @@
 --  allowed_mime_types schliesst alles aus, was kein Bild ist. Ohne die
 --  Liste liesse sich über denselben Weg beliebiger Inhalt ablegen.
 -- ---------------------------------------------------------------------
-insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values ('baurecht', 'baurecht', false, 5242880,
-        array['image/png', 'image/jpeg', 'image/webp'])
-on conflict (id) do update
-   set public             = false,
-       file_size_limit    = excluded.file_size_limit,
-       allowed_mime_types = excluded.allowed_mime_types;
+--  Der Einschub steht bewusst in einem Block, der seinen Fehler
+--  abfängt. Der SQL-Editor führt das ganze Skript in EINER Transaktion
+--  aus: Bricht das Anlegen hier ab — in neueren Projekten ist die
+--  Rolle «postgres» im Schema «storage» eingeschränkt —, würde ohne
+--  diesen Block auch alles Folgende zurückgerollt. Man stünde dann
+--  ohne Ablageort UND ohne Zugriffsregeln da, und die Anwendung meldet
+--  «Bucket not found», ohne dass ersichtlich wäre, woran es liegt.
+--
+--  Geht es nicht per SQL, führt der Weg über das Dashboard:
+--    Storage -> New bucket -> Name «baurecht», Public AUS -> Save
+--  Danach dieses Skript erneut laufen lassen; die Zugriffsregeln
+--  unten werden dann gesetzt.
+do $$
+begin
+  insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+  values ('baurecht', 'baurecht', false, 5242880,
+          array['image/png', 'image/jpeg', 'image/webp'])
+  on conflict (id) do update
+     set public             = false,
+         file_size_limit    = excluded.file_size_limit,
+         allowed_mime_types = excluded.allowed_mime_types;
+  raise notice 'Ablageort «baurecht» steht.';
+exception when others then
+  raise warning 'Der Ablageort liess sich nicht per SQL anlegen: %', sqlerrm;
+  raise warning 'Bitte im Dashboard unter Storage einen PRIVATEN Bucket namens '
+                '«baurecht» anlegen (Public ausgeschaltet) und dieses Skript '
+                'danach erneut ausführen.';
+end $$;
 
 -- ---------------------------------------------------------------------
 --  Zugriffsregeln
@@ -57,26 +78,40 @@ on conflict (id) do update
 --  Bild eingefügt hat, muss es selbst wieder wegnehmen können, ohne den
 --  Verwalter zu rufen.
 -- ---------------------------------------------------------------------
-drop policy if exists baurecht_belege_lesen on storage.objects;
-create policy baurecht_belege_lesen on storage.objects
-  for select to authenticated
-  using (bucket_id = 'baurecht');
+--  Aus demselben Grund wie oben gekapselt: «storage.objects» gehört
+--  der Rolle «supabase_storage_admin». Darf die eigene Rolle dort
+--  keine Regeln setzen, soll das Skript das sagen — und nicht den
+--  bereits angelegten Ablageort wieder mit zurückreissen.
+do $$
+begin
+  execute 'drop policy if exists baurecht_belege_lesen on storage.objects';
+  execute 'create policy baurecht_belege_lesen on storage.objects
+             for select to authenticated
+             using (bucket_id = ''baurecht'')';
 
-drop policy if exists baurecht_belege_anlegen on storage.objects;
-create policy baurecht_belege_anlegen on storage.objects
-  for insert to authenticated
-  with check (bucket_id = 'baurecht' and public.darf_bearbeiten());
+  execute 'drop policy if exists baurecht_belege_anlegen on storage.objects';
+  execute 'create policy baurecht_belege_anlegen on storage.objects
+             for insert to authenticated
+             with check (bucket_id = ''baurecht'' and public.darf_bearbeiten())';
 
-drop policy if exists baurecht_belege_ersetzen on storage.objects;
-create policy baurecht_belege_ersetzen on storage.objects
-  for update to authenticated
-  using (bucket_id = 'baurecht' and public.darf_bearbeiten())
-  with check (bucket_id = 'baurecht' and public.darf_bearbeiten());
+  execute 'drop policy if exists baurecht_belege_ersetzen on storage.objects';
+  execute 'create policy baurecht_belege_ersetzen on storage.objects
+             for update to authenticated
+             using (bucket_id = ''baurecht'' and public.darf_bearbeiten())
+             with check (bucket_id = ''baurecht'' and public.darf_bearbeiten())';
 
-drop policy if exists baurecht_belege_loeschen on storage.objects;
-create policy baurecht_belege_loeschen on storage.objects
-  for delete to authenticated
-  using (bucket_id = 'baurecht' and public.darf_bearbeiten());
+  execute 'drop policy if exists baurecht_belege_loeschen on storage.objects';
+  execute 'create policy baurecht_belege_loeschen on storage.objects
+             for delete to authenticated
+             using (bucket_id = ''baurecht'' and public.darf_bearbeiten())';
+
+  raise notice 'Zugriffsregeln für die Belege stehen.';
+exception when others then
+  raise warning 'Die Zugriffsregeln liessen sich nicht setzen: %', sqlerrm;
+  raise warning 'Ersatzweise im Dashboard unter Storage -> baurecht -> Policies '
+                'vier Regeln für «authenticated» anlegen: SELECT frei, '
+                'INSERT/UPDATE/DELETE mit der Bedingung public.darf_bearbeiten().';
+end $$;
 
 -- ---------------------------------------------------------------------
 --  Verwaiste Belege finden
@@ -114,9 +149,14 @@ select 'Ablageort baurecht'::text as gegenstand,
              then 'ok' else 'FEHLT' end)::text as stand
 union all
 select 'Ablageort ist nicht öffentlich'::text,
-       (case when exists (select 1 from storage.buckets
-                           where id = 'baurecht' and public = false)
-             then 'ok' else 'ACHTUNG: öffentlich' end)::text
+       (case
+          when not exists (select 1 from storage.buckets where id = 'baurecht')
+            then '– (Ablageort fehlt)'
+          when exists (select 1 from storage.buckets
+                        where id = 'baurecht' and public = false)
+            then 'ok'
+          else 'ACHTUNG: öffentlich — Belege wären ohne Anmeldung abrufbar'
+        end)::text
 union all
 select ('Regel ' || r)::text,
        (case when exists (select 1 from pg_policies

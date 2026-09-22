@@ -602,6 +602,33 @@ tr.brachtung:hover td { background: #fbe4e2; }
 tr.brentfaellt.brachtung td:first-child { border-left-color: var(--neg); }
 
 /* ---------------------------------------------------------------
+   Baurecht-Check: Gruppenfarben und Exportknopf
+
+   Fünf Blöcke, 75 Prüfpunkte — beim Scrollen hilft eine Farbe mehr
+   als eine weitere graue Überschrift. Der Ton kommt als Eigenschaft
+   «--gruppenfarbe» aus dem Modell; hier steht nur, wo er auftaucht.
+   --------------------------------------------------------------- */
+.brgpanel > h2 {
+  color: var(--gruppenfarbe);
+  box-shadow: inset 4px 0 0 var(--gruppenfarbe);
+  background: linear-gradient(to right,
+    color-mix(in srgb, var(--gruppenfarbe) 7%, var(--kopfbg)), var(--kopfbg) 60%);
+}
+/* Der Hinweis daneben bleibt Lesetext und färbt sich nicht mit. */
+.brgpanel > h2 .hint { color: var(--ink2); }
+
+/* Browser ohne color-mix bekommen wenigstens den Balken und die
+   farbige Schrift — die Fläche bleibt dann der gewohnte Grauton. */
+@supports not (background: color-mix(in srgb, red 5%, blue)) {
+  .brgpanel > h2 { background: var(--kopfbg); }
+}
+
+/* Der Export ist die Hauptaktion dieses Blocks: Von hier geht das
+   Dokument aus dem Haus. Deshalb gefüllt statt als stiller Textknopf,
+   den man im Panelkopf überlas. */
+.brexportknopf { font-weight: 640; letter-spacing: .01em; }
+
+/* ---------------------------------------------------------------
    Baurecht-Export
 
    Ein eigenes Dokument, kein Abzug des Reiters: Briefkopf, Eckdaten,
@@ -654,10 +681,13 @@ tr.brentfaellt.brachtung td:first-child { border-left-color: var(--neg); }
     color: #7a4b00; padding: 5px 8px; border-radius: 4px; margin-bottom: 10px;
   }
 
+  /* Farbe wie im Reiter, aber die Linie trägt die Gliederung: Wird
+     das Blatt schwarzweiss gedruckt — und das wird es meistens —,
+     bleibt die Überschrift als Überschrift erkennbar. */
   .brxgruppe {
     font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
-    color: #3c4553; font-weight: 700; margin: 14px 0 4px;
-    border-bottom: 1px solid #c9cfd8; padding-bottom: 2px;
+    color: var(--gruppenfarbe, #3c4553); font-weight: 700; margin: 14px 0 4px;
+    border-bottom: 1.5px solid var(--gruppenfarbe, #c9cfd8); padding-bottom: 2px;
     break-after: avoid;
   }
 

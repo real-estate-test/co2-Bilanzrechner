@@ -510,13 +510,23 @@ window.APP = window.APP || {};
   A.BAURECHT_LOKAL = 'projektrechner.baurecht';
   A.baurechtkatalog = null;
 
+  /* Je Gruppe eine Farbe. Bei 75 Prüfpunkten über fünf Blöcke scrollt
+     man viel; die Farbe sagt beim Vorbeiziehen, wo man ist, ohne dass
+     man die Überschrift lesen muss. Gedeckte Töne, die nebeneinander
+     unterscheidbar bleiben — und die Überschrift trägt ihre Linie
+     weiter, damit die Gliederung auch in Schwarzweiss steht. */
   A.BAURECHT_GRUPPEN = [
-    { id: 'gst', label: 'Grundstück' },
-    { id: 'zif', label: 'Ziffern / Boni' },
-    { id: 'abs', label: 'Abstände / Begrenzungen' },
-    { id: 'wei', label: 'Weiteres' },
-    { id: 'gb', label: 'Grundbuch' },
+    { id: 'gst', label: 'Grundstück',              farbe: '#1f5fd0' },
+    { id: 'zif', label: 'Ziffern / Boni',          farbe: '#6d28d9' },
+    { id: 'abs', label: 'Abstände / Begrenzungen', farbe: '#0e7490' },
+    { id: 'wei', label: 'Weiteres',                farbe: '#a16207' },
+    { id: 'gb',  label: 'Grundbuch',               farbe: '#0d7a45' },
   ];
+
+  A.baurechtGruppenfarbe = function (id) {
+    var g = A.BAURECHT_GRUPPEN.find(function (x) { return x.id === id; });
+    return (g && g.farbe) || '#6b7484';
+  };
 
   A.BAURECHT_KATALOG = [
     /* Grundstück */

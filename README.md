@@ -212,7 +212,9 @@ darunter — sie haben weder Dauer noch Abhängigkeit.
 
 **Baurecht-Check** Eine Sammlung des für das Grundstück geltenden Baurechts:
 75 Prüfpunkte in fünf Gruppen (Grundstück, Ziffern und Boni, Abstände und
-Begrenzungen, Weiteres, Grundbuch), je Punkt ein Eintrag, eine Bemerkung —
+Begrenzungen, Weiteres, Grundbuch) — jede mit eigener Farbe, weil man bei
+75 Zeilen viel scrollt und ein Farbton beim Vorbeiziehen schneller sagt, wo
+man ist, als eine weitere graue Überschrift. Je Punkt ein Eintrag, eine Bemerkung —
 üblicherweise die Rechtsgrundlage — und ein Status aus *offen*, *geprüft* und
 *nicht relevant*. Der Katalog der Prüfpunkte wird firmenweit unter Verwaltung
 gepflegt, damit in jedem Projekt dieselben Fragen gestellt werden; im Projekt

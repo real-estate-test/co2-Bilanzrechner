@@ -265,8 +265,8 @@
       : [];
     if (nurAchtung) versteckt.push('alles ohne Achtung-Markierung');
 
-    var exportKnopf = el('button', { class: 'ghost sm noprint',
-      text: 'Export / PDF …',
+    var exportKnopf = el('button', { class: 'primary sm noprint brexportknopf',
+      text: '⇩ Export / PDF …',
       title: 'Den Baurecht-Check als eigenes Dokument ausgeben — mit Briefkopf, ' +
              'Belegen und Kästchen zum Abhaken',
       onclick: function () { B.exportDialog(p); } });
@@ -361,8 +361,16 @@
       ? gezeigt.length + ' von ' + block.punkte.length + ' Prüfpunkten'
       : block.punkte.length + ' Prüfpunkte';
 
-    return U.panel(g.label, untertitel,
+    var panel = U.panel(g.label, untertitel,
       zu[g.id] ? [] : [koerper, fuss], [marke, knopf]);
+
+    /* Die Gruppenfarbe reist als eigene Eigenschaft mit; die Regeln
+       im Stylesheet greifen sie ab. So steht die Zuordnung an einer
+       Stelle — im Modell — statt fünfmal im CSS. */
+    panel.classList.add('brgpanel');
+    panel.style.setProperty('--gruppenfarbe', A.baurechtGruppenfarbe(g.id));
+
+    return panel;
   }
 
   /* ---------------------------------------------------------------
@@ -1158,7 +1166,13 @@
 
     /* --- Die Gruppen ---------------------------------------------- */
     bloecke.forEach(function (block) {
-      out.appendChild(el('h2', { class: 'brxgruppe', text: block.gruppe.label }));
+      /* Dieselbe Farbe wie im Reiter — wer beides nebeneinander hat,
+         findet sich zurecht. Die Linie unter der Überschrift bleibt,
+         damit die Gliederung auch auf einem Schwarzweissdruck steht. */
+      var gh = el('h2', { class: 'brxgruppe', text: block.gruppe.label });
+      gh.style.setProperty('--gruppenfarbe',
+        A.baurechtGruppenfarbe(block.gruppe.id));
+      out.appendChild(gh);
 
       var tab = el('table', { class: 'brxtab' });
       var kopf = el('thead', {}, [el('tr', {}, [

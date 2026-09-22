@@ -1,0 +1,917 @@
+# Projektrechner · Immobilienentwicklung
+
+Bewertungstool für Immobilienprojekte: von der Akquisition über die Baukosten nach BKP
+bis zur Verwertung, Finanzierung und dem laufenden Portfolio-Tracking.
+
+Reine Webanwendung ohne Build-Schritt und ohne Fremdbibliotheken.
+
+Zwei Betriebsarten:
+
+| | **Lokal** | **Firmenbetrieb** |
+|---|---|---|
+| Einrichtung | keine — `index.html` öffnen | Supabase-Projekt, ca. 10 Minuten |
+| Daten | nur im Browser des Anwenders | gemeinsame Datenbank |
+| Anmeldung | keine | E-Mail und Passwort |
+| Rollen | — | Betrachter / Bearbeiter / Verwalter |
+| Portfolio | eigene Projekte | alle Projekte der Firma |
+| Protokoll | — | lückenlos, unveränderlich |
+| Kosten | 0 | 0 (siehe [Betrieb](#firmenbetrieb-einrichten)) |
+
+Solange `app/config.js` leer ist, läuft die Anwendung lokal. Das Eintragen der
+Verbindung schaltet den Firmenbetrieb frei — am Rechenkern und an der
+Bedienung ändert sich dabei nichts.
+
+---
+
+## Was das Werkzeug abbildet
+
+**Szenarien**
+
+| Szenario | Inhalt |
+|---|---|
+| Grüne Wiese · Neubau | Erwerb unbebaut, anschliessend Neubau |
+| Bestand · Abriss & Neubau | Erwerb mit Gebäude, Rückbau, Neubau |
+| Bestand · Sanierung | Sanierung ohne Neubauvolumen |
+| Bestand · Sanierung & Erweiterung | Sanierung plus Aufstockung oder Anbau |
+
+**Nutzungen** Je Gebäudeteil beliebig viele frei benannte Zeilen mit einer Art
+aus Wohnen · Büro · Gewerbe · Verkauf (Retail) · Lager · Parkplatz. So lassen
+sich «Wohnen Stockwerkeigentum» und «Wohnen Miete» im selben Projekt trennen —
+eine Fläche gehört immer genau einer Zeile und wird deshalb nur einmal gezählt.
+
+**Verwertung** je Nutzung und Gebäudeteil getrennt wählbar: Halten vermietet,
+Halten selbstgenutzt, Verkauf als Stockwerkeigentum, Exit an einen Investor zu
+einer Zielbruttorendite. Ein Projekt darf alle vier Arten gleichzeitig enthalten.
+
+**Flächen** wahlweise über die Ausnützungsziffer, als anrechenbare Geschossfläche
+direkt oder aus einer Studie. Die Kaskade:
+
+```
+aGF = Grundstück × Ziffer × (1 + Bonus)     oder direkt erfasst
+aGF ÷ Vollgeschosse       = Gebäudegrundfläche     ← ohne Attika
+Grundstück − Grundfläche  = Umgebungsfläche
+Grundfläche × UG-Quote    = Untergeschoss          (Vorgabe 80 %)
+PP × Fläche je PP         = Einstellhalle
+aGF × Faktor + Attika     = Geschossfläche oberirdisch
+GF o.i. × HNF-Quote       = Nutzfläche NWF         (Vorgabe 78 %)
+```
+
+**Geschosse sind Vollgeschosse ohne Attika.** Ist die Attika nicht anrechenbar,
+kommt ihre Fläche (Vorgabe 60 % der Gebäudegrundfläche) zusätzlich zur aGF hinzu;
+ist sie anrechenbar, steckt sie bereits darin. Der Fussabdruck — und damit die
+Umgebungsfläche — bemisst sich immer am Vollgeschoss.
+
+Kubaturen wahlweise über Höhen (Regelgeschoss 3.00 m, Attika 3.20 m,
+Untergeschoss und Einstellhalle je 3.40 m) oder als direkt erfasstes Volumen,
+aus dem sich die Höhen ergeben.
+
+**Formeln in Zahlenfeldern** Jedes Zahlenfeld nimmt statt einer Zahl auch eine Rechnung
+entgegen — `2500*0.9`, `(120+80)*3`, `1'250+250`. Ein führendes `=` ist erlaubt, aber nicht
+nötig. Beim Hineinklicken erscheint die Formel, beim Verlassen das Ergebnis; eine kleine
+Ecke am Feld markiert eine hinterlegte Formel, und der Bericht führt sie in der
+Annahmenliste. Ausgewertet wird über einen eigenen Parser, **nicht** über `eval` — Formeln
+werden gespeichert und wandern über den Server zu allen Mitarbeitenden. Eine unfertige
+Eingabe wie `2500*` lässt den bisherigen Wert stehen und markiert das Feld, statt auf null
+zu fallen. Verweise auf andere Felder gibt es bewusst nicht.
+
+**Standortkarte** Das Portfolio zeigt die Projekte auf einer Karte, zwischen «Gefässe im
+Überblick» und «Projekte». Kacheln von OpenStreetMap, Bibliothek Leaflet — beide im Repo
+unter `vendor/`, kein Schlüssel, kein Konto, kein Build-Schritt. Die Koordinaten kommen aus
+der Adresssuche Nominatim: Knopf «Koordinaten suchen» unter Projekt & Phasen, Auswahl aus
+der Trefferliste, danach im Projekt eingefroren und von Hand überschreibbar. Marker nach
+Projektstatus — hellblau Idee/Prüfung, dunkelblau Akquisition bis Entwicklung, orange ab
+Baubewilligung, grau verworfen. Beim Hovern erscheinen Gefäss, Anlagekosten, Erlöse, Gewinn
+und Marge; ein Klick öffnet das Projekt. Status- und Gefässfilter gelten mit. Im Bericht
+steht dieselbe Karte mit festem Ausschnitt über alle Projekte. Kachelquelle und Adresssuche
+sind in `app/config.js` einstellbar, falls die Nutzung einen bezahlten Anbieter verlangt.
+
+**Zahlungsmodalitäten** Der Zahlungsplan beim Verkauf von Stockwerkeigentum lässt sich in
+der Verwaltung firmenweit vorgeben. Die Fälligkeiten unterscheiden drei Arten: **Vertragstermine je Einheit** (bei Beurkundung,
+3 Tage nach Tagebucheintrag, bei Übergabe), **Bautermine aus dem Modell** (Baustart, Rohbau
+fertig) und **Bautermine von Hand** (Decke UG fertig, Fertigstellung Unterlagsboden). Der
+Tagebucheintrag folgt der Beurkundung nach einer einstellbaren Frist; die beiden von Hand
+freigegebenen Termine werden bis zur Erfassung eines Datums über einen Anteil der Bauzeit
+geschätzt. Fristen und Schätzwerte sind firmenweit vorgegeben und je Projekt übersteuerbar.
+
+«bei Übergabe» braucht das Übergabedatum der Einheit — ohne dieses fliesst die Rate einer
+verkauften Einheit **nicht**. Der Erlös bleibt bestehen, er fehlt nur im Zahlungsstrom, was
+die Finanzierungskosten erhöht. Nach Ablauf der Bauzeit wird das fehlende Datum rot
+markiert und gemeldet.
+
+Je Rate hält das Projekt fest, ob sie **freigegeben**
+(fällig gestellt bzw. bezahlt) ist, und optional das tatsächliche **Zahlungsdatum**. Beides
+sind Projektfakten und bleiben auch dann bearbeitbar, wenn der Plan der Firmenvorgabe
+folgt; sie überleben deren Einsetzen. Wirkung: eine freigegebene Rate fliesst zum Termin
+laut Plan, auch rückwirkend — eine noch offene frühestens am Stichtag, denn was offen ist,
+kann nicht in der Vergangenheit geflossen sein. Ein erfasstes Zahlungsdatum geht beidem
+vor. Beim Verkaufsstand trägt jede verkaufte Einheit ihr **Beurkundungsdatum**; es ist der
+Nullpunkt ihres Zahlungsplans, ohne Eintrag gilt der Stichtag. Anders als die Zielwerte ist er im Projekt
+übersteuerbar: Ein Projekt folgt entweder der Vorgabe — dann wirkt jede Änderung in der
+Verwaltung unmittelbar, auch rückwirkend — oder führt einen eigenen Plan und bleibt
+unberührt. Bestehende Projekte gelten als eigener Plan, damit eine neue Vorgabe sie nicht
+umstellt.
+
+**Verkaufsstand** (Seite Vermarktung & Verkauf, direkt über dem Zahlungsplan) Drei Herkünfte: *kein Verkauf*, die zentrale *Verkaufsübersicht*
+(real-estate-test.github.io/verkaufs-bersicht) oder eine *eigene Liste* für Projekte ohne
+öffentliche Vermarktungsseite. Beide Quellen liefern dieselbe Struktur und wirken gleich —
+die eigene Liste wird von Hand gepflegt (Status je Einheit, Betrag als Erlös) und lässt
+sich aus dem Wohnungsspiegel vorbefüllen. Bei der Übersicht wird jedes Projekt zugeordnet. Geladen wird
+ausschliesslich von Hand — Schalter im Portfolio und in der Kopfleiste; der Stand wird am
+Projekt eingefroren, damit Rechenkern und Snapshots reproduzierbar bleiben, und im
+Firmenbetrieb zentral abgelegt, sodass alle denselben Stand sehen. Die Übersicht liefert
+nur den Status je Einheit; den Erlös verkaufter Einheiten erfasst der Anwender selbst
+(die Vermarktungsseiten nehmen den Preis meist von der Seite, sobald verkauft), mit
+Vorschlagskette Preis der Übersicht → Wohnungsspiegel gleicher Nummer → Ø CHF/m² der
+freien Einheiten → Ø Preis. Verkaufte gelten als per Stichtag beurkundet, die Raten folgen
+dem Zahlungsplan; die echte Vorverkaufsquote ersetzt die Planannahme in Erlösverteilung
+und Zinsstaffel. Reservierte werden ausgewiesen, aber nicht gerechnet.
+
+**Zahlungsstand** Je Kostenzeile lässt sich erfassen, wie viel bereits bezahlt ist und ob
+die Eintragung vertraglich gesichert ist. Der bezahlte Betrag bestimmt den Zeitpunkt des
+Mittelabflusses: Er gilt als bis zum Stichtag geflossen, der Rest der Position erst danach.
+Weil das Kapital damit früher gebunden ist, steigen die Finanzierungskosten. Nach oben gibt
+es keine Grenze — Nachträge und Unvorhergesehenes führen regelmässig dazu, dass für eine
+Position mehr bezahlt wird als veranschlagt; der Mehrbetrag zählt voll in den Kapitalbedarf.
+Damit er auch Marge und Rendite erreicht, gehört er zusätzlich in die Spalte Ist; darauf
+weist eine Meldung hin. Das Vertragskennzeichen ist reine Dokumentation.
+
+**Finanzierung** Die Eigenkapitalquote gilt je Phase — vor und nach der Baubewilligung
+getrennt, weil Banken vor der Bewilligung zurückhaltender finanzieren. Der kalkulatorische
+Eigenkapitalzins wird wie der Fremdkapitalzins behandelt: Das Eigenkapital stellt in der
+Regel der Mutterkonzern verzinst zur Verfügung, für die Projektgesellschaft sind das echte
+Kosten. Er läuft deshalb in den Kapitalbedarf und mindert Gewinn, Marge, Rendite auf das
+Eigenkapital und den internen Zinsfuss.
+
+**Kapitalbedarf** Die Baukosten werden wahlweise automatisch verteilt (je Kostenart über
+die passende Phase, S-Kurve oder linear) oder mit festen Prozentwerten je Projektphase —
+Entwicklung, Bewilligung, Vorbereitung, Bau. Die Prozentwerte werden auf 100 % normiert,
+Phasen der Dauer null entfallen und ihr Anteil verteilt sich auf die übrigen.
+
+**Immobiliengefässe** Jedes Projekt lässt sich einer Firma zuordnen; die Liste pflegt der
+Verwalter unter Verwaltung. Das Portfolio filtert danach und zeigt die Gefässe zusätzlich
+nebeneinander — je Firma und über alles.
+
+**Erwerbskosten** Kaufpreis wahlweise als Total, CHF/m² Land oder CHF/m² aGF, dazu
+Notariat, Grundbuch, Handänderungssteuer mit Käuferanteil, Einkaufskommission,
+Entwicklungshonorar, Due Diligence, Geometer, Rechtsberatung und
+Mehrwertabgabe. Die Bezugsgrösse des Entwicklungshonorars sind in der Vorgabe
+die Erwerbskosten ohne dieses Honorar zuzüglich der Baukosten ohne das
+Projektmanagement-Honorar BKP 599; die Dritthonorare BKP 558.1 zählen mit.
+Wahlweise auch auf Anlagekosten, Landwert oder Projektgewinn. Alternativ Baurecht mit Einmalentschädigung und Baurechtszins.
+Kantonale Richtwerte für AG · SO · ZH · LU · BE · BS · BL sind hinterlegt.
+
+**Protokolle und Aufgaben** Sitzungsprotokolle nach Themen gegliedert, mit
+Aufgaben, Entscheiden und Infos. Offene Aufgaben aus der letzten Sitzung wandern
+beim Anlegen des nächsten Protokolls automatisch mit.
+
+An jeder Aufgabe hängt ein **Rückmeldungsverlauf**: kurze Einträge mit Datum und
+Urheber, die festhalten, was aus ihr geworden ist. Sie entstehen beim Umstellen
+auf *erledigt* oder *warten auf Rückmeldung* — das Feld klappt von selbst auf —
+oder jederzeit über *+ Rückmeldung*. Im Protokoll stehen sie eingerückt unter
+ihrer Aufgabe und werden mitgedruckt; beim Übernehmen ins nächste Protokoll
+wandern sie mit. Die Aufgaben lassen sich als Liste, Kanban, nach Zuständigkeit
+oder als Themenbild ansehen.
+
+Erledigte Aufgaben werden nirgends hin verschoben: Sie bleiben in ihrem
+Protokoll stehen, nur der Status wechselt. Liste und Zuständigkeit zeigen von
+sich aus nur Offenes; der Haken **erledigte zeigen** holt die abgeschlossenen
+dazu — gedämpft und ans Ende gestellt, mit Abschlussdatum statt Termin.
+
+**Terminplan** Ein Gantt-Diagramm: links die Vorgangstabelle mit Bezeichnung,
+Abhängigkeit, Verzögerung, Start, Dauer in Kalendertagen, Ende, Erledigt-Haken
+und Farbe; rechts die Balken auf einer Monatsachse, dazwischen Pfeile für die
+Abhängigkeiten. Ein Vorgang mit Abhängigkeit beginnt am Tag nach dem Ende seines
+Vorgängers — sein Startdatum wird gerechnet, und verschiebt sich etwas, wandert
+die ganze Kette mit. Ringschlüsse werden abgewiesen, bevor sie entstehen.
+
+Neben Vorgängen mit Dauer gibt es **Meilensteine**: ein Datum ohne Dauer, als
+Raute gezeichnet, sonst mit denselben Spalten — Bezeichnung, Abhängigkeit,
+Verzögerung, Farbe, Erledigt-Haken. Ein Meilenstein bekommt beim Anlegen ein
+festes Datum statt einer Abhängigkeit — das ist bei ihm der Normalfall;
+verketten lässt er sich danach wie jede andere Zeile, und ein Vorgang kann
+seinerseits an ihm hängen. Seine Bezeichnung steht im Diagramm neben der Raute,
+weil ein einzelner Punkt auf einer langen Achse sonst nicht zuzuordnen ist.
+
+Ein neues Projekt füllt der Knopf **SIA-Phasen einsetzen** mit den zehn Phasen,
+verkettet und mit Dauern aus dem Bauzeitmodell; danach ist jede Zeile frei.
+Erledigtes wird grau und durchgestrichen. Die Zeitachse lässt sich zwischen
+*passend* (der ganze Plan im Bild, auch auf dem Ausdruck) und drei festen
+Massstäben umschalten.
+
+Balken lassen sich **ziehen**: in der Mitte angefasst verschieben sie den
+Vorgang, am rechten Rand verlängern sie ihn; bei einem abhängigen Vorgang ändert
+das Schieben die Verzögerung, damit die Kette hält. Während des Ziehens steht
+das entstehende Datum über dem Balken. Die **Nummer** links ist der Griff zum
+Umsortieren der Zeilen — die Abhängigkeiten zeigen auf Kennungen, nicht auf
+Nummern, und überstehen das unverändert.
+
+Die **Dauern in die Kalkulation zu übernehmen** bleibt ein eigener Knopf mit
+Vorschau: Ein verschobener Termin darf Kapitalbedarf, Zinsen und damit die Marge
+nicht still verändern. Termine aus den Protokollen stehen als eigener Block
+darunter — sie haben weder Dauer noch Abhängigkeit.
+
+**Baurecht-Check** Eine Sammlung des für das Grundstück geltenden Baurechts:
+75 Prüfpunkte in fünf Gruppen (Grundstück, Ziffern und Boni, Abstände und
+Begrenzungen, Weiteres, Grundbuch) — jede mit eigener Farbe, weil man bei
+75 Zeilen viel scrollt und ein Farbton beim Vorbeiziehen schneller sagt, wo
+man ist, als eine weitere graue Überschrift. Je Punkt ein Eintrag, eine Bemerkung —
+üblicherweise die Rechtsgrundlage — und ein Status aus *offen*, *geprüft* und
+*nicht relevant*. Der Katalog der Prüfpunkte wird firmenweit unter Verwaltung
+gepflegt, damit in jedem Projekt dieselben Fragen gestellt werden; im Projekt
+lassen sich einzelne Zeilen ergänzen.
+
+Ein Filter über den drei Zuständen blendet aus, was gerade nicht
+interessiert — meist die als *nicht relevant* abgehakten Punkte. Er bleibt
+über Sitzungen hinweg gemerkt und gilt auch für den Ausdruck; dort steht dann
+ein Vermerk, dass die Aufstellung nicht vollständig ist. Die Zahlen im Kopf
+zählen immer den ganzen Katalog, damit eine gefilterte Ansicht nicht wie ein
+fertig geprüftes Projekt aussieht.
+
+Der Knopf **⚠** am Zeilenende markiert einen Prüfpunkt, bei dem genau
+hinzuschauen ist — typischerweise, weil die Regel von Kanton zu Kanton anders
+lautet und hier regelmässig Fehler passieren. Die Zeile wird rot hinterlegt
+und bekommt links einen Balken; auf Papier bleibt der Balken und über dem
+Prüfpunkt steht **Achtung** — so trägt der Ausdruck die Warnung auch dann,
+wenn ohne Hintergrundgrafiken gedruckt wird. Der Chip **⚠ Achtung** neben den
+Statuschips schaltet die Ansicht auf die markierten Punkte um, für den
+Durchgang vor der Baueingabe.
+
+Die Markierung gilt **nur im jeweiligen Projekt**, nicht firmenweit: Was in
+Aarau heikel ist, muss es in Zug nicht sein. Sie liegt quer zum Status — ein
+markierter Punkt kann offen, geprüft oder nicht relevant sein, und das Abhaken
+löscht die Markierung nicht. Ältere Einträge kennen das Feld nicht; ein
+fehlendes Feld heisst schlicht «nicht markiert», darum braucht die Neuerung
+keine Schema-Migration.
+
+Der Knopf **📎** klappt die **Belege** auf: der Screenshot des Paragraphen, auf
+den sich der Eintrag stützt, der Zonenplanausschnitt, die Seite aus der BNO.
+Ein Bild lässt sich auf die Zeile ziehen, mit Strg+V einfügen oder über
+«Datei wählen» aussuchen; mehrere je Prüfpunkt sind möglich, und die Zeile
+unter jedem Bild hält fest, woher der Ausschnitt stammt («§ 12 Abs. 2 BNO,
+Fassung vom 3.4.2024»). Ein Klick aufs Vorschaubild öffnet es gross. Die Zahl
+am Knopf zeigt, wo etwas liegt, ohne dass man aufklappen muss. Auf dem
+Ausdruck erscheinen die Belege nicht — das Baurechtsblatt geht nach aussen und
+bliebe mit zehn Screenshots keine Übersicht mehr.
+
+Die Bilder liegen **nicht im Projekt**, sondern im Ablageort `baurecht`
+(Supabase Storage); im Projekt-JSON steht nur der Verweis. Das ist kein
+Schönheitsentscheid: Die Projektdatei wird bei jeder Eingabe vollständig
+übertragen und bei jedem Quartalsstichtag vollständig kopiert. Ein Dutzend
+Screenshots darin hiesse, dass jede geänderte Zahl mehrere Megabyte
+verschiebt. Vor dem Ablegen werden Bilder auf 1600 Pixel Breite gebracht und
+als PNG gespeichert — Gesetzestext bleibt dabei scharf, weil eine
+Paragraphenseite aus wenigen Farben besteht. Nur wenn das zu gross wird
+(Fotos, detailreiche Pläne), weicht die Datei auf JPEG aus, mit sinkender
+Qualität bis sie unter 900 KB liegt.
+
+Der Ablageort ist **nicht öffentlich**: Auf den Screenshots stehen
+Projektunterlagen. Gelesen wird mit angemeldetem Zugang, geschrieben nur mit
+Bearbeitungsrecht. Ohne Anmeldung gibt es keine Belege — die Verweise im
+Projekt bleiben dabei unangetastet.
+
+**Export / PDF** gibt den Baurecht-Check als eigenes Dokument aus — nicht als
+Abzug des Reiters. Es trägt den Briefkopf mit Logo, die Eckdaten des
+Grundstücks (Projekt, Ort, Parzelle, Zone — Parzelle und Zone werden aus den
+Prüfpunkten gelesen, nicht doppelt gepflegt), Datum und Verfasser. Je Zeile ein
+Kästchen: leer bei *offen*, angehakt bei *geprüft*, gestrichelt bei *nicht
+relevant*. Die ⚠-markierten Punkte behalten ihren roten Balken; bei den vier
+Punkten, die die Kalkulation kennt, steht der gerechnete Wert daneben und der
+Vermerk, wenn beides auseinanderläuft. Belege stehen unter ihrem Prüfpunkt, bis
+zu 58 % der Satzbreite und höchstens eine Blatthöhe hoch, mit der
+Bildunterschrift darunter.
+
+Der Umfang lässt sich vor dem Export wählen: *alle Prüfpunkte*, *nur
+bearbeitete*, *nur ⚠ markierte*, *nur offene*. Bearbeitet heisst: mit Eintrag,
+Bemerkung, Beleg oder gesetztem Status — «Altlasten: nicht relevant» ist eine
+Aussage über das Grundstück und gehört auf ein Ergebnisblatt, auch wenn daneben
+kein Wort steht. Ist der Umfang nicht *alle*, trägt das Blatt oben einen
+Vermerk, dass die Aufstellung nicht vollständig ist: Ein Empfänger darf einen
+Auszug nicht für den ganzen Stand halten.
+
+Das PDF entsteht über den Druckdialog des Browsers («Als PDF sichern»), nicht
+über einen eingebauten Erzeuger. Das ergibt durchsuchbaren Text statt Bildern
+von Buchstaben und spart eine Fremdbibliothek. Die Belege werden vorher
+vollständig geladen und dekodiert — ein Bild, das noch unterwegs ist, druckt
+als leerer Kasten, und der Druckdialog wartet nicht.
+
+Der Reiter selbst bleibt daneben druckbar: als kompakte Übersicht **ohne**
+Belege, für den schnellen Blick.
+
+Beim **Duplizieren** eines Projekts bekommt die Variante eigene Dateien. Ohne
+das zeigten zwei Projekte auf denselben Bestand, und wer in der Variante einen
+Beleg entfernt, risse ihn dem Original heraus. Lässt sich ein Beleg nicht
+mitkopieren, fehlt er in der Variante und wird gemeldet — das Original bleibt
+in jedem Fall vollständig.
+
+Einzurichten mit `db/update-03.sql` (Ablageort und Zugriffsregeln). Das Skript
+endet mit einer Prüfliste — sechs Zeilen, die sagen, was steht und was fehlt.
+Sie ist die erste Anlaufstelle, wenn etwas nicht geht.
+
+> **«Bucket not found» beim Ablegen eines Belegs.** Dann fehlt der Ablageort.
+> In neueren Supabase-Projekten ist die Rolle `postgres` im Schema `storage`
+> eingeschränkt und darf `storage.buckets` nicht beschreiben. Das Skript fängt
+> das ab und sagt es (`WARNING`), setzt aber die Zugriffsregeln trotzdem. Der
+> Ablageort kommt dann übers Dashboard: **Storage → New bucket**, Name
+> `baurecht`, **Public ausgeschaltet**, Save — danach das Skript erneut laufen
+> lassen, bis die Prüfliste sechsmal `ok` zeigt.
+>
+> Zeigt die Prüfliste `ACHTUNG: öffentlich`, ist der Bucket falsch angelegt:
+> Die Belege wären ohne Anmeldung abrufbar, sobald jemand den Pfad kennt. Ein
+> erneuter Lauf des Skripts stellt ihn auf privat zurück.
+
+Dasselbe Skript findet am Ende verwaiste Belege: Wird ein Projekt gelöscht,
+bleiben seine Dateien liegen, denn die Fremdschlüsselregel der Tabelle reicht
+nicht in die Dateiablage hinein. Aufgeräumt wird von Hand — ein Auslöser, der
+beim Projektlöschen Dateien mitnimmt, schlüge auch dann zu, wenn jemand
+versehentlich löscht und die Zeile aus einer Sicherung zurückholen will.
+
+Vier Punkte kennt die Kalkulation ebenfalls — Grundstücksfläche,
+Ausnützungsziffer, anrechenbare Geschossfläche und Vollgeschosse. Der
+Baurecht-Check schreibt sie **nicht**, sondern zeigt daneben, womit gerechnet
+wird, und meldet eine Abweichung. Wer im Baurecht 0.6 einträgt und mit 0.9
+rechnet, soll das sehen, statt dass ihm still die Marge verändert wird.
+
+**Baukosten** nach BKP, auf die praxisrelevanten Gruppen verdichtet:
+
+| BKP | Zeile | Menge |
+|---|---|---|
+| 1 | Rückbau, Altlasten | m³ Bestand bzw. pauschal |
+| 1 | Vorbereitungsarbeiten | % von BKP 20–29 vor Reserve |
+| 1 | Anpassungen an bestehende Bauten | m² Grundstücksfläche |
+| 1 | Pfählung/Wasserhaltung, Erschliessung | pauschal |
+| 20–29 | Gebäude oberirdisch · Stockwerkeigentum | m³ Kubatur aus dem Nutzungsmix |
+| 20–29 | Gebäude oberirdisch · Miete | m³ Kubatur aus dem Nutzungsmix |
+| 20–29 | Gebäude oberirdisch · Gewerbe | m³ Kubatur aus dem Nutzungsmix |
+| 20–29 | Untergeschoss | m³ |
+| 20–29 | Einstellhalle | m³ |
+| 202 | Reserve | % von BKP 20–29 vor Reserve + Vorbereitungsarbeiten |
+| 3 · 4 | Betriebseinrichtungen, Umgebung | pauschal, m² |
+| 558.1 | Dritthonorare | % von BKP 1–4 |
+| 5 | Baunebenkosten | % von BKP 20–29 inkl. Reserve |
+| 599 | Projektmanagement-Honorar | % von BKP 1–5 |
+| 9 | Ausstattung | m² NWF |
+
+Die prozentualen Zeilen laufen in fester Reihenfolge, weil sie aufeinander
+aufbauen: zuerst die Vorbereitungsarbeiten auf die fünf Gebäudezeilen
+BKP 20–29, dann die Reserve auf dieselbe Grösse **zuzüglich** der
+Vorbereitungsarbeiten — deren Prozentwert wirkt damit bewusst ein zweites Mal.
+Danach die Dritthonorare auf BKP 1–4 inklusive Reserve, die Baunebenkosten
+ausschliesslich auf BKP 20–29 inklusive Reserve, zuletzt das
+Projektmanagement-Honorar auf BKP 1–5 ohne sich selbst. Jede Zeile trägt ihre
+Formel als Hinweis unter der Bezeichnung.
+
+Die Kennwerte der BKP 20–29 sind Vollkosten inklusive Gebäudetechnik, Ausbau und
+Planerhonoraren; der Ausbaustandard unterscheidet sich zwischen verkauftem
+Wohnraum, Mietwohnungen und Gewerbe deutlich, deshalb die Dreiteilung. Welche
+Nutzungszeile in welche Kostengruppe fällt, ist je Zeile einstellbar.
+
+Je Zeile ist die Bezugsgrösse frei wählbar, eigene Zeilen lassen sich ergänzen.
+Bis zu drei Kostenblöcke (Neubau, Erweiterung, Sanierung) mit eigenen Kennwerten.
+
+**Erträge** Mietzinsen je Nutzungszeile, Verkaufspreise je m². Der optionale
+**Wohnungsspiegel** kommt zum Zug, sobald einzelne Einheiten bepreist werden
+sollen: Jede Einheit wird einer Nutzungszeile zugeordnet und erbt von dort Art
+und Verwertung; Fläche und Durchschnittspreis der Zeile ergeben sich dann aus den
+Einheiten. Ohne Spiegel gilt der erfasste Durchschnittswert.
+
+**Häuser sind die Hauptgruppe**, Wohnungen liegen darin. Ob verkauft oder
+vermietet wird, entscheidet sich je Haus — und damit auch, ob eine Wohnung einen
+Preis oder eine Miete trägt und in welcher Einheit. Ein Haus trägt drei
+Entscheidungen: seinen Namen, seine **Nutzungszeile** (von dort erbt es Art und
+Verwertung) und die **Erfassungsart**. Darunter kommen die Wohnungen über einen
+`+`-Knopf dazu. Vorher stand beides nebeneinander in einer Tabelle und die
+Erfassungsart galt für alles zugleich; bei gemischten Projekten war das nicht zu
+lesen.
+
+Die Erfassungsart richtet sich nach der Verwertung: Verkaufshäuser wählen
+zwischen *CHF je Einheit* und *CHF/m²*, Miethäuser zwischen *CHF/Monat* und
+*CHF/m²/Jahr*. Gerechnet wird immer mit dem Preis je Einheit und der Monatsmiete;
+in den m²-Modi werden sie aus der Fläche gebildet, und dort führt der
+Quadratmeterwert: Ändert sich die Fläche, wächst der Betrag je Einheit mit. Beim
+Umschalten wird der bestehende Stand übernommen, sodass keine Zahl springt. Der
+jeweils ungenutzte Wert bleibt erhalten — ein Haus wechselt die Verwertung im
+Verlauf oft noch.
+
+Die **Miete aus dem Spiegel schlägt auf die Nutzungszeile durch**, so wie es der
+Preis schon tat — sonst stünde bei einzeln erfassten Wohnungen deren Fläche neben
+dem Mietdurchschnitt der Zeile. Ist für eine Mietzeile gar keine Miete erfasst,
+gilt weiterhin der Zeilendurchschnitt. Ist sie nur **teilweise** erfasst, zählt
+nur das Erfasste — und eine Warnung nennt die Wohnungen ohne Miete samt ihrer
+Fläche: Sie zählen in die Rendite, ihr Ertrag fehlt.
+
+Ältere Projekte werden beim Öffnen **verlustfrei überführt**: Die Wohnungen
+werden nach ihrer bisherigen Hausbezeichnung und Nutzungszeile gruppiert, die
+Erfassungsart wandert ans Haus, und wer noch kein Haus vergeben hatte, bekommt
+eines je Nutzungszeile.
+
+Die **Zimmerzahl** ist eine Auswahl von 1.5 bis 6.5 — eine feste Liste, weil sie
+die Verteilung darunter erst auswertbar macht. Ein Bestandswert ausserhalb der
+Liste (etwa 4.0) wird als eigener Eintrag aufgenommen, nicht stillschweigend
+ersetzt.
+
+Darunter zeigen Kreisdiagramme den **Wohnungsmix** nach Anzahl Wohnungen —
+danach fragt der Markt, nicht nach Quadratmetern; die Fläche und der
+Flächendurchschnitt stehen in der Legende daneben. Genau **drei Bilder**,
+unabhängig von der Zahl der Häuser: eines für den Verkauf, eines für die Miete,
+eines über alles. Fünf Miethäuser ergeben einen Kreis, nicht fünf — die Frage
+ist, was verkauft und was gehalten wird, nicht wie die Baukörper heissen. Gibt es
+nur eine der beiden Seiten, entfällt das Gesamtbild, sonst stünde dasselbe
+zweimal. Die Farbskala läuft von hell
+nach dunkel mit steigender Zimmerzahl und hängt an der Zahl selbst, nicht an der
+Reihenfolge im Projekt: Dasselbe Blau bedeutet in jedem Projekt dieselbe
+Wohnungsgrösse. Einheiten ohne Zimmerzahl bilden eine graue Gruppe am Schluss,
+statt aus der Rechnung zu fallen.
+
+**Vermarktung** Sieben Posten, jeder mit eigener Bezugsgrösse:
+Verkaufsprovision, Beurkundung (Anteil Verkäufer) und **Käuferbetreuung** in
+Prozent des Verkaufserlöses STWE, Exit-Nebenkosten in Prozent des Exit-Erlöses,
+die **Erstvermietungsprovision** in Prozent der Jahressollmiete der vermieteten
+Flächen (eine Monatsmiete entspricht 8.33 %), Marketing wahlweise prozentual oder
+pauschal, die Musterwohnung pauschal. Früher wurde die Erstvermietung in
+Monatsmieten erfasst — dieselbe Grösse in anderer Einheit; bestehende Projekte
+werden wertneutral umgerechnet.
+
+**Unter jedem Prozentsatz steht der Betrag**, den er ergibt — sonst müsste man
+bis zur Tabelle darunter blättern, um zu sehen, was ein Zehntelprozent bewirkt.
+Bei der Käuferbetreuung zusätzlich die **Kosten je Wohnung**: Sie fällt zu 100 %
+auf die verkauften Einheiten, und je Wohnung ist die Zahl, mit der man einen
+Betreuungsvertrag vergleicht. Die Wohnungszahl kommt aus dem Wohnungsspiegel,
+sonst aus dem Verkaufsstand (ohne Parkplätze); fehlt beides, sagt das Feld das,
+statt eine Zahl zu erfinden.
+
+**Finanzierung** Eigenkapitalquote und Belehnungsdeckel, getrennte Zinssätze vor
+und nach der Baubewilligung, Bereitstellungskommission, kalkulatorische
+Eigenkapitalverzinsung. Der Vorverkauf wirkt zweifach: über eine frei definierbare
+Staffel senkt er den Zinssatz, über den Zahlungsplan entlasten die Käuferzahlungen
+den Baukredit.
+
+**Die Kennzahlenleiste** über jeder Seite zeigt sieben Werte: *Anlagekosten*,
+*Erlöse STWE*, *EBT STWE*, *Sollmiete*, *Bruttomietrendite*, *Gewinn Exit* und
+*EBT Exit*. Gesamtzahlen wie Gewinn und Marge stehen auf der Ergebnisseite — bei
+einem Mischprojekt sagen sie für sich genommen wenig, weil sie Verkauf und
+Bestand vermengen. Was ein Projekt nicht hat, steht als «–» statt als Null.
+
+Die beiden Exit-Werte zeigen den Weg, den dieses Projekt geht: Gibt es einen
+Mietanteil, ist es dessen Verkauf an einen Endinvestor (Untertitel *Bestand*);
+sonst der von vornherein geplante Exit (*geplant*).
+
+**Ergebnis je Verwertungsart** Bei einem Mischprojekt sagt eine Gesamtmarge über
+alles wenig. Die Gesamtinvestition (Anlagekosten inklusive Vermarktung) wird
+deshalb auf **STWE**, **Miete** und **Exit** verteilt,
+und jedem Block steht seine eigene Kennzahl gegenüber: *EBT STWE* als
+(Erlös − anteilige Investition) ÷ anteilige Investition, dasselbe für den
+Exit-Anteil, und für den Mietanteil die Brutto- und Nettorendite.
+
+Der Mietanteil wird gerechnet, als bliebe er im Bestand — ein Verkauf an einen
+Investor ist aber jederzeit eine Option. Eine eigene Zeile beantwortet deshalb,
+zu welchen Konditionen das möglich wäre: Ertragswert, Gewinn gegenüber der
+anteiligen Investition und das EBT darauf. Sie doppelt den Exit-Block bewusst —
+dort steht der geplante Verkauf, hier die Möglichkeit.
+
+**Was in der Sollmiete steckt** Sie ist die Jahresmiete aller Miet- und
+Exit-Flächen — verkaufte STWE-Flächen tragen keine. Sie speist sich aus drei
+Quellen, und die Kachel im Zusammenzug nennt sie einzeln:
+
+| Quelle | wann |
+|---|---|
+| Spiegel | Wohnungen mit erfasster Miete, Monatsmiete × 12 |
+| Nutzungszeilen | Mietflächen ohne Spiegeleintrag, Fläche × CHF/m²/Jahr |
+| Parkplätze | Anzahl × CHF/Monat × 12 |
+
+Deshalb ist die Summe der Haustotale im Spiegel **kleiner** als die Sollmiete,
+sobald es Gewerbe über eine Nutzungszeile oder Parkplätze gibt — beide stehen in
+keinem Haus. Ein **Haus ohne Nutzungszeile** trägt dagegen gar nichts bei: Seine
+Wohnungen erscheinen im Spiegel und im Wohnungsmix, laufen aber an der Rechnung
+vorbei, während die Nutzungszeile ihren Prozentanteil behält. Das meldet jetzt
+eine Warnung mit Hausnamen und Wohnungszahl.
+
+Auch die **Kostengruppen der BKP 20–29 folgen dem Spiegel**. Sie entstehen sonst
+aus dem Prozentanteil der Nutzungszeile — wer aber einen Spiegel führt, lässt
+diese Anteile oft leer, weil der Spiegel die Flächen ja bestimmt. Der Anteil an
+der Nutzfläche überträgt sich deshalb auf die Geschossfläche: Was 70 % der NWF
+ausmacht, belegt auch 70 % der oberirdischen Geschossfläche. Zeilen ohne
+Spiegeleintrag behalten ihren Prozentanteil, sodass sich Spiegel und
+Nutzungszeilen im selben Gebäudeteil mischen lassen. Solange ein Spiegel die
+Flächen liefert, entfällt die Meldung «Flächenanteile ergeben X % statt 100 %» —
+sie wäre dann ein Fehlalarm bei jedem Aufruf.
+
+Der **Flächenschlüssel folgt dem Wohnungsspiegel**, sobald einer vorliegt: Er
+ersetzt die Flächen der zugeordneten Nutzungszeilen, und damit richten sich auch
+die Verwertungsanteile nach den einzeln erfassten Wohnungen statt nach den
+Prozentangaben. Sagen die Nutzungszeilen 70/30 und der Spiegel 40/60, gilt 40/60
+— auch für die Kostenverteilung. Die Prüfansicht nennt die Herkunft bei den
+Anteilskacheln.
+
+Deckt der Spiegel **weniger Fläche ab, als das Gebäude hergibt**, meldet das eine
+Warnung mit beiden Zahlen: Die Differenz trägt Baukosten, aber weder Erlös noch
+Miete, und zählt nicht in die Verwertungsanteile. Ohne diesen Abgleich fiele es
+nicht auf — die Prozentangaben der Nutzungszeilen ergeben weiterhin brav 100 %.
+
+Drei Wege führen in die Blöcke. Baukostenzeilen **BKP 20–29**, die eine
+**Kostengruppe** bemessen, folgen den Flächen, die sie bauen — was der
+Gewerbeausbau kostet, hat mit dem Wohnungsverkauf nichts zu tun. Die
+**Vermarktungskosten**
+folgen ihrem Verursacher: Verkaufsprovision, Beurkundung und Käuferbetreuung auf
+den STWE-Anteil, die Exit-Nebenkosten auf den Exit-Anteil, die Erstvermietung auf
+die vermieteten Flächen nach ihrer Miete, Marketing und Musterwohnung nach
+Fläche; sonst trüge der Mietanteil einen Teil der Verkaufsprovision, die für ihn
+gar nicht anfällt.
+Alles Übrige — Erwerb, Finanzierung, BKP 1/3/4/5/9 und die nicht zugeordneten
+Baukosten — wird nach Nutzfläche verteilt. Brutto- und Nettorendite verwenden
+dieselbe Grundlage wie die EBT-Kennzahlen, damit nicht zwei Zahlen für dieselbe
+Investition nebeneinander stehen.
+
+Die **Zuordnung** steht als Auswahlfeld in jeder BKP-20–29-Zeile der Seite
+**Baukosten** und ist in der Vorgabe **automatisch**. Das ist meistens die
+richtige Antwort, denn bei einer Zeile, die eine Kostengruppe misst, ist längst
+bekannt, wem ihre Flächen gehören:
+
+| Zeile | Schlüssel |
+|---|---|
+| BKP 20–29 · oberirdisch Stockwerkeigentum | ganz auf STWE — die Gruppe enthält nur verkaufte Wohnungen |
+| BKP 20–29 · oberirdisch Miete | nach der Verwertung ihrer Nutzungen; Wohnen zum Exit zählt in dieselbe Gruppe und geht in den Exit-Block |
+| BKP 20–29 · oberirdisch Gewerbe | ebenso — Gewerbe kann verkauft, gehalten oder an einen Investor gegeben werden |
+| Untergeschoss, Einstellhalle, Reserve | nach Fläche — sie dienen allen Nutzungen |
+
+Wo das nicht passt, überschreiben *nach Fläche*, *STWE*, *Miete* oder *Exit* die
+Automatik. Die Einstellhalle ist der übliche Fall dafür: Werden die Parkplätze
+mit den Eigentumswohnungen verkauft, gehört sie auf STWE, sonst tragen Miete und
+Exit einen Teil ihrer Baukosten mit.
+
+Bewusst beschränkt auf BKP 20–29 (samt Reserve 202): Vorbereitung,
+Baunebenkosten und Projektmanagement-Honorar bauen prozentual auf den Baukosten
+auf und lassen sich keinem einzelnen Anteil zuweisen. Eine Teuerung hebt die
+zugeordneten Beträge im selben Mass wie alle übrigen Baukosten; die Summe der
+drei Blöcke ergibt in jedem Fall wieder die Gesamtinvestition, und der
+Projektgewinn bleibt von der Zuordnung unberührt — sie verschiebt nur.
+
+**Tracking · Aufteilung** ist eine vorübergehende Prüfansicht mit der Zeilen-
+struktur des Trackings: jede Kostenposition mit dem Schlüssel, nach dem sie
+verteilt wird, und den Spalten *Anlagekosten STWE / Miete / Exit*. Eine
+Kontrollzeile stellt die Summe den Kacheln der Ergebnisseite gegenüber. Darunter
+steht die Überleitung von den drei Blockgewinnen zum Projektgewinn — sie
+addieren sich nicht, dazwischen liegen der Mietertrag während der Projektdauer,
+nicht aktivierte Finanzierungskosten und die Steuern. Besonders die
+**nicht aktivierten Finanzierungskosten** sind wichtig: Sie zählen dann nicht zu
+den Anlagekosten und werden von keinem Block getragen, weshalb alle drei
+EBT-Kennzahlen entsprechend besser aussehen als die Marge auf den Anlagekosten.
+Die Seite lässt sich entfernen, sobald die Rechenwege nachvollzogen sind; sie
+rechnet nichts eigenes, sondern führt die Regeln aus `E.compute` an denselben
+Beträgen vor.
+
+Die **Projektdauer** zeigt die Spanne vom Kaufdatum bis zum letzten Vorgang im
+Terminplan, sobald dieser gefüllt ist; gerechnet wird weiterhin mit den
+Phasendauern in Monaten, damit ein verschobener Termin die Marge nicht still
+verändert.
+
+**Ergebnis** Anlagekosten, Projektgewinn, Marge, Rendite auf Eigenkapital,
+interner Zinsfuss, Spitzenkapitalbedarf, Brutto- und Nettorendite,
+Wasserfalldarstellung, Cashflow und Kapitalbindung im Jahresraster.
+
+**Analyse** Sensitivität als Tornado über sieben Parameter sowie die
+Rückwärtsrechnung des residualen Landwerts bei Zielmarge.
+
+**Portfolio** Kennzahlen aller Projekte mit Ampeln gegen die Zielwerte, dazu drei
+zusammengeführte Darstellungen auf gemeinsamer Kalenderachse.
+
+Ein **Statusfilter mit Mehrfachauswahl** steuert die ganze Seite, nicht nur die
+Liste — Summen, Terminplan, Kapitalbedarf und Cashflow folgen ihm. So bleiben
+Projekte aus Akquisition und Prüfung aus dem Reporting draussen. Drei
+Vier Voreinstellungen stehen bereit: *alle*, *keine*, *Entwicklung* (Prüfung bis
+Entwicklung) und *Realisation* (Baubewilligung bis Vermarktung — die laufenden
+Projekte). Über *keine* leert man die Auswahl und schaltet danach gezielt eine
+oder zwei Phasen ein. Die Auswahl bleibt über
+Sitzungen hinweg erhalten.
+
+- **Terminplan** — ein Balken je Projekt mit allen Phasen, darunter die Anzahl
+  gleichzeitig in Ausführung stehender Projekte
+- **Kapitalbedarf** — gebundene Eigen- und Fremdmittel je Jahr
+- **Cashflow** — Ausgaben, Einnahmen und kumulierter Saldo je Jahr
+
+**Meine Aufgaben** Ein Sammelordner über alle Projekte: was mir aufgetragen ist,
+und was ich vergeben habe — Nachfassen ist eine Aufgabe für sich. Sortiert nach
+Dringlichkeit, Termin und Priorität zusammen. Status und Rückmeldungen lassen
+sich hier eintragen; **neue** Aufgaben entstehen weiterhin im Projekt, weil sie
+ihren Zusammenhang brauchen.
+
+Die Zuordnung läuft über die **Mailadresse**: Der angemeldete Benutzer findet
+sich in der firmenweiten Adressliste wieder, und die Beteiligten der Projekte
+verweisen auf genau diesen Eintrag. Wer dort nicht mit seiner Anmeldeadresse
+steht, sieht eine leere Liste und den Hinweis, woran es liegt.
+
+**Posteingang** ist die dritte Ansicht: Mails, aus denen eine Aufgabe werden
+soll. Mail in Outlook öffnen, alles markieren (Strg+A), kopieren, hier
+einfügen — Betreff, Absender und Datum werden aus den Kopfzeilen gelesen,
+deutsch wie englisch, und ein «AW:»- oder «WG:»-Rattenschwanz fällt weg. Was
+erkannt wurde, steht erst als **Entwurf** da und lässt sich richtigstellen,
+bevor es abgelegt wird. Standen keine Kopfzeilen in der Einfügung, gilt die
+erste Zeile als Betreff und der Rest als Text — so lässt sich auch etwas schnell
+Hingeschriebenes ablegen, ohne dass die Funktion die Arbeit verweigert. Eine
+`.eml`-Datei nimmt das Feld auch per Ziehen an; `.msg` kann nur Outlook selbst
+lesen, und die Meldung sagt dann den Weg, der funktioniert.
+
+Beim **Zuweisen** wählt man Projekt, Zuständigkeit und Termin; daraus entsteht
+eine Aufgabe in der Sammelsitzung des Projekts, mit dem Absender und dem
+Maildatum als Herkunftsvermerk in der Bemerkung. Wer in drei Wochen nachfasst,
+sieht, von wem die Mail kam.
+
+Warum der Umweg über einen Posteingang, statt gleich eine Aufgabe anzulegen:
+Aufgaben hängen an einer Sitzung, Sitzungen an einem Projekt. Eine
+hereinkommende Mail kennt ihr Projekt nicht. Sie irgendeinem zuzuordnen und
+später zu verschieben hiesse, dass sie zwischendurch im falschen Projekt steht —
+in dessen Protokoll, dessen Auswertung, dessen Aufgabenliste. Der Posteingang
+ist zugleich der Anschlusspunkt für später: Kommen Mails einmal über eine
+Weiterleitung oder aus Power Automate, füllen sie dieselbe Tabelle, und an der
+Oberfläche ändert sich nichts. Einzurichten mit `db/update-04.sql`. Der
+Posteingang ist **persönlich** — jeder sieht nur seine eigenen Einträge,
+Verwalter alle.
+
+**In den Kalender** gibt die Aufgaben mit Termin als `.ics`-Datei aus; Outlook
+übernimmt sie mit einem Doppelklick. Als ganztägige Ereignisse, weil eine
+Aufgabe keine Uhrzeit hat und ein erfundener Zeitpunkt im Kalender stünde, als
+wäre er verabredet — dazu eine Erinnerung am Morgen des Termintags. Bewusst ein
+Abzug und keine laufende Verbindung: Eine echte Abgleichung müsste zwei Systeme
+auf demselben Stand halten und entscheiden, wer gewinnt, wenn beide etwas
+geändert haben.
+
+Drei Darstellungen für die Aufgabenlisten: **Liste** nach Dringlichkeit,
+**Kanban** mit den drei Spalten offen / warten / erledigt (Karten ziehbar, wie
+im Projekt), und bei den vergebenen Aufgaben **nach Zuständigkeit**. Diese dritte ist für das Telefonat
+gebaut: Je Person stehen alle ihre Aufgaben beisammen — über Projektgrenzen
+hinweg, denn dieselbe Person hat in jedem Projekt eine eigene Beteiligten-Id,
+zusammengeführt wird über ihren Adresseintrag. Im Gruppenkopf die Firma, die
+Rolle, die Zahl der offenen und überfälligen Aufgaben und **Telefonnummer und
+Mailadresse als Verweis**, sodass ein Klick genügt. Wer am meisten offen hat,
+steht oben.
+
+Ein **versendetes Protokoll ist unveränderlich** — die Rechteregel der Datenbank
+lässt Änderungen daran nicht zu, und das soll so bleiben. Damit eine Aufgabe
+daraus trotzdem weiterlebt, zieht sie bei der ersten Änderung in die
+Sammelsitzung des Projekts um: als Kopie unter derselben Id, mit Verweis auf ihr
+Protokoll. Das Protokoll bleibt Zeile für Zeile, wie es versendet wurde; die
+Aufgabenlisten zeigen die lebende Fassung und blenden die erstarrte aus, sodass
+nichts doppelt erscheint. Die Herkunft («BH 3 · 14.10.2026») bleibt sichtbar.
+
+Bearbeiten zwei Personen gleichzeitig Aufgaben desselben Protokolls, wird die
+eigene Änderung auf die fremde Fassung **übertragen** statt verworfen — eine
+Rückmeldung betrifft immer nur eine Aufgabe von vielen in derselben Zeile.
+
+**Tracking** Soll-Ist-Vergleich je Kostenposition mit CSV-Einlesung sowie
+Snapshots, die einen Projektstand einfrieren und gegen heute stellen. Die
+Snapshot-Tabelle vergleicht Anlagekosten, Erlöse, Sollmiete, EBT STWE,
+Bruttorendite Miete, Gesamtvolumen und Gesamtnutzfläche — Volumen und Fläche
+daneben, damit ein Kostensprung sich einer Preis- oder einer Mengenänderung
+zuordnen lässt. Ältere Stände, die eine Kennzahl noch nicht kannten, zeigen «—»
+statt einer Null; Volumen und Fläche werden bei ihnen aus der mitgespeicherten
+Projektkopie nachgerechnet.
+
+Ein erfasster **Ist-Wert ersetzt den gerechneten Betrag** in der Kalkulation.
+Nachgelagerte Grössen ziehen automatisch nach: die Reserve auf BKP 20–29, die
+Baunebenkosten, das Projektmanagement-Honorar und damit Marge und Rendite. Leere
+Felder gelten als noch offen und rechnen weiter mit der Schätzung. Über den
+Umschalter lässt sich die Übernahme abstellen, wenn nur verglichen werden soll.
+
+---
+
+## Bedienung
+
+**Detailtiefe** Der Umschalter links blendet Felder ein und aus:
+
+- *Schnell* — die wesentlichen Grössen für den ersten Grobcheck
+- *Standard* — übliche Bearbeitungstiefe
+- *Detail* — alle Positionen
+
+Ausgeblendete Felder rechnen mit ihren hinterlegten Werten weiter; die Detailtiefe
+verändert das Ergebnis nicht.
+
+**Datenherkunft** Der kleine Punkt neben jeder Feldbeschriftung markiert, woher
+eine Zahl stammt — Standardwert (grau), Annahme (orange) oder belegt (grün), mit
+Platz für die Quelle. Alle abweichenden Werte erscheinen gesammelt in der
+Annahmenliste des Berichts.
+
+**Plausibilität** Kennwerte ausserhalb der hinterlegten Bandbreiten färben sich
+orange. Das ist ein Hinweis, keine Sperre.
+
+**Varianten vergleichen** «Duplizieren» erzeugt eine Kopie des Projektes. So
+lassen sich Abriss/Neubau und Sanierung nebeneinanderstellen; die Portfolio-Seite
+zeigt beide Varianten mit ihren Kennzahlen.
+
+---
+
+## Firmenbetrieb einrichten
+
+Vier Schritte, keine IT-Abteilung nötig.
+
+**1 · Datenbank anlegen.** Auf [supabase.com](https://supabase.com) ein kostenloses
+Projekt erstellen, Region **Frankfurt** (EU). Das Konto muss auf die Firma laufen,
+nicht auf eine Privatperson.
+
+**2 · Schema einspielen.** Den Inhalt von `db/schema.sql` im SQL-Editor einfügen
+und ausführen. Das legt Tabellen, Rechteregeln, Auslöser und das Protokoll an.
+
+> **Läuft die Datenbank schon?** Dann fehlen ihr die später hinzugekommenen
+> Tabellen. Die Nachträge in `db/` nachziehen — jeder ist wiederholbar, ein
+> zweiter Lauf ändert nichts:
+>
+> | Datei | was fehlt ohne sie |
+> |---|---|
+> | `db/update-01.sql` | schliesst eine Sicherheitslücke (Ansicht `portfolio_sicht`) |
+> | `db/update-02.sql` | Tabelle `sitzungen` — ohne sie bleibt die Seite **Protokolle** leer, dazu Adressbuch und Sitzungsreihen |
+> | `db/update-03.sql` | Ablageort `baurecht` — ohne ihn lassen sich im **Baurecht-Check** keine Belege ablegen |
+> | `db/update-04.sql` | Tabelle `posteingang` — ohne sie bleibt der **Posteingang** unter «Meine Aufgaben» unbenutzbar |
+
+**3 · Verbinden.** Aus *Project Settings › API* die beiden Werte in `app/config.js`
+eintragen:
+
+```js
+window.APP_CONFIG = {
+  url: 'https://xxxx.supabase.co',
+  key: 'eyJhbGci…'          // anon public key
+};
+```
+
+Der `anon key` ist zur Veröffentlichung bestimmt und für sich genommen wertlos —
+wer was sehen und ändern darf, entscheiden ausschliesslich die Rechteregeln in
+der Datenbank.
+
+**4 · Erstes Konto.** Auf der Anmeldemaske *Konto anlegen* wählen. **Das erste
+Konto wird automatisch Verwalter.** Danach ist die Registrierung geschlossen, bis
+der Verwalter unter *Verwaltung › Registrierung* die Firmendomäne freigibt. Neue
+Konten starten immer als Betrachter und werden dort hochgestuft.
+
+### Zwei Wartungsaufträge
+
+Der kostenlose Plan hat zwei Schwächen, die beide kostenlos geschlossen werden.
+Beide Aufträge liegen unter `.github/workflows/` und brauchen nur die Secrets
+unter *Settings › Secrets and variables › Actions*:
+
+| Auftrag | Secrets | Wozu |
+|---|---|---|
+| `wachhalter.yml` | `SUPABASE_URL`, `SUPABASE_ANON_KEY` | Der kostenlose Plan pausiert nach 7 Tagen Ruhe. Zwei Anfragen pro Woche verhindern das. |
+| `sicherung.yml` | `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `BACKUP_PASSPHRASE` | Der kostenlose Plan hält keine Sicherung vor. Wöchentliche Ausleitung nach `sicherungen/`, versioniert über die Git-Historie. |
+
+Der `service_role key` umgeht alle Rechteregeln und gehört **ausschliesslich** in
+die GitHub-Secrets — niemals in `app/config.js`.
+
+### Warum die Sicherung verschlüsselt ist
+
+Damit GitHub Pages ohne Bezahlplan ausliefert, muss das Repository öffentlich
+sein. Der Anwendungscode darf das sein — die Projektdaten nicht. Die Ausleitung
+wird deshalb vor dem Ablegen mit AES-256 verschlüsselt. Fehlt
+`BACKUP_PASSPHRASE`, bricht der Auftrag ab, statt Klartext zu veröffentlichen.
+
+Das Kennwort gehört in einen Passwortmanager, **nicht** nur in die
+GitHub-Secrets: Ohne es ist jede Sicherung wertlos.
+
+Wiederherstellen:
+
+```
+gpg --decrypt sicherungen/stand-2026-08-12.json.gpg > stand.json
+```
+
+Die entstehende Datei enthält alle Tabellen und lässt sich im SQL-Editor oder
+über die Import-Funktion der Anwendung zurückspielen.
+
+### Was im öffentlichen Repository sichtbar ist
+
+| | sichtbar | warum unproblematisch |
+|---|---|---|
+| Anwendungscode | ja | enthält keine Geschäftsdaten |
+| `url` und `anon key` in `config.js` | ja | bauartbedingt öffentlich; die Rechteregeln in der Datenbank entscheiden über den Zugriff, nicht der Schlüssel |
+| Projektdaten | **nein** | liegen in Supabase; die Sicherung im Repository ist verschlüsselt |
+| `service_role key`, `BACKUP_PASSPHRASE` | **nein** | ausschliesslich als GitHub-Secrets |
+
+Weil URL und Schlüssel damit jedem zugänglich sind, ist die Sperre der
+Registrierung kein Beiwerk, sondern die eigentliche Zugangskontrolle: Ohne
+freigegebene Firmendomäne kann sich niemand ein Konto anlegen.
+
+### Rollen
+
+| | lesen | anlegen, ändern, archivieren | endgültig löschen, Rollen, Zielwerte |
+|---|:--:|:--:|:--:|
+| Betrachter | ✓ | | |
+| Bearbeiter | ✓ | ✓ | |
+| Verwalter | ✓ | ✓ | ✓ |
+
+**Löschen ist zweistufig.** Archivieren blendet ein Projekt aus Listen und
+Portfolio aus, ist reversibel und jedem Bearbeiter erlaubt. Endgültiges Löschen
+verlangt die Verwalterrolle, die Eingabe des Projektnamens und eine erneute
+Passwortabfrage — und steht anschliessend im Protokoll.
+
+Wichtig: Die Rechteprüfung liegt in der Datenbank, nicht im Browser. Ein
+manipulierter Browser oder ein direkter Aufruf der Schnittstelle kommt nicht
+daran vorbei. Die Abfragen in der Oberfläche verhindern Fehlgriffe, sie schützen
+nicht.
+
+### Gleichzeitiges Arbeiten
+
+Jedes Projekt trägt einen Versionszähler. Speichert jemand, während eine andere
+Person am selben Projekt arbeitet, wird der zweite Speichervorgang nicht still
+ausgeführt, sondern meldet sich mit der Wahl: fremden Stand laden oder eigenen
+durchsetzen. Beides landet im Protokoll.
+
+Eingaben gehen sofort in den lokalen Entwurf und erst nach einer Ruhepause zum
+Server. Bei Netzausfall bleiben sie im Browser erhalten.
+
+---
+
+## Aufbau
+
+```
+index.html            Grundgerüst
+app/config.js         Verbindung zur Firmendatenbank (leer = lokaler Modus)
+app/model.js          Datenmodell, Kennwertbibliothek, Kantonswerte, lokale Speicherung
+app/engine.js         Rechenkern — reine Funktionen, ohne Oberfläche
+app/api.js            Zugriff auf Datenbank und Anmeldung (nur fetch)
+app/store-server.js   Speicherung in der Firmendatenbank
+app/auth.js           Anmeldung, Sitzung, Passwortbestätigung
+app/ui.js             Feldbausteine, Datenherkunft, Plausibilität
+app/views.js          Eingabeseiten
+app/results.js        Ergebnis, Analyse, Bericht
+app/portfolio.js      Portfolio, Tracking, Archivieren, Import und Export
+app/protokoll.js      Sitzungsprotokolle, Aufgaben in vier Ansichten
+app/meineaufgaben.js  Sammelordner über alle Projekte, Kalenderabzug
+app/posteingang.js    Mails aufnehmen und zu Aufgaben machen
+app/baurecht.js       Baurecht-Check: geltendes Baurecht je Grundstück
+app/termine.js        Terminplan: Gantt mit Abhängigkeiten, Meilensteine
+app/admin.js          Verwaltung, Änderungsverlauf, Anmerkungen
+app/main.js           Zustand, Navigation, Kennzahlenleiste, Rollen
+db/schema.sql         Tabellen, Rechteregeln, Auslöser
+db/update-*.sql       Nachträge für bereits laufende Datenbanken
+tests/engine.html     Selbsttest des Rechenkerns
+```
+
+Lokale und Serverspeicherung liegen hinter **derselben Schnittstelle**. Die
+Oberfläche weiss nicht, woher die Daten kommen — deshalb blieben `engine.js`,
+`views.js` und `results.js` beim Umbau auf den Firmenbetrieb unverändert.
+
+Der Rechenkern kennt kein DOM. Dieselbe Funktion, die die Kennzahlenleiste
+speist, rechnet auch die Sensitivität, den Bericht und die Portfolio-Aggregation —
+damit gibt es keine zweite Stelle, an der dieselbe Zahl anders entstehen könnte.
+
+---
+
+## Rechenweise
+
+**Zeitachse** Phasendauern werden in **Monaten** erfasst und bauen auf dem
+Startdatum des Erwerbs auf. Gerechnet wird im Jahresraster; Cashflow und
+Diagramme sind mit Kalenderjahren beschriftet. Zinsen laufen auf dem mittleren
+Kapitalsaldo des Jahres.
+
+**Baukostenverlauf** S-Kurve oder linear über die Bauzeit, Honorare ab
+Projektbeginn, BKP 1 in der ersten Bauphase.
+
+**Verkaufserlöse** Der Vorverkaufsanteil wird bis Baustart abgesetzt, der Rest
+bis zum Ende der Vermarktungsphase. Innerhalb jedes Verkaufs greift der
+Zahlungsplan (Beurkundung, Baustart, Rohbau, Übergabe).
+
+**Gehaltene Flächen** fliessen in der Entwicklungsrechnung bei Projektende
+kalkulatorisch zum Marktwert ein — bewusst erst nach der Zinsberechnung, damit
+Bauzinsen nicht durch einen Zufluss gekürzt werden, den es real nicht gibt.
+Die Bestandsrechnung auf der Seite *Betrieb* stellt dem eine Barwertrechnung über
+die Haltedauer gegenüber.
+
+**Fixpunkt** Entwicklungshonorar und Bauzinsen hängen von den Anlagekosten ab,
+die beides enthalten. Die Rechnung iteriert bis zur Konvergenz unter einem Franken.
+
+**Sollmiete und Rendite** Verkaufte Stockwerkeigentumsflächen erzeugen keine
+Sollmiete — sie sind verkauft. Die Bruttorendite bezieht sich deshalb auf die
+**anteiligen** Anlagekosten der Ertragsflächen, nicht auf die gesamten; bei
+Mischprojekten wäre der Bezug auf alles verzerrt.
+
+**Steuern** vereinfacht als ein effektiver Satz auf den Projektgewinn.
+Kantonale Feinheiten der Grundstückgewinn- und Gewinnsteuer sind nicht modelliert.
+
+---
+
+## Selbsttest
+
+`tests/engine.html` im Browser öffnen. Die Seite prüft 67 Referenzfälle —
+Flächen- und Volumenkaskade, Nebenkostensätze, Kostengruppen, die Prozentkette
+BKP 202 → 5 → 599, Verwertungsarten, Zeitverteilung, Vorverkaufsstaffel, internen
+Zinsfuss, Residualwert, die Gewinnidentität und die Überführung alter
+Projektdateien.
+
+---
+
+## Noch nicht gebaut
+
+Das Reporting für den Verwaltungsrat ist die nächste Etappe:
+
+- **Quartals-Stichtage** mit 14 Tagen Nachfrist und anschliessender Freigabe
+  durch den Verwalter (die Tabelle `stichtage` steht bereits im Schema)
+- **Abweichungsbrücke** — der Vergleich zweier Stichtage zerlegt die Veränderung
+  des Gewinns nach Ursache: Flächen, Baukosten, Erlöse, Termine, Finanzierung
+- **Halbjahresbericht** als PDF, auf Portfolioebene mit getrennt ausgewiesenen
+  Zu- und Abgängen
+- **Anwesenheitsanzeige** („wird gerade bearbeitet von …") — die Konflikterkennung
+  beim Speichern ist bereits vorhanden
+
+---
+
+## Grenzen
+
+Kantonale Gebühren und Steuersätze sind Richtwerte und vor Verwendung zu prüfen.
+Die Kennwertbibliothek enthält marktübliche Bandbreiten, keine eigenen
+Erfahrungswerte — sie sollte mit den eigenen Zahlen ersetzt werden.
+Die Auswertung ersetzt keine Verkehrswertschätzung.

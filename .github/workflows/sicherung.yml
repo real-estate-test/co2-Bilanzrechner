@@ -1,0 +1,113 @@
+# =====================================================================
+#  Wöchentliche Sicherung — verschlüsselt
+#
+#  Der kostenlose Supabase-Plan hält keine Sicherung vor. Dieser Auftrag
+#  leitet jeden Sonntag alle Daten aus und legt sie nach sicherungen/ ab.
+#
+#  ACHTUNG: Dieses Repository ist öffentlich. Projektdaten enthalten
+#  Kaufpreise, Margen und Kalkulationen und dürfen dort niemals im
+#  Klartext liegen. Die Ausleitung wird deshalb mit einem Kennwort
+#  verschlüsselt (AES-256), bevor sie abgelegt wird. Ohne hinterlegtes
+#  Kennwort bricht der Auftrag ab, statt Klartext zu veröffentlichen.
+#
+#  Einrichtung: unter Settings › Secrets and variables › Actions anlegen
+#    SUPABASE_URL          z. B. https://xxxx.supabase.co
+#    SUPABASE_SERVICE_KEY  der service_role bzw. secret key
+#    BACKUP_PASSPHRASE     ein langes, zufälliges Kennwort
+#
+#  Das Kennwort an einem sicheren Ort ausserhalb von GitHub aufbewahren
+#  (Passwortmanager) — ohne es ist die Sicherung wertlos.
+#
+#  Wiederherstellen:
+#    gpg --decrypt sicherungen/stand-JJJJ-MM-TT.json.gpg > stand.json
+# =====================================================================
+name: Sicherung
+
+on:
+  schedule:
+    - cron: '25 3 * * 0'      # jeden Sonntag, 03:25 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sichern:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Daten ausleiten und verschlüsseln
+        env:
+          URL:  ${{ secrets.SUPABASE_URL }}
+          KEY:  ${{ secrets.SUPABASE_SERVICE_KEY }}
+          PASS: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          if [ -z "${URL:-}" ] || [ -z "${KEY:-}" ]; then
+            echo "Zugangsdaten fehlen — Sicherung übersprungen."
+            exit 0
+          fi
+          # Ohne Kennwort wird nichts abgelegt. Lieber keine Sicherung als
+          # Geschäftszahlen im Klartext in einem öffentlichen Repository.
+          if [ -z "${PASS:-}" ]; then
+            echo "::error::BACKUP_PASSPHRASE fehlt. Abbruch, damit keine unverschlüsselten Daten abgelegt werden."
+            exit 1
+          fi
+          mkdir -p sicherungen
+          datum=$(date -u +%Y-%m-%d)
+          ziel="sicherungen/stand-$datum.json"
+
+          hole() {
+            curl -sS --fail \
+              -H "apikey: $KEY" -H "Authorization: Bearer $KEY" \
+              "$URL/rest/v1/$1?select=*"
+          }
+
+          {
+            printf '{\n'
+            printf '  "erstellt": "%s",\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            printf '  "projekte": %s,\n'      "$(hole projekte)"
+            printf '  "stichtage": %s,\n'     "$(hole stichtage)"
+            printf '  "kommentare": %s,\n'    "$(hole kommentare)"
+            printf '  "einstellungen": %s,\n' "$(hole einstellungen)"
+            printf '  "profil": %s,\n'        "$(hole profil)"
+            printf '  "protokoll": %s\n'      "$(hole protokoll)"
+            printf '}\n'
+          } > "$ziel"
+
+          python3 -c "import json,sys; json.load(open('$ziel'))" \
+            || { echo 'Ausleitung ist kein gültiges JSON — Abbruch.'; exit 1; }
+          roh=$(wc -c < "$ziel")
+
+          gpg --batch --yes --symmetric --cipher-algo AES256 \
+              --passphrase-fd 0 --output "$ziel.gpg" "$ziel" <<< "$PASS"
+          shred -u "$ziel" 2>/dev/null || rm -f "$ziel"
+
+          if [ -f "$ziel" ]; then
+            echo "::error::Klartextdatei liess sich nicht entfernen — Abbruch."
+            exit 1
+          fi
+          echo "Gesichert und verschlüsselt: $ziel.gpg ($roh Bytes im Klartext)"
+
+      - name: Ältere Stände ausdünnen
+        run: |
+          # Die letzten 12 Wochenstände behalten, ältere entfernen.
+          # Die Git-Historie bewahrt sie ohnehin dauerhaft auf.
+          ls -1 sicherungen/stand-*.json.gpg 2>/dev/null | sort | head -n -12 \
+            | xargs -r rm --
+          # Sicherheitsnetz: unverschlüsselte Reste dürfen nie abgelegt werden.
+          rm -f sicherungen/*.json
+
+      - name: Ablegen
+        run: |
+          set -euo pipefail
+          if [ -z "$(git status --porcelain sicherungen)" ]; then
+            echo "Keine Änderung gegenüber der letzten Sicherung."
+            exit 0
+          fi
+          git config user.name  'Sicherung'
+          git config user.email 'actions@github.com'
+          git add sicherungen
+          git commit -m "Sicherung $(date -u +%Y-%m-%d)"
+          git push

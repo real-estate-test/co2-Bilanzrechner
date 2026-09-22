@@ -21,6 +21,15 @@
 --  Ein zweiter Lauf ändert nichts.
 -- =====================================================================
 
+--  WICHTIG: Das ganze Skript ausführen, nicht nur einen Teil. Ist im
+--  SQL-Editor Text markiert, führt «Run» NUR die Markierung aus — dann
+--  fehlt der Tabellenbau unten, und alles Weitere scheitert mit
+--  «relation "posteingang" does not exist». Vor dem Ausführen also
+--  nichts markiert lassen (einmal ins Feld klicken genügt).
+--
+--  Falls doch etwas schiefgeht: Die Abschnitte unten prüfen selbst, ob
+--  die Tabelle steht, und sagen es, statt Folgefehler zu werfen.
+
 create table if not exists posteingang (
   id             text primary key,
 
@@ -53,43 +62,63 @@ create table if not exists posteingang (
   verworfen_am   timestamptz
 );
 
--- Die Liste wird immer nach «offen zuerst, neueste oben» gelesen.
-create index if not exists posteingang_offen_idx
-  on posteingang (erfasst_von, zugewiesen_am, verworfen_am, erfasst_am desc);
-
 -- ---------------------------------------------------------------------
---  Zugriffsregeln
+--  Alles Weitere — Index, Zeilenschutz, Regeln, Auslöser
 --
---  Der Posteingang ist persönlich: Was ich eingefügt habe, sehe und
---  bearbeite ich. Anders als bei den Projekten, die allen offenstehen —
---  eine eingefügte Mail kann Privates enthalten, das niemanden sonst
---  angeht, und sie ist noch keine Projektinformation.
---
---  Verwalter sehen alles. Ohne das käme niemand an Einträge heran,
---  wenn jemand das Haus verlässt.
+--  In einem Block, der zuerst nachsieht, ob die Tabelle wirklich steht.
+--  Ohne diese Prüfung wäre die erste Anweisung hier «create index on
+--  posteingang», und die wirft bei fehlender Tabelle genau jenes
+--  «relation "posteingang" does not exist», das nichts darüber sagt,
+--  was eigentlich zu tun ist.
 -- ---------------------------------------------------------------------
-alter table posteingang enable row level security;
+do $$
+begin
+  if not exists (select 1 from information_schema.tables
+                  where table_schema = 'public' and table_name = 'posteingang') then
+    raise warning 'Die Tabelle «posteingang» steht nicht — der Abschnitt darüber '
+                  'wurde nicht ausgeführt.';
+    raise warning 'Bitte das GANZE Skript ausführen: im SQL-Editor ins Feld klicken, '
+                  'damit nichts markiert ist, dann Run. Eine Markierung führt nur '
+                  'den markierten Teil aus.';
+    return;
+  end if;
 
-drop policy if exists posteingang_lesen on posteingang;
-create policy posteingang_lesen on posteingang
-  for select to authenticated
-  using (erfasst_von = auth.uid() or ist_verwalter());
+  -- Die Liste wird immer nach «offen zuerst, neueste oben» gelesen.
+  execute 'create index if not exists posteingang_offen_idx
+             on posteingang (erfasst_von, zugewiesen_am, verworfen_am, erfasst_am desc)';
 
-drop policy if exists posteingang_anlegen on posteingang;
-create policy posteingang_anlegen on posteingang
-  for insert to authenticated
-  with check (darf_bearbeiten() and erfasst_von = auth.uid());
+  execute 'alter table posteingang enable row level security';
 
-drop policy if exists posteingang_aendern on posteingang;
-create policy posteingang_aendern on posteingang
-  for update to authenticated
-  using (erfasst_von = auth.uid() or ist_verwalter())
-  with check (erfasst_von = auth.uid() or ist_verwalter());
+  execute 'drop policy if exists posteingang_lesen on posteingang';
+  execute 'create policy posteingang_lesen on posteingang
+             for select to authenticated
+             using (erfasst_von = auth.uid() or ist_verwalter())';
 
-drop policy if exists posteingang_loeschen on posteingang;
-create policy posteingang_loeschen on posteingang
-  for delete to authenticated
-  using (erfasst_von = auth.uid() or ist_verwalter());
+  execute 'drop policy if exists posteingang_anlegen on posteingang';
+  execute 'create policy posteingang_anlegen on posteingang
+             for insert to authenticated
+             with check (darf_bearbeiten() and erfasst_von = auth.uid())';
+
+  execute 'drop policy if exists posteingang_aendern on posteingang';
+  execute 'create policy posteingang_aendern on posteingang
+             for update to authenticated
+             using (erfasst_von = auth.uid() or ist_verwalter())
+             with check (erfasst_von = auth.uid() or ist_verwalter())';
+
+  execute 'drop policy if exists posteingang_loeschen on posteingang';
+  execute 'create policy posteingang_loeschen on posteingang
+             for delete to authenticated
+             using (erfasst_von = auth.uid() or ist_verwalter())';
+
+  raise notice 'Posteingang steht: Tabelle, Zeilenschutz und Regeln.';
+end $$;
+
+--  Zu den Zugriffsregeln oben: Der Posteingang ist persönlich — was ich
+--  eingefügt habe, sehe und bearbeite ich. Anders als bei den Projekten,
+--  die allen offenstehen: Eine eingefügte Mail kann Privates enthalten,
+--  das niemanden sonst angeht, und sie ist noch keine
+--  Projektinformation. Verwalter sehen alles; ohne das käme niemand an
+--  Einträge heran, wenn jemand das Haus verlässt.
 
 -- ---------------------------------------------------------------------
 --  Wer eingefügt hat, wird gesetzt statt geglaubt
@@ -117,10 +146,17 @@ begin
 end;
 $$;
 
-drop trigger if exists posteingang_stempeln_tr on posteingang;
-create trigger posteingang_stempeln_tr
-  before insert or update on posteingang
-  for each row execute function posteingang_stempeln();
+do $$
+begin
+  if not exists (select 1 from information_schema.tables
+                  where table_schema = 'public' and table_name = 'posteingang') then
+    return;   -- oben ist bereits gesagt, was fehlt
+  end if;
+  execute 'drop trigger if exists posteingang_stempeln_tr on posteingang';
+  execute 'create trigger posteingang_stempeln_tr
+             before insert or update on posteingang
+             for each row execute function posteingang_stempeln()';
+end $$;
 
 -- ---------------------------------------------------------------------
 --  Prüfung: steht alles?

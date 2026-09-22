@@ -1263,6 +1263,158 @@
   pruefe('Ein Beleg im Projekt-JSON bleibt unter 200 Zeichen',
     true, JSON.stringify(A.baurechtBilder(bb, 'gst_zone')[0]).length < 200);
 
+  /* ---- Eine Mail lesen -------------------------------------------- */
+
+  /* Deutsches Outlook, so wie es beim Markieren und Kopieren herauskommt */
+  var m1 = A.mailLesen(
+    'Von: Max Muster <max.muster@architekt.ch>\n' +
+    'Gesendet: Montag, 22. September 2026 14:32\n' +
+    'An: Carsten Arndt\n' +
+    'Cc: Anna Beispiel\n' +
+    'Betreff: AW: Baueingabe Sonnenhof — Unterlagen fehlen\n' +
+    '\n' +
+    'Guten Tag Herr Arndt\n' +
+    'Für die Baueingabe fehlt uns noch der Lärmschutznachweis.\n' +
+    'Freundliche Grüsse');
+  pruefe('Deutsches Outlook wird erkannt', true, m1.erkannt);
+  pruefe('Betreff ohne AW-Vorsatz', true,
+    m1.betreff === 'Baueingabe Sonnenhof — Unterlagen fehlen');
+  pruefe('Absenderadresse', true, m1.absender === 'max.muster@architekt.ch');
+  pruefe('Absendername', true, m1.absender_name === 'Max Muster');
+  pruefe('Datum als ISO', true, m1.datum === '2026-09-22');
+  pruefe('Der Text beginnt nach den Kopfzeilen', true,
+    m1.text.indexOf('Guten Tag Herr Arndt') === 0);
+  pruefe('Die Kopfzeilen stehen nicht im Text', true, m1.text.indexOf('Cc:') < 0);
+
+  /* Englisches Outlook */
+  var m2 = A.mailLesen(
+    'From: Anna Beispiel <anna@bauamt.ch>\n' +
+    'Sent: Monday, September 22, 2026 2:32 PM\n' +
+    'To: Carsten Arndt\n' +
+    'Subject: FW: Zonenplan\n' +
+    '\n' +
+    'Anbei der Ausschnitt.');
+  pruefe('Englisches Outlook wird erkannt', true, m2.erkannt);
+  pruefe('Englischer Betreff ohne FW', true, m2.betreff === 'Zonenplan');
+  pruefe('Englisches Datum als ISO', true, m2.datum === '2026-09-22');
+  pruefe('Englischer Absender', true, m2.absender === 'anna@bauamt.ch');
+
+  /* Zahlendatum, wie es bei weitergeleiteten Mails vorkommt */
+  pruefe('Datum 22.09.2026', true, A.mailDatum('22.09.2026 14:32') === '2026-09-22');
+  pruefe('Datum 5.1.26 wird ergänzt', true, A.mailDatum('5.1.26') === '2026-01-05');
+  pruefe('Datum bereits in ISO', true, A.mailDatum('2026-09-22 14:32') === '2026-09-22');
+  pruefe('März wird richtig gezählt', true,
+    A.mailDatum('3. März 2026') === '2026-03-03');
+  pruefe('Maerz ohne Umlaut ebenso', true,
+    A.mailDatum('3. Maerz 2026') === '2026-03-03');
+  pruefe('Dezember ist der zwölfte', true,
+    A.mailDatum('1. Dezember 2026') === '2026-12-01');
+  pruefe('January ist der erste', true,
+    A.mailDatum('January 9, 2026') === '2026-01-09');
+  pruefe('Unlesbares Datum bleibt leer statt geraten', true,
+    A.mailDatum('irgendwann demnächst') === '');
+  pruefe('Leeres Datum bleibt leer', true, A.mailDatum('') === '');
+
+  /* Ohne Kopfzeilen: nicht scheitern, sondern das Naheliegende tun */
+  var m3 = A.mailLesen('Lärmschutznachweis besorgen\nbis Ende Oktober, Herr Muster fragen');
+  pruefe('Ohne Kopf gilt die erste Zeile als Betreff', true,
+    m3.betreff === 'Lärmschutznachweis besorgen');
+  pruefe('Ohne Kopf folgt der Rest als Text', true,
+    m3.text === 'bis Ende Oktober, Herr Muster fragen');
+  pruefe('Ohne Kopf ist nichts erkannt', false, m3.erkannt);
+  pruefe('Leere Eingabe ergibt einen leeren Satz', true, A.mailLesen('').betreff === '');
+  pruefe('Auch null bricht nicht ab', true, A.mailLesen(null).betreff === '');
+
+  /* Ein zitierter Verlauf darf den Absender nicht überschreiben: Das
+     zweite «Von:» steht weiter unten und gehört zur alten Mail. */
+  var m4 = A.mailLesen(
+    'Von: Erste Person <erste@firma.ch>\n' +
+    'Betreff: Rückfrage\n\n' +
+    'Siehe unten.\n\n' +
+    'Von: Zweite Person <zweite@firma.ch>\n' +
+    'Betreff: Ursprung\n\n' +
+    'Alter Text');
+  pruefe('Der erste Absender gilt', true, m4.absender === 'erste@firma.ch');
+  pruefe('Der erste Betreff gilt', true, m4.betreff === 'Rückfrage');
+  pruefe('Der zitierte Verlauf bleibt im Text erhalten', true,
+    m4.text.indexOf('zweite@firma.ch') > 0);
+
+  /* Adresse und Name einzeln */
+  pruefe('Adresse aus spitzen Klammern', true,
+    A.mailAdresse('Max Muster <MAX@Firma.CH>') === 'max@firma.ch');
+  pruefe('Blosse Adresse ohne Namen', true,
+    A.mailAdresse('anna@bauamt.ch') === 'anna@bauamt.ch');
+  pruefe('Ohne Adresse bleibt es leer', true, A.mailAdresse('Max Muster') === '');
+  pruefe('Name ohne Anführungszeichen', true,
+    A.mailName('"Muster, Max" <max@firma.ch>') === 'Muster, Max');
+  pruefe('Blosse Adresse hat keinen Namen', true, A.mailName('max@firma.ch') === '');
+
+  /* ---- Kalenderdatei ---------------------------------------------- */
+  var ics = A.icsBauen([
+    { id: 'a1', datum: '2026-10-31', titel: 'Lärmschutznachweis besorgen',
+      beschreibung: 'Projekt: Sonnenhof\nZuständig: Max Muster' }
+  ], 'Projektrechner · Meine Aufgaben');
+
+  pruefe('Die Datei beginnt mit BEGIN:VCALENDAR', 0, ics.indexOf('BEGIN:VCALENDAR'));
+  pruefe('Und endet mit END:VCALENDAR', true, /END:VCALENDAR\r\n$/.test(ics));
+  pruefe('Zeilen sind mit CRLF getrennt', true, ics.indexOf('\r\n') > 0);
+  pruefe('Ein Ereignis ist enthalten', 1, (ics.match(/BEGIN:VEVENT/g) || []).length);
+  pruefe('Ganztägig ab dem Termintag', true, ics.indexOf('DTSTART;VALUE=DATE:20261031') > 0);
+  pruefe('Das Ende ist der Folgetag', true, ics.indexOf('DTEND;VALUE=DATE:20261101') > 0);
+  pruefe('Der Kalender trägt einen Namen', true, ics.indexOf('X-WR-CALNAME:') > 0);
+  pruefe('Eine Erinnerung ist gesetzt', true, ics.indexOf('BEGIN:VALARM') > 0);
+
+  /* Monatswechsel und Jahreswechsel: Der Folgetag darf nicht «32.» werden */
+  var icsM = A.icsBauen([{ id: 'x', datum: '2026-01-31', titel: 'Monatsende' }]);
+  pruefe('Auf den 31.1. folgt der 1.2.', true, icsM.indexOf('DTEND;VALUE=DATE:20260201') > 0);
+  var icsJ = A.icsBauen([{ id: 'y', datum: '2026-12-31', titel: 'Jahresende' }]);
+  pruefe('Auf den 31.12. folgt der 1.1. des Folgejahrs', true,
+    icsJ.indexOf('DTEND;VALUE=DATE:20270101') > 0);
+  var icsS = A.icsBauen([{ id: 'z', datum: '2028-02-28', titel: 'Schaltjahr' }]);
+  pruefe('2028 folgt auf den 28.2. der 29.2.', true,
+    icsS.indexOf('DTEND;VALUE=DATE:20280229') > 0);
+
+  /* Trennzeichen im Text dürfen den Eintrag nicht zerlegen */
+  var icsE = A.icsBauen([{ id: 'e1', datum: '2026-10-31',
+    titel: 'Fenster, Türen; Beschläge',
+    beschreibung: 'Zeile eins\nZeile zwei' }]);
+  pruefe('Komma wird entwertet', true, icsE.indexOf('Fenster\\, Türen') > 0);
+  pruefe('Semikolon wird entwertet', true, icsE.indexOf('Türen\\; Beschläge') > 0);
+  pruefe('Zeilenumbruch wird zu \\n', true, icsE.indexOf('Zeile eins\\nZeile zwei') > 0);
+  pruefe('Der Umbruch bleibt kein echter Zeilenwechsel',
+    true, icsE.indexOf('DESCRIPTION:Zeile eins\r\nZeile zwei') < 0);
+
+  /* Lange Zeilen faltet das Format um — sonst lehnt Exchange die Datei ab */
+  var langerTitel = 'Sehr langer Aufgabentext der die Grenze von ' +
+    'fünfundsiebzig Zeichen deutlich überschreitet und deshalb umgebrochen wird';
+  var icsL = A.icsBauen([{ id: 'l1', datum: '2026-10-31', titel: langerTitel }]);
+  var zuLang = icsL.split('\r\n').filter(function (z) { return z.length > 75; });
+  pruefe('Keine Zeile über 75 Zeichen', 0, zuLang.length);
+  pruefe('Die Fortsetzung beginnt mit einem Leerzeichen', true,
+    icsL.split('\r\n').some(function (z) { return z.indexOf(' ') === 0; }));
+
+  /* Ohne Datum kein Eintrag — ein Termin, den es nicht gibt, gehört
+     nicht in den Kalender */
+  var icsO = A.icsBauen([
+    { id: 'k1', datum: '', titel: 'ohne Termin' },
+    { id: 'k2', datum: '2026-10-31', titel: 'mit Termin' }
+  ]);
+  pruefe('Nur der Eintrag mit Datum kommt mit',
+    1, (icsO.match(/BEGIN:VEVENT/g) || []).length);
+  pruefe('Und zwar der richtige', true, icsO.indexOf('mit Termin') > 0);
+
+  var icsLeer = A.icsBauen([]);
+  pruefe('Eine leere Liste ergibt einen gültigen, leeren Kalender',
+    0, (icsLeer.match(/BEGIN:VEVENT/g) || []).length);
+  pruefe('Der leere Kalender ist trotzdem wohlgeformt', true,
+    icsLeer.indexOf('BEGIN:VCALENDAR') === 0 && /END:VCALENDAR\r\n$/.test(icsLeer));
+
+  /* Der Zeitstempel muss UTC sein, sonst lehnen manche Kalender ab */
+  pruefe('Der Zeitstempel endet auf Z', true,
+    /^\d{8}T\d{6}Z$/.test(A.icsStempel(new Date('2026-09-22T14:32:05Z'))));
+  pruefe('Der Zeitstempel rechnet in UTC', true,
+    A.icsStempel(new Date('2026-09-22T14:32:05Z')) === '20260922T143205Z');
+
   /* ---- Baurecht-Export: welcher Umfang was zeigt ------------------- */
   var bx = A.defaultProject();
   bx.id = 'prj-x';

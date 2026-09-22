@@ -1300,12 +1300,10 @@ window.APP = window.APP || {};
      Import & Export
      =================================================================== */
 
+  /* Liegt als A.dateiSichern im Modell, seit auch der Kalenderabzug
+     Dateien anbietet. Die Hülle bleibt: Hier steht der Name zuerst. */
   function download(name, inhalt, typ) {
-    var b = new Blob([inhalt], { type: typ || 'application/json' });
-    var url = URL.createObjectURL(b);
-    var a = el('a', { href: url, download: name });
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+    A.dateiSichern(inhalt, name, typ);
   }
 
   function csvProjekt(p, r) {

@@ -695,6 +695,69 @@ window.APP = window.APP || {};
      Die Seite
      --------------------------------------------------------------- */
 
+  /* ---------------------------------------------------------------
+     In den Kalender
+
+     Eine Aufgabe mit Termin gehört dorthin, wo man ohnehin hinschaut.
+     Die Datei entsteht im Browser und wird heruntergeladen; Outlook
+     nimmt sie mit einem Doppelklick an.
+
+     Bewusst ein Abzug und keine laufende Verbindung: Eine echte
+     Abgleichung müsste zwei Systeme auf demselben Stand halten und
+     entscheiden, wer gewinnt, wenn beide etwas geändert haben. Das
+     wäre eine eigene Aufgabe — hier geht es darum, die Termine
+     überhaupt sichtbar zu machen.
+     --------------------------------------------------------------- */
+
+  function kalenderKnopf(liste) {
+    var mitTermin = (liste || []).filter(function (o) {
+      return o.punkt && o.punkt.termin;
+    });
+
+    var knopf = el('button', { class: 'ghost sm',
+      text: 'In den Kalender (' + mitTermin.length + ')',
+      title: mitTermin.length
+        ? 'Die Aufgaben mit Termin als Kalenderdatei sichern — in Outlook mit ' +
+          'einem Doppelklick übernehmen'
+        : 'Keine Aufgabe in dieser Liste hat einen Termin',
+      disabled: mitTermin.length ? null : '' });
+
+    knopf.addEventListener('click', function () {
+      var termine = mitTermin.map(function (o) {
+        var wer = o.punkt.beteiligter
+          ? (A.beteiligter(beteiligterAus(o)) || {}).name : '';
+        return {
+          id: o.punkt.id,
+          datum: o.punkt.termin,
+          titel: o.punkt.text || 'Aufgabe',
+          beschreibung: [
+            'Projekt: ' + (o.projekt ? o.projekt.name : ''),
+            wer ? 'Zuständig: ' + wer : '',
+            o.herkunft ? 'Herkunft: ' + o.herkunft : '',
+            String(o.punkt.bemerkung || '').trim()
+          ].filter(Boolean).join('\n')
+        };
+      });
+
+      var name = M.sicht === 'meine' ? 'Meine Aufgaben' : 'Von mir vergeben';
+      A.dateiSichern(
+        A.icsBauen(termine, 'Projektrechner · ' + name),
+        'aufgaben-' + (M.sicht === 'meine' ? 'meine' : 'vergeben') + '.ics',
+        'text/calendar;charset=utf-8');
+    });
+
+    return knopf;
+  }
+
+  /* Der Beteiligte hinter einer Aufgabe — er steht im Projekt, nicht
+     im Punkt; dort liegt nur seine Kennung. */
+  function beteiligterAus(o) {
+    var p = o.projekt;
+    return ((p && p.beteiligte) || []).find(function (b) {
+      return b.id === o.punkt.beteiligter;
+    }) || null;
+  }
+
   V.meineaufgaben = function () {
     var out = el('div', {}, [U.kopf('Meine Aufgaben',
       'Alle Aufgaben über alle Projekte — was Ihnen aufgetragen ist und was Sie vergeben ' +
@@ -735,10 +798,16 @@ window.APP = window.APP || {};
     var meineListe = offenNur(meine(alle, adressIds));
     var vergebenListe = offenNur(vergeben(alle, adressIds));
 
-    /* Umschalter */
+    /* Umschalter. Der Posteingang steht daneben, weil er zum selben
+       Arbeitsgang gehört: Was hereinkommt, wird hier zur Aufgabe. */
+    var PE = A.posteingangModul;
+    if (PE) PE.laden();
+    var imPost = PE ? PE.anzahl() : 0;
+
     var seg = el('div', { class: 'seg noprint' });
     [{ id: 'meine', label: 'mir zugewiesen (' + meineListe.length + ')' },
-     { id: 'vergeben', label: 'von mir vergeben (' + vergebenListe.length + ')' }
+     { id: 'vergeben', label: 'von mir vergeben (' + vergebenListe.length + ')' },
+     { id: 'posteingang', label: 'Posteingang' + (imPost ? ' (' + imPost + ')' : '') }
     ].forEach(function (a) {
       var b = el('button', { type: 'button', text: a.label,
         class: M.sicht === a.id ? 'on' : '' });
@@ -751,6 +820,23 @@ window.APP = window.APP || {};
     erl.addEventListener('change', function () {
       M.zeigeErledigte = erl.checked; A.render();
     });
+
+    /* Der Posteingang bringt seine eigene Darstellung mit — Kanban
+       und «nach Zuständigkeit» ergeben dort nichts. */
+    if (M.sicht === 'posteingang') {
+      out.appendChild(U.panel('Posteingang',
+        'Mails, aus denen eine Aufgabe werden soll',
+        [el('div', { class: 'panelbody noprint',
+            style: 'display:flex;gap:14px;align-items:center;flex-wrap:wrap' }, [
+            seg,
+            el('button', { class: 'ghost sm', style: 'margin-left:auto', text: 'neu laden',
+              onclick: function () { PE.laden(true); A.render(); } })
+          ]),
+         el('div', { class: 'panelbody' }, [
+           PE ? PE.ansicht() : U.hinweis('warn', 'Der Posteingang ist nicht geladen.')
+         ])]));
+      return out;
+    }
 
     /* Darstellung. «nach Zuständigkeit» ergibt nur bei den vergebenen
        Aufgaben Sinn — bei den eigenen bin immer ich zuständig. */
@@ -766,6 +852,10 @@ window.APP = window.APP || {};
       formSeg.appendChild(b);
     });
 
+    /* Die Liste steht vor den Werkzeugen: Der Kalenderknopf braucht
+       sie, um zu wissen, wie viele Termine er mitnimmt. */
+    var liste = M.sicht === 'meine' ? meineListe : vergebenListe;
+
     var werkzeuge = el('div', { class: 'panelbody noprint',
       style: 'display:flex;gap:14px;align-items:center;flex-wrap:wrap' }, [
       seg,
@@ -773,11 +863,13 @@ window.APP = window.APP || {};
       el('label', { style: 'display:flex;gap:6px;align-items:center;font-size:12px' }, [
         erl, el('span', { text: 'erledigte zeigen' })
       ]),
-      el('button', { class: 'ghost sm', style: 'margin-left:auto', text: 'neu laden',
-        onclick: function () { A.meineAufgabenNeuLaden(); A.render(); } })
+      el('span', { style: 'margin-left:auto;display:flex;gap:8px' }, [
+        kalenderKnopf(liste),
+        el('button', { class: 'ghost sm', text: 'neu laden',
+          onclick: function () { A.meineAufgabenNeuLaden(); A.render(); } })
+      ])
     ]);
 
-    var liste = M.sicht === 'meine' ? meineListe : vergebenListe;
     var leer = M.sicht === 'meine'
       ? (adressIds.length
           ? 'Ihnen ist zurzeit nichts zugewiesen — oder alles ist erledigt.'

@@ -599,9 +599,44 @@ sich in der firmenweiten Adressliste wieder, und die Beteiligten der Projekte
 verweisen auf genau diesen Eintrag. Wer dort nicht mit seiner Anmeldeadresse
 steht, sieht eine leere Liste und den Hinweis, woran es liegt.
 
-Drei Darstellungen: **Liste** nach Dringlichkeit, **Kanban** mit den drei
-Spalten offen / warten / erledigt (Karten ziehbar, wie im Projekt), und bei den
-vergebenen Aufgaben **nach Zuständigkeit**. Diese dritte ist für das Telefonat
+**Posteingang** ist die dritte Ansicht: Mails, aus denen eine Aufgabe werden
+soll. Mail in Outlook öffnen, alles markieren (Strg+A), kopieren, hier
+einfügen — Betreff, Absender und Datum werden aus den Kopfzeilen gelesen,
+deutsch wie englisch, und ein «AW:»- oder «WG:»-Rattenschwanz fällt weg. Was
+erkannt wurde, steht erst als **Entwurf** da und lässt sich richtigstellen,
+bevor es abgelegt wird. Standen keine Kopfzeilen in der Einfügung, gilt die
+erste Zeile als Betreff und der Rest als Text — so lässt sich auch etwas schnell
+Hingeschriebenes ablegen, ohne dass die Funktion die Arbeit verweigert. Eine
+`.eml`-Datei nimmt das Feld auch per Ziehen an; `.msg` kann nur Outlook selbst
+lesen, und die Meldung sagt dann den Weg, der funktioniert.
+
+Beim **Zuweisen** wählt man Projekt, Zuständigkeit und Termin; daraus entsteht
+eine Aufgabe in der Sammelsitzung des Projekts, mit dem Absender und dem
+Maildatum als Herkunftsvermerk in der Bemerkung. Wer in drei Wochen nachfasst,
+sieht, von wem die Mail kam.
+
+Warum der Umweg über einen Posteingang, statt gleich eine Aufgabe anzulegen:
+Aufgaben hängen an einer Sitzung, Sitzungen an einem Projekt. Eine
+hereinkommende Mail kennt ihr Projekt nicht. Sie irgendeinem zuzuordnen und
+später zu verschieben hiesse, dass sie zwischendurch im falschen Projekt steht —
+in dessen Protokoll, dessen Auswertung, dessen Aufgabenliste. Der Posteingang
+ist zugleich der Anschlusspunkt für später: Kommen Mails einmal über eine
+Weiterleitung oder aus Power Automate, füllen sie dieselbe Tabelle, und an der
+Oberfläche ändert sich nichts. Einzurichten mit `db/update-04.sql`. Der
+Posteingang ist **persönlich** — jeder sieht nur seine eigenen Einträge,
+Verwalter alle.
+
+**In den Kalender** gibt die Aufgaben mit Termin als `.ics`-Datei aus; Outlook
+übernimmt sie mit einem Doppelklick. Als ganztägige Ereignisse, weil eine
+Aufgabe keine Uhrzeit hat und ein erfundener Zeitpunkt im Kalender stünde, als
+wäre er verabredet — dazu eine Erinnerung am Morgen des Termintags. Bewusst ein
+Abzug und keine laufende Verbindung: Eine echte Abgleichung müsste zwei Systeme
+auf demselben Stand halten und entscheiden, wer gewinnt, wenn beide etwas
+geändert haben.
+
+Drei Darstellungen für die Aufgabenlisten: **Liste** nach Dringlichkeit,
+**Kanban** mit den drei Spalten offen / warten / erledigt (Karten ziehbar, wie
+im Projekt), und bei den vergebenen Aufgaben **nach Zuständigkeit**. Diese dritte ist für das Telefonat
 gebaut: Je Person stehen alle ihre Aufgaben beisammen — über Projektgrenzen
 hinweg, denn dieselbe Person hat in jedem Projekt eine eigene Beteiligten-Id,
 zusammengeführt wird über ihren Adresseintrag. Im Gruppenkopf die Firma, die
@@ -683,6 +718,7 @@ und ausführen. Das legt Tabellen, Rechteregeln, Auslöser und das Protokoll an.
 > | `db/update-01.sql` | schliesst eine Sicherheitslücke (Ansicht `portfolio_sicht`) |
 > | `db/update-02.sql` | Tabelle `sitzungen` — ohne sie bleibt die Seite **Protokolle** leer, dazu Adressbuch und Sitzungsreihen |
 > | `db/update-03.sql` | Ablageort `baurecht` — ohne ihn lassen sich im **Baurecht-Check** keine Belege ablegen |
+> | `db/update-04.sql` | Tabelle `posteingang` — ohne sie bleibt der **Posteingang** unter «Meine Aufgaben» unbenutzbar |
 
 **3 · Verbinden.** Aus *Project Settings › API* die beiden Werte in `app/config.js`
 eintragen:
@@ -794,6 +830,8 @@ app/views.js          Eingabeseiten
 app/results.js        Ergebnis, Analyse, Bericht
 app/portfolio.js      Portfolio, Tracking, Archivieren, Import und Export
 app/protokoll.js      Sitzungsprotokolle, Aufgaben in vier Ansichten
+app/meineaufgaben.js  Sammelordner über alle Projekte, Kalenderabzug
+app/posteingang.js    Mails aufnehmen und zu Aufgaben machen
 app/baurecht.js       Baurecht-Check: geltendes Baurecht je Grundstück
 app/termine.js        Terminplan: Gantt mit Abhängigkeiten, Meilensteine
 app/admin.js          Verwaltung, Änderungsverlauf, Anmerkungen

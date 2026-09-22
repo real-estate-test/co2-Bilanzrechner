@@ -258,6 +258,63 @@ window.APP = window.APP || {};
     },
 
     /* ---------------------------------------------------------------
+       Posteingang
+
+       Mails, aus denen eine Aufgabe werden soll, solange noch nicht
+       feststeht, in welches Projekt sie gehören. Persönlich: Die
+       Rechteregel gibt jedem nur seine eigenen Einträge heraus, ein
+       Filter danach wäre überflüssig und trügerisch.
+       --------------------------------------------------------------- */
+
+    posteingang: function (auchErledigte) {
+      var abfrage = 'select=*&order=erfasst_am.desc';
+      if (!auchErledigte) {
+        abfrage += '&zugewiesen_am=is.null&verworfen_am=is.null';
+      }
+      return API.holen('posteingang', abfrage).then(function (z) { return z || []; });
+    },
+
+    posteingangAnlegen: function (e) {
+      /* erfasst_von setzt der Auslöser in der Datenbank. Mitschicken
+         hiesse, dem Browser zu glauben, wer er ist. */
+      return API.einfuegen('posteingang', {
+        id: e.id || A.uid(),
+        betreff: e.betreff || '',
+        inhalt: e.inhalt || '',
+        absender: e.absender || null,
+        absender_name: e.absender_name || null,
+        mail_datum: e.mail_datum || null,
+        quelle: e.quelle || 'einfuegen'
+      }).then(function (r) { return (r && r[0]) || null; });
+    },
+
+    posteingangZuweisen: function (id, ziel) {
+      return API.aktualisieren('posteingang', 'id=eq.' + encodeURIComponent(id), {
+        projekt_id: ziel.projekt_id,
+        sitzung_id: ziel.sitzung_id,
+        aufgabe_id: ziel.aufgabe_id,
+        zugewiesen_am: new Date().toISOString()
+      }).then(function (r) { return (r && r[0]) || null; });
+    },
+
+    posteingangVerwerfen: function (id) {
+      return API.aktualisieren('posteingang', 'id=eq.' + encodeURIComponent(id), {
+        verworfen_am: new Date().toISOString()
+      }).then(function (r) { return (r && r[0]) || null; });
+    },
+
+    posteingangZurueckholen: function (id) {
+      return API.aktualisieren('posteingang', 'id=eq.' + encodeURIComponent(id), {
+        verworfen_am: null
+      }).then(function (r) { return (r && r[0]) || null; });
+    },
+
+    posteingangLoeschen: function (id) {
+      return API.entfernen('posteingang', 'id=eq.' + encodeURIComponent(id))
+        .then(function () { return { ok: true }; });
+    },
+
+    /* ---------------------------------------------------------------
        Benutzer und Einstellungen
        --------------------------------------------------------------- */
 

@@ -315,6 +315,267 @@ window.APP = window.APP || {};
   };
 
   /* ---------------------------------------------------------------
+     Eine Mail lesen
+
+     Aus Outlook kopierter Text, aus dem eine Aufgabe werden soll. Wer
+     eine Mail öffnet, alles markiert und einfügt, bringt die
+     Kopfzeilen mit — die tragen Absender, Datum und Betreff.
+
+     Erkannt werden die deutsche und die englische Beschriftung, weil
+     im selben Haus beide Oberflächen laufen. Wird nichts erkannt, ist
+     das kein Fehler: Dann gilt die erste Zeile als Betreff und der
+     Rest als Text. So lässt sich auch etwas schnell Hingeschriebenes
+     ablegen, ohne dass die Funktion die Arbeit verweigert.
+     --------------------------------------------------------------- */
+
+  var MAIL_FELDER = {
+    absender: ['von', 'from', 'absender'],
+    datum:    ['gesendet', 'sent', 'datum', 'date'],
+    empfaenger: ['an', 'to'],
+    kopie:    ['cc', 'kopie'],
+    betreff:  ['betreff', 'subject']
+  };
+
+  var MONATE_DE = ['januar', 'februar', 'märz', 'maerz', 'april', 'mai', 'juni',
+                   'juli', 'august', 'september', 'oktober', 'november', 'dezember'];
+  var MONATE_EN = ['january', 'february', 'march', 'april', 'may', 'june', 'july',
+                   'august', 'september', 'october', 'november', 'december'];
+
+  function monatNummer(wort) {
+    var w = String(wort || '').toLowerCase();
+    var i = MONATE_DE.indexOf(w);
+    /* «märz» und «maerz» stehen beide in der Liste und meinen denselben
+       Monat — ab da verschiebt sich die Zählung um eins. */
+    if (i >= 0) return i >= 3 ? i : i + 1;
+    i = MONATE_EN.indexOf(w);
+    if (i >= 0) return i + 1;
+    return 0;
+  }
+
+  function zweistellig(n) { return String(n).padStart(2, '0'); }
+
+  /* Aus einer Outlook-Datumszeile ein ISO-Datum. Gibt es keines, bleibt
+     das Feld leer — ein geratenes Datum wäre schlimmer als keines. */
+  A.mailDatum = function (zeile) {
+    var s = String(zeile || '').trim();
+    if (!s) return '';
+
+    /* 22.09.2026 oder 22.9.26 */
+    var m = s.match(/(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{2,4})/);
+    if (m) {
+      var j = parseInt(m[3], 10);
+      if (j < 100) j += 2000;
+      return j + '-' + zweistellig(parseInt(m[2], 10)) + '-' + zweistellig(parseInt(m[1], 10));
+    }
+
+    /* «22. September 2026» */
+    m = s.match(/(\d{1,2})\.?\s+([A-Za-zäöüÄÖÜ]+)\s+(\d{4})/);
+    if (m && monatNummer(m[2])) {
+      return m[3] + '-' + zweistellig(monatNummer(m[2])) + '-' + zweistellig(parseInt(m[1], 10));
+    }
+
+    /* «September 22, 2026» */
+    m = s.match(/([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})/);
+    if (m && monatNummer(m[1])) {
+      return m[3] + '-' + zweistellig(monatNummer(m[1])) + '-' + zweistellig(parseInt(m[2], 10));
+    }
+
+    /* 2026-09-22 */
+    m = s.match(/(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return m[0];
+
+    return '';
+  };
+
+  /* Die Adresse aus «Max Muster <max@firma.ch>» oder aus blossem Text. */
+  A.mailAdresse = function (zeile) {
+    var m = String(zeile || '').match(/[\w.+-]+@[\w-]+\.[\w.-]+/);
+    return m ? m[0].toLowerCase() : '';
+  };
+
+  A.mailName = function (zeile) {
+    var s = String(zeile || '').trim();
+    /* Alles vor der spitzen Klammer ist der Name. */
+    var m = s.match(/^([^<]+)</);
+    if (m) s = m[1];
+    else if (A.mailAdresse(s) === s.toLowerCase()) return '';
+    /* Outlook setzt den Namen gelegentlich in Anführungszeichen —
+       «"Muster, Max" <…>». Erst das Leerzeichen vor der Klammer weg,
+       sonst steht das schliessende Zeichen nicht mehr am Ende und
+       bleibt stehen. */
+    return s.trim().replace(/^["']|["']$/g, '').trim();
+  };
+
+  A.mailLesen = function (roh) {
+    var text = String(roh == null ? '' : roh).replace(/\r\n/g, '\n').trim();
+    var ergebnis = {
+      betreff: '', text: '', absender: '', absender_name: '',
+      datum: '', erkannt: false
+    };
+    if (!text) return ergebnis;
+
+    var zeilen = text.split('\n');
+    var gefunden = {};
+    var letzteKopfzeile = -1;
+
+    /* Kopfzeilen stehen am Anfang. Nur die ersten Zeilen absuchen:
+       Weiter unten stehen oft zitierte Mails, deren «Von:» den
+       eigentlichen Absender überschreiben würde. */
+    var grenze = Math.min(zeilen.length, 15);
+    for (var i = 0; i < grenze; i++) {
+      var z = zeilen[i];
+      var t = z.match(/^\s*([A-Za-zäöüÄÖÜ-]+)\s*:\s*(.*)$/);
+      if (!t) continue;
+      var name = t[1].toLowerCase();
+      var wert = t[2].trim();
+      Object.keys(MAIL_FELDER).forEach(function (feld) {
+        if (gefunden[feld] === undefined && MAIL_FELDER[feld].indexOf(name) >= 0) {
+          gefunden[feld] = wert;
+          letzteKopfzeile = i;
+        }
+      });
+    }
+
+    if (gefunden.betreff !== undefined || gefunden.absender !== undefined) {
+      ergebnis.erkannt = true;
+      ergebnis.betreff = gefunden.betreff || '';
+      ergebnis.absender = A.mailAdresse(gefunden.absender);
+      ergebnis.absender_name = A.mailName(gefunden.absender);
+      ergebnis.datum = A.mailDatum(gefunden.datum);
+      ergebnis.text = zeilen.slice(letzteKopfzeile + 1).join('\n').trim();
+    } else {
+      /* Kein Kopf erkannt: erste Zeile als Betreff, Rest als Text. */
+      ergebnis.betreff = zeilen[0].trim();
+      ergebnis.text = zeilen.slice(1).join('\n').trim();
+    }
+
+    /* Ein «AW:»- oder «WG:»-Rattenschwanz sagt nichts über die Aufgabe.
+       Der Betreff wird zum Aufgabentext und soll dort lesbar sein. */
+    ergebnis.betreff = ergebnis.betreff
+      .replace(/^\s*((AW|WG|RE|FW|FWD|ANTW)\s*:\s*)+/i, '').trim();
+
+    return ergebnis;
+  };
+
+  /* Eine Datei zum Herunterladen anbieten. Stand als «download» in
+     portfolio.js und wird nun von zwei Seiten gebraucht — einmal
+     geschrieben ist einmal zu prüfen. */
+  A.dateiSichern = function (inhalt, name, typ) {
+    var b = new Blob([inhalt], { type: typ || 'application/json' });
+    var url = URL.createObjectURL(b);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    /* Die Adresse erst freigeben, wenn der Browser sie geholt hat. */
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  };
+
+  /* ---------------------------------------------------------------
+     Kalendereinträge (.ics)
+
+     Eine Aufgabe mit Termin gehört in den Kalender, nicht nur in eine
+     Liste, die man aufrufen muss. Die Datei wird im Browser gebaut und
+     heruntergeladen; Outlook, Apple Kalender und Thunderbird nehmen sie
+     mit einem Doppelklick an.
+
+     Als ganztägiges Ereignis am Termintag: Eine Aufgabe hat keine
+     Uhrzeit, und ein erfundener Zeitpunkt stünde im Kalender, als wäre
+     er verabredet. Ganztägig heisst in .ics VALUE=DATE, und das
+     Enddatum ist der Folgetag — der Standard zählt es nicht mit.
+     --------------------------------------------------------------- */
+
+  function icsText(s) {
+    /* Backslash, Semikolon, Komma und Zeilenumbruch sind Trennzeichen
+       des Formats und müssen entwertet werden, sonst zerfällt der
+       Eintrag an einem Komma im Aufgabentext. */
+    return String(s == null ? '' : s)
+      .replace(/\\/g, '\\\\')
+      .replace(/;/g, '\\;')
+      .replace(/,/g, '\\,')
+      .replace(/\r?\n/g, '\\n');
+  }
+
+  /* Zeilen über 75 Zeichen faltet das Format um; die Fortsetzung
+     beginnt mit einem Leerzeichen. Ohne das lehnen strenge Leser —
+     Exchange gehört dazu — die Datei ab. */
+  function icsFalten(zeile) {
+    if (zeile.length <= 75) return zeile;
+    var raus = [zeile.slice(0, 75)];
+    var rest = zeile.slice(75);
+    while (rest.length > 74) {
+      raus.push(' ' + rest.slice(0, 74));
+      rest = rest.slice(74);
+    }
+    if (rest) raus.push(' ' + rest);
+    return raus.join('\r\n');
+  }
+
+  function icsTag(iso) { return String(iso || '').slice(0, 10).replace(/-/g, ''); }
+
+  A.icsStempel = function (d) {
+    var t = d || new Date();
+    return t.getUTCFullYear() +
+      String(t.getUTCMonth() + 1).padStart(2, '0') +
+      String(t.getUTCDate()).padStart(2, '0') + 'T' +
+      String(t.getUTCHours()).padStart(2, '0') +
+      String(t.getUTCMinutes()).padStart(2, '0') +
+      String(t.getUTCSeconds()).padStart(2, '0') + 'Z';
+  };
+
+  /* termine = [{ id, titel, datum (ISO), beschreibung, ort }] */
+  A.icsBauen = function (termine, kalendername) {
+    var zeilen = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//Projektrechner//Aufgaben//DE',
+      'CALSCALE:GREGORIAN',
+      'METHOD:PUBLISH'
+    ];
+    if (kalendername) {
+      zeilen.push('X-WR-CALNAME:' + icsText(kalendername));
+    }
+
+    var jetzt = A.icsStempel();
+
+    (termine || []).forEach(function (t) {
+      var tag = icsTag(t.datum);
+      if (!/^\d{8}$/.test(tag)) return;   // ohne Datum kein Eintrag
+
+      /* Ganztägig: DTEND ist der Folgetag, sonst zeigen manche
+         Kalender den Eintrag zwei Tage lang. */
+      var ende = new Date(Date.parse(String(t.datum).slice(0, 10) + 'T00:00:00Z') + 86400000);
+      var endTag = ende.getUTCFullYear() +
+        String(ende.getUTCMonth() + 1).padStart(2, '0') +
+        String(ende.getUTCDate()).padStart(2, '0');
+
+      zeilen.push('BEGIN:VEVENT');
+      zeilen.push('UID:' + icsText(t.id || A.uid()) + '@projektrechner');
+      zeilen.push('DTSTAMP:' + jetzt);
+      zeilen.push('DTSTART;VALUE=DATE:' + tag);
+      zeilen.push('DTEND;VALUE=DATE:' + endTag);
+      zeilen.push('SUMMARY:' + icsText(t.titel || 'Aufgabe'));
+      if (t.beschreibung) zeilen.push('DESCRIPTION:' + icsText(t.beschreibung));
+      if (t.ort) zeilen.push('LOCATION:' + icsText(t.ort));
+      /* Eine Erinnerung am Morgen des Termintags. Ohne sie liegt der
+         Eintrag im Kalender, ohne sich zu melden. */
+      zeilen.push('BEGIN:VALARM');
+      zeilen.push('TRIGGER:PT9H');
+      zeilen.push('ACTION:DISPLAY');
+      zeilen.push('DESCRIPTION:' + icsText(t.titel || 'Aufgabe'));
+      zeilen.push('END:VALARM');
+      zeilen.push('END:VEVENT');
+    });
+
+    zeilen.push('END:VCALENDAR');
+
+    /* Das Format schreibt CRLF vor. */
+    return zeilen.map(icsFalten).join('\r\n') + '\r\n';
+  };
+
+  /* ---------------------------------------------------------------
      Mailentwurf im Mailprogramm öffnen
 
      Outlook trennt Empfänger mit Semikolon; eine kommagetrennte Liste

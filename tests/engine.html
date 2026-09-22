@@ -49,6 +49,11 @@
     tb.appendChild(tr);
   }
 
+  /* Prüfpunkte über alle Gruppen eines Exportumfangs zusammenzählen. */
+  function zaehlePunkte(bloecke) {
+    return bloecke.reduce(function (s, b) { return s + b.punkte.length; }, 0);
+  }
+
   /* ---- Flächenkaskade ------------------------------------------- */
   var p = A.defaultProject();
   p.grundstueck.flaeche = 2500; p.grundstueck.az = 0.90; p.grundstueck.geschosse = 4;
@@ -1194,7 +1199,7 @@
     true, A.baurechtEintrag(bp, 'wei_waldabstand', true).achtung === false);
 
   A.baurechtEintrag(bp, 'wei_gewaesserabstand', true).achtung = true;
-  A.baurechtEintrag(bp, 'abs_waldabstand_gibtsnicht', true).achtung = true;
+  A.baurechtEintrag(bp, 'wei_waldabstand_gibtsnicht', true).achtung = true;
   var bs1 = A.baurechtStand(bp);
   pruefe('Markierte Punkte des Katalogs werden gezählt', 1, bs1.achtung);
   pruefe('Achtung ändert den Prüfstand nicht', bs0.fertig, bs1.fertig);
@@ -1257,6 +1262,68 @@
      als Base64 grösser als das vollständige Projekt hier. */
   pruefe('Ein Beleg im Projekt-JSON bleibt unter 200 Zeichen',
     true, JSON.stringify(A.baurechtBilder(bb, 'gst_zone')[0]).length < 200);
+
+  /* ---- Baurecht-Export: welcher Umfang was zeigt ------------------- */
+  var bx = A.defaultProject();
+  bx.id = 'prj-x';
+  var alle = A.baurechtStand(bx).gesamt;
+
+  /* Ein unberührtes Projekt: alles offen, nichts bearbeitet. */
+  pruefe('Umfang «alle» zeigt den ganzen Katalog',
+    alle, zaehlePunkte(A.baurechtExportPunkte(bx, 'alle')));
+  pruefe('Umfang «offen» zeigt zu Beginn ebenfalls alles',
+    alle, zaehlePunkte(A.baurechtExportPunkte(bx, 'offen')));
+  pruefe('Umfang «bearbeitet» zeigt zu Beginn nichts',
+    0, zaehlePunkte(A.baurechtExportPunkte(bx, 'bearbeitet')));
+  pruefe('Umfang «achtung» zeigt zu Beginn nichts',
+    0, zaehlePunkte(A.baurechtExportPunkte(bx, 'achtung')));
+  pruefe('Ohne Inhalt bleiben auch die Gruppen weg',
+    0, A.baurechtExportPunkte(bx, 'bearbeitet').length);
+
+  /* Vier Punkte auf verschiedene Weise anfassen. */
+  A.baurechtEintrag(bx, 'gst_zone', true).wert = 'W3';
+  A.baurechtEintrag(bx, 'gst_strasse', true).bemerkung = 'Kantonsstrasse';
+  A.baurechtBildAnlegen(bx, 'wei_waldabstand',
+    { id: 'x1', pfad: 'prj-x/wei_waldabstand/x1.png', titel: '' });
+  var bxa = A.baurechtEintrag(bx, 'wei_naturgefahren', true);
+  bxa.achtung = true; bxa.status = 'geprueft';
+
+  pruefe('Eintrag, Bemerkung, Beleg und gesetzter Status zählen als bearbeitet',
+    4, zaehlePunkte(A.baurechtExportPunkte(bx, 'bearbeitet')));
+  pruefe('Ein geprüfter Punkt ohne Eintrag fällt nicht heraus',
+    true, A.baurechtImUmfang(bxa, 'bearbeitet'));
+  pruefe('Ein Beleg allein zählt als bearbeitet',
+    true, A.baurechtImUmfang(A.baurechtEintrag(bx, 'wei_waldabstand'), 'bearbeitet'));
+  pruefe('Der geprüfte Punkt fällt aus «offen» heraus',
+    alle - 1, zaehlePunkte(A.baurechtExportPunkte(bx, 'offen')));
+  pruefe('«achtung» zeigt nur den markierten',
+    1, zaehlePunkte(A.baurechtExportPunkte(bx, 'achtung')));
+
+  /* Markiert und geprüft: Der Merker liegt quer zum Status, also darf
+     ein abgehakter Punkt im Achtung-Auszug nicht verschwinden. */
+  pruefe('Geprüft hebt die Achtung-Markierung im Auszug nicht auf',
+    true, A.baurechtImUmfang(bxa, 'achtung'));
+  pruefe('Derselbe Punkt fehlt im Auszug «offen»',
+    false, A.baurechtImUmfang(bxa, 'offen'));
+
+  /* «nicht relevant» ist eine Antwort, kein offener Punkt. */
+  var bxe = A.baurechtEintrag(bx, 'wei_isos', true);
+  bxe.status = 'entfaellt';
+  pruefe('Nicht relevant gilt nicht als offen',
+    false, A.baurechtImUmfang(bxe, 'offen'));
+  /* «Altlasten: nicht relevant» ist eine Aussage über das Grundstück
+     und gehört auf ein Ergebnisblatt, auch ohne Wort daneben. */
+  pruefe('Nicht relevant gilt als bearbeitet',
+    true, A.baurechtImUmfang(bxe, 'bearbeitet'));
+
+  /* Leerzeichen sind kein Inhalt — sonst geriete ein versehentlich
+     angetipptes Feld in den Auszug «nur bearbeitete». */
+  pruefe('Ein Feld mit nur Leerzeichen zählt nicht als bearbeitet',
+    false, A.baurechtImUmfang({ wert: '   ', bemerkung: '\n', status: 'offen' }, 'bearbeitet'));
+  pruefe('Ein unbekannter Umfang zeigt lieber alles als nichts',
+    true, A.baurechtImUmfang({ }, 'quatsch'));
+  pruefe('Ein fehlender Eintrag bricht die Auswahl nicht ab',
+    true, A.baurechtImUmfang(null, 'alle'));
 
   /* ---- Zusammenfassung -------------------------------------------- */
   var box = document.getElementById('summe');

@@ -148,7 +148,10 @@
           'des Planausschnitts, auf den sich der Eintrag stützt. Ein Bild lässt sich ' +
           'auf die Zeile ziehen, mit <b>Strg+V</b> einfügen oder auswählen; die Zeile ' +
           'darunter hält fest, woher der Ausschnitt stammt. Belege liegen in der ' +
-          'Firmenablage, nicht im Projekt — auf dem Ausdruck erscheinen sie nicht.')
+          'Firmenablage, nicht im Projekt — auf dem Ausdruck dieser Seite ' +
+          'erscheinen sie nicht. Wer sie mit aufs Papier braucht, nimmt ' +
+          '<b>Export / PDF</b> oben: ein eigenes Dokument mit Briefkopf, Belegen ' +
+          'und Kästchen zum Abhaken.')
       ])
     ]));
 
@@ -262,6 +265,12 @@
       : [];
     if (nurAchtung) versteckt.push('alles ohne Achtung-Markierung');
 
+    var exportKnopf = el('button', { class: 'ghost sm noprint',
+      text: 'Export / PDF …',
+      title: 'Den Baurecht-Check als eigenes Dokument ausgeben — mit Briefkopf, ' +
+             'Belegen und Kästchen zum Abhaken',
+      onclick: function () { B.exportDialog(p); } });
+
     return U.panel('Stand der Prüfung', null, [
       el('div', { class: 'panelbody' }, [
         el('div', { class: 'cols c3' }, [
@@ -284,7 +293,7 @@
                     ' — diese Aufstellung ist nicht vollständig.' })
           : null
       ].filter(Boolean))
-    ]);
+    ], [exportKnopf]);
   }
 
   /* ---------------------------------------------------------------
@@ -996,4 +1005,385 @@
     var n = parseFloat(m[0].replace(',', '.'));
     return isFinite(n) ? n : null;
   }
+
+  /* ===================================================================
+     Export als PDF
+
+     Der Reiter selbst lässt sich drucken, aber das Blatt ist eine
+     Übersicht: keine Belege, keine Kästchen, und der ganze Katalog.
+     Hier entsteht etwas anderes — ein Dokument, das allein steht und
+     aus dem Haus geht: mit Briefkopf, den Eckdaten des Grundstücks,
+     den Belegen unter ihrem Prüfpunkt und einem Kästchen je Zeile.
+
+     Ohne Fremdbibliothek: Gedruckt wird der Browser-Druckdialog, in
+     dem «Als PDF sichern» steht. Das ergibt ein durchsuchbares PDF mit
+     echtem Text — ein selbstgebauter PDF-Erzeuger lieferte Bilder von
+     Buchstaben und wöge ein Vielfaches.
+     =================================================================== */
+
+  /* Umfang und Auswahl stehen im Modell — sie bestimmen die Aussage
+     des Dokuments und werden dort geprüft. */
+  var UMFANG = A.BAURECHT_UMFANG;
+  var exportPunkte = A.baurechtExportPunkte;
+
+  /* ---------------------------------------------------------------
+     Belege vorladen
+
+     Ein <img>, dessen Bild noch unterwegs ist, druckt als leerer
+     Kasten. Der Druckdialog wartet nicht. Also erst alles holen und
+     dekodieren lassen, dann drucken.
+     --------------------------------------------------------------- */
+
+  function belegeVorladen(p, bloecke, melden) {
+    var offen = [];
+    bloecke.forEach(function (block) {
+      block.punkte.forEach(function (pt) {
+        A.baurechtBilder(p, pt.id).forEach(function (bild) {
+          offen.push(bild);
+        });
+      });
+    });
+
+    if (!offen.length || !ablageDa()) return Promise.resolve({});
+
+    var fertig = 0;
+    var karte = {};
+    melden(0, offen.length);
+
+    return Promise.all(offen.map(function (bild) {
+      return bildAdresse(bild.pfad).then(function (url) {
+        /* Erst wenn das Bild entschlüsselt ist, hat es Masse und
+           druckt. Browser ohne decode() fallen auf onload zurück. */
+        var img = new Image();
+        img.src = url;
+        var da = img.decode ? img.decode() : new Promise(function (ok, weg) {
+          img.onload = ok; img.onerror = weg;
+        });
+        return da.then(function () { karte[bild.pfad] = url; });
+      }).catch(function () {
+        /* Ein Beleg, der sich nicht holen lässt, hält das Dokument
+           nicht auf — an seiner Stelle steht ein Vermerk. */
+      }).then(function () {
+        melden(++fertig, offen.length);
+      });
+    })).then(function () { return karte; });
+  }
+
+  /* ---------------------------------------------------------------
+     Das Blatt
+     --------------------------------------------------------------- */
+
+  function kasten(status) {
+    var k = el('span', { class: 'brxkasten' });
+    if (status === 'geprueft') { k.classList.add('an'); k.textContent = '✓'; }
+    else if (status === 'entfaellt') { k.classList.add('aus'); k.textContent = '–'; }
+    return k;
+  }
+
+  function eckdaten(p) {
+    /* Parzelle und Zone stehen bereits im Baurecht-Check — sie hier
+       noch einmal abzufragen wäre doppelte Pflege. */
+    function ausPunkt(id) {
+      return String(A.baurechtEintrag(p, id).wert || '').trim();
+    }
+    var kt = A.KANTONE[p.kanton];
+    return [
+      ['Projekt', p.name || 'Projekt'],
+      ['Ort', [p.ort, kt && kt.label].filter(Boolean).join(', ')],
+      ['Parzelle', ausPunkt('gst_parzellennummer')],
+      ['Zone', ausPunkt('gst_zone')]
+    ].filter(function (z) { return z[1]; });
+  }
+
+  /* Das heutige Datum als ISO-Tag. Nicht über toISOString(): Das
+     rechnet in UTC und schriebe abends nach 22 Uhr Schweizer Zeit
+     bereits den Vortag aufs Blatt. */
+  function heuteIso() {
+    var d = new Date();
+    return d.getFullYear() + '-' +
+      String(d.getMonth() + 1).padStart(2, '0') + '-' +
+      String(d.getDate()).padStart(2, '0');
+  }
+
+  function verfasser() {
+    var pr = A.api.profil, b = A.api.benutzer && A.api.benutzer();
+    return (pr && pr.name) || (b && b.email) || '';
+  }
+
+  function exportBaum(p, umfang, bloecke, bildkarte) {
+    var bk = A.absender(p);
+    var logo = A.logoFuer(p);
+    var u = UMFANG.find(function (x) { return x.id === umfang; }) || UMFANG[0];
+
+    var out = el('div', { id: 'brexport' });
+
+    /* --- Briefkopf ------------------------------------------------ */
+    out.appendChild(el('div', { class: 'brxkopf' }, [
+      logo && logo.bild
+        ? el('img', { src: logo.bild, alt: logo.label, class: 'brxlogo' })
+        : el('div', { class: 'brxfirma', text: bk.firma || '' }),
+      el('div', { class: 'brxabsender' }, [
+        el('div', { class: 'brxfirma2', text: logo && logo.bild ? (bk.firma || '') : '' }),
+        el('div', { text: bk.adresse || '' })
+      ])
+    ]));
+
+    /* --- Titel und Eckdaten --------------------------------------- */
+    out.appendChild(el('h1', { class: 'brxtitel', text: 'Baurecht-Check' }));
+
+    var eck = el('div', { class: 'brxeck' });
+    eckdaten(p).forEach(function (z) {
+      eck.appendChild(el('div', { class: 'brxeckfeld' }, [
+        el('span', { class: 'brxecklabel', text: z[0] }),
+        el('span', { class: 'brxeckwert', text: z[1] })
+      ]));
+    });
+    out.appendChild(eck);
+
+    var wer = verfasser();
+    out.appendChild(el('div', { class: 'brxstand',
+      text: [A.datum(heuteIso()),
+             wer ? 'erstellt von ' + wer : '',
+             u.id === 'alle' ? null : 'Auszug: ' + u.label]
+        .filter(Boolean).join(' · ') }));
+
+    /* Ein Auszug muss sich als Auszug zu erkennen geben. Ein Blatt,
+       dem stillschweigend die Hälfte fehlt, ist irreführend — jemand
+       könnte es für den vollständigen Stand halten. */
+    if (u.id !== 'alle') {
+      out.appendChild(el('div', { class: 'brxauszug',
+        text: 'Diese Aufstellung ist nicht vollständig: Sie zeigt ' + u.label +
+              ' (' + u.hilfe + ').' }));
+    }
+
+    /* --- Die Gruppen ---------------------------------------------- */
+    bloecke.forEach(function (block) {
+      out.appendChild(el('h2', { class: 'brxgruppe', text: block.gruppe.label }));
+
+      var tab = el('table', { class: 'brxtab' });
+      var kopf = el('thead', {}, [el('tr', {}, [
+        el('th', { class: 'brxk', text: '' }),
+        el('th', { style: 'width:26%', text: 'Prüfpunkt' }),
+        el('th', { style: 'width:26%', text: 'Eintrag' }),
+        el('th', { text: 'Bemerkung / Rechtsgrundlage' }),
+        el('th', { style: 'width:15%', text: 'Status' })
+      ])]);
+      tab.appendChild(kopf);
+
+      var koerper = el('tbody', {});
+      block.punkte.forEach(function (pt) {
+        var e = A.baurechtEintrag(p, pt.id);
+        var bilder = A.baurechtBilder(p, pt.id);
+
+        var tr = el('tr', {
+          class: 'brxzeile' + (e.achtung ? ' brxachtung' : '') +
+                 (e.status === 'entfaellt' ? ' brxentfaellt' : '')
+        });
+
+        tr.appendChild(el('td', { class: 'brxk' }, [kasten(e.status)]));
+
+        tr.appendChild(el('td', {}, [
+          e.achtung ? el('span', { class: 'brxachtungmarke', text: 'Achtung' }) : null,
+          el('div', { class: 'brxname', text: pt.label }),
+          pt.hilfe ? el('div', { class: 'brxhilfe', text: pt.hilfe }) : null
+        ].filter(Boolean)));
+
+        /* Der gerechnete Wert steht klein unter dem Eintrag — und ein
+           Vermerk, wenn Baurecht und Kalkulation auseinanderlaufen.
+           Genau dafür gibt es die Gegenüberstellung. */
+        var rw = pt.rechen ? A.baurechtRechenwert(p, A.state.r, pt.rechen) : null;
+        var gerechnet = null;
+        if (rw) {
+          var eigen = zahlAus(e.wert);
+          var weicht = eigen !== null && rw.wert > 0 &&
+                       Math.abs(eigen - rw.wert) / rw.wert > 0.005;
+          gerechnet = el('div', { class: 'brxgerechnet' + (weicht ? ' brxweicht' : ''),
+            text: 'gerechnet: ' + A.fmt(rw.wert, rw.dez) +
+                  (rw.einheit ? ' ' + rw.einheit : '') +
+                  (weicht ? ' — weicht ab' : '') });
+        }
+
+        tr.appendChild(el('td', {}, [
+          el('div', { class: 'brxwert', text: String(e.wert || '').trim() || '—' }),
+          gerechnet
+        ].filter(Boolean)));
+
+        tr.appendChild(el('td', {}, [
+          el('div', { class: 'brxbem', text: String(e.bemerkung || '').trim() })
+        ]));
+
+        tr.appendChild(el('td', {}, [
+          el('span', { text: A.baurechtStatusLabel(e.status) })
+        ]));
+
+        koerper.appendChild(tr);
+
+        /* Die Belege stehen unter ihrem Prüfpunkt, nicht hinten im
+           Anhang: Beim Lesen soll der Paragraph neben der Antwort
+           stehen. */
+        if (bilder.length) {
+          var btr = el('tr', { class: 'brxbelegzeile' +
+            (e.achtung ? ' brxachtung' : '') });
+          var bz = el('td', { colspan: 5, class: 'brxbelegzelle' });
+          bilder.forEach(function (bild) {
+            var url = bildkarte[bild.pfad];
+            bz.appendChild(el('figure', { class: 'brxbeleg' }, [
+              url
+                ? el('img', { src: url, alt: bild.titel || 'Beleg' })
+                : el('div', { class: 'brxbelegfehlt',
+                    text: 'Beleg nicht abrufbar' }),
+              el('figcaption', {
+                text: String(bild.titel || '').trim() || 'ohne Bildunterschrift' })
+            ]));
+          });
+          btr.appendChild(bz);
+          koerper.appendChild(btr);
+        }
+      });
+
+      tab.appendChild(koerper);
+      out.appendChild(tab);
+    });
+
+    if (!bloecke.length) {
+      out.appendChild(el('div', { class: 'brxleer',
+        text: 'Zu diesem Umfang gibt es keine Prüfpunkte.' }));
+    }
+
+    /* Die Fusszeile des Briefkopfs bleibt draussen. Sie heisst in der
+       Verwaltung «Fusszeile auf dem Protokoll» und lautet meist
+       sinngemäss «Einwände innert zehn Tagen, danach gilt es als
+       genehmigt» — auf einem Baurechtsblatt wäre das nicht nur
+       unpassend, sondern eine Aussage, die niemand gemacht hat.
+
+       Stattdessen steht hier, woher das Blatt kommt und worauf es
+       sich stützt: Ein Empfänger soll den Stand einordnen können. */
+    out.appendChild(el('div', { class: 'brxfuss',
+      text: 'Baurecht-Check aus dem Projektrechner' +
+            (bk.firma ? ', ' + bk.firma : '') +
+            '. Die Angaben geben den Stand vom ' + A.datum(heuteIso()) +
+            ' wieder und ersetzen keine Rechtsauskunft.' }));
+
+    return out;
+  }
+
+  /* ---------------------------------------------------------------
+     Drucken
+
+     Der Baum wird an den Körper gehängt und alles andere für den
+     Druck ausgeblendet. Ein eigenes Fenster wäre die Alternative,
+     scheitert aber an den Belegen: Deren Adressen gelten nur in
+     diesem Dokument.
+     --------------------------------------------------------------- */
+
+  var amDrucken = null;
+
+  function aufraeumen() {
+    if (!amDrucken) return;
+    document.body.classList.remove('baurechtexport');
+    if (amDrucken.parentNode) amDrucken.parentNode.removeChild(amDrucken);
+    amDrucken = null;
+  }
+
+  window.addEventListener('afterprint', aufraeumen);
+
+  function drucken(baum) {
+    aufraeumen();
+    amDrucken = baum;
+    document.body.appendChild(baum);
+    document.body.classList.add('baurechtexport');
+    window.print();
+
+    /* Aufgeräumt wird über «afterprint», nicht über einen kurzen
+       Zeitgeber: In Chrome hält window.print() den Faden an, in
+       anderen Browsern nicht — dort risse ein Zeitgeber von ein, zwei
+       Sekunden das Dokument weg, während der Druckdialog noch offen
+       ist, und es käme ein leeres Blatt heraus.
+
+       Bleibt der Baum doch einmal liegen, schadet das nichts: Am
+       Bildschirm ist er unsichtbar, und der nächste Export räumt ihn
+       ohnehin weg. Die lange Frist ist nur gegen Browser gerichtet,
+       die «afterprint» gar nicht kennen. */
+    setTimeout(aufraeumen, 60000);
+  }
+
+  /* ---------------------------------------------------------------
+     Der Dialog
+     --------------------------------------------------------------- */
+
+  function exportDialog(p) {
+    var umfang = 'alle';
+
+    var zahl = el('div', { class: 'hilfe', style: 'margin-top:10px' });
+    var fortschritt = el('div', { class: 'hilfe', style: 'margin-top:6px' });
+
+    function zaehlen() {
+      var bloecke = exportPunkte(p, umfang);
+      var punkte = 0, bilder = 0;
+      bloecke.forEach(function (b) {
+        punkte += b.punkte.length;
+        b.punkte.forEach(function (pt) {
+          bilder += A.baurechtBilder(p, pt.id).length;
+        });
+      });
+      zahl.textContent = punkte + ' Prüfpunkt' + (punkte === 1 ? '' : 'e') +
+        ' in ' + bloecke.length + ' Gruppe' + (bloecke.length === 1 ? '' : 'n') +
+        (bilder ? ', ' + bilder + ' Beleg' + (bilder === 1 ? '' : 'e') : ', keine Belege');
+      return { bloecke: bloecke, punkte: punkte, bilder: bilder };
+    }
+
+    var wahl = el('div', { class: 'chips', style: 'margin-top:4px' });
+    UMFANG.forEach(function (u) {
+      var c = el('button', { type: 'button',
+        class: 'chip' + (u.id === umfang ? ' on' : ''), title: u.hilfe,
+        text: u.label });
+      c.addEventListener('click', function () {
+        umfang = u.id;
+        Array.prototype.forEach.call(wahl.children, function (x) {
+          x.classList.toggle('on', x === c);
+        });
+        zaehlen();
+      });
+      wahl.appendChild(c);
+    });
+
+    var knopf = el('button', { class: 'primary', text: 'Drucken / als PDF sichern' });
+
+    knopf.addEventListener('click', function () {
+      var stand = zaehlen();
+      if (!stand.punkte) {
+        A.meldung('warn', 'Zu diesem Umfang gibt es keine Prüfpunkte.');
+        return;
+      }
+      knopf.disabled = true;
+
+      belegeVorladen(p, stand.bloecke, function (fertig, gesamt) {
+        fortschritt.textContent = gesamt
+          ? 'Belege werden geladen … ' + fertig + ' von ' + gesamt
+          : '';
+      }).then(function (karte) {
+        fortschritt.textContent = '';
+        knopf.disabled = false;
+        bg.remove();
+        drucken(exportBaum(p, umfang, stand.bloecke, karte));
+      });
+    });
+
+    var bg = U.modal('Baurecht-Check exportieren', [
+      el('div', { class: 'hilfe', style: 'margin-bottom:4px', text: 'Umfang' }),
+      wahl,
+      zahl,
+      fortschritt,
+      U.hinweis('info',
+        'Im Druckdialog <b>«Als PDF sichern»</b> wählen. Belege stehen unter ' +
+        'ihrem Prüfpunkt; Hintergrundgrafiken braucht das Blatt nicht. ' +
+        'Der Reiter selbst lässt sich weiterhin als kompakte Übersicht ohne ' +
+        'Belege drucken.')
+    ], [knopf]);
+
+    zaehlen();
+    return bg;
+  }
+
+  B.exportDialog = exportDialog;
 })();

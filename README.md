@@ -267,6 +267,34 @@ Projektunterlagen. Gelesen wird mit angemeldetem Zugang, geschrieben nur mit
 Bearbeitungsrecht. Ohne Anmeldung gibt es keine Belege — die Verweise im
 Projekt bleiben dabei unangetastet.
 
+**Export / PDF** gibt den Baurecht-Check als eigenes Dokument aus — nicht als
+Abzug des Reiters. Es trägt den Briefkopf mit Logo, die Eckdaten des
+Grundstücks (Projekt, Ort, Parzelle, Zone — Parzelle und Zone werden aus den
+Prüfpunkten gelesen, nicht doppelt gepflegt), Datum und Verfasser. Je Zeile ein
+Kästchen: leer bei *offen*, angehakt bei *geprüft*, gestrichelt bei *nicht
+relevant*. Die ⚠-markierten Punkte behalten ihren roten Balken; bei den vier
+Punkten, die die Kalkulation kennt, steht der gerechnete Wert daneben und der
+Vermerk, wenn beides auseinanderläuft. Belege stehen unter ihrem Prüfpunkt, bis
+zu 58 % der Satzbreite und höchstens eine Blatthöhe hoch, mit der
+Bildunterschrift darunter.
+
+Der Umfang lässt sich vor dem Export wählen: *alle Prüfpunkte*, *nur
+bearbeitete*, *nur ⚠ markierte*, *nur offene*. Bearbeitet heisst: mit Eintrag,
+Bemerkung, Beleg oder gesetztem Status — «Altlasten: nicht relevant» ist eine
+Aussage über das Grundstück und gehört auf ein Ergebnisblatt, auch wenn daneben
+kein Wort steht. Ist der Umfang nicht *alle*, trägt das Blatt oben einen
+Vermerk, dass die Aufstellung nicht vollständig ist: Ein Empfänger darf einen
+Auszug nicht für den ganzen Stand halten.
+
+Das PDF entsteht über den Druckdialog des Browsers («Als PDF sichern»), nicht
+über einen eingebauten Erzeuger. Das ergibt durchsuchbaren Text statt Bildern
+von Buchstaben und spart eine Fremdbibliothek. Die Belege werden vorher
+vollständig geladen und dekodiert — ein Bild, das noch unterwegs ist, druckt
+als leerer Kasten, und der Druckdialog wartet nicht.
+
+Der Reiter selbst bleibt daneben druckbar: als kompakte Übersicht **ohne**
+Belege, für den schnellen Blick.
+
 Beim **Duplizieren** eines Projekts bekommt die Variante eigene Dateien. Ohne
 das zeigten zwei Projekte auf denselben Bestand, und wer in der Variante einen
 Beleg entfernt, risse ihn dem Original heraus. Lässt sich ein Beleg nicht

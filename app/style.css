@@ -602,6 +602,144 @@ tr.brachtung:hover td { background: #fbe4e2; }
 tr.brentfaellt.brachtung td:first-child { border-left-color: var(--neg); }
 
 /* ---------------------------------------------------------------
+   Baurecht-Export
+
+   Ein eigenes Dokument, kein Abzug des Reiters: Briefkopf, Eckdaten,
+   Kästchen zum Abhaken und die Belege unter ihrem Prüfpunkt. Am
+   Bildschirm bleibt es unsichtbar — es entsteht erst beim Drucken und
+   verschwindet danach wieder.
+   --------------------------------------------------------------- */
+#brexport { display: none; }
+
+@media print {
+  /* Beim Export tritt alles andere zurück: die Anwendung, der Reiter,
+     die Kennzahlenleiste. Auf dem Blatt steht nur das Dokument. */
+  body.baurechtexport > #app,
+  body.baurechtexport > #meldungen,
+  body.baurechtexport > .modal-bg { display: none !important; }
+  body.baurechtexport #brexport { display: block !important; }
+  body.baurechtexport { background: #fff; font-size: 10px; }
+
+  #brexport { color: #10151c; }
+
+  .brxkopf {
+    display: flex; align-items: flex-start; gap: 18px;
+    border-bottom: 1.5px solid #232c39; padding-bottom: 7px; margin-bottom: 12px;
+  }
+  .brxlogo { max-height: 42px; max-width: 210px; object-fit: contain; }
+  .brxfirma { font-size: 15px; font-weight: 700; }
+  .brxabsender {
+    margin-left: auto; text-align: right; font-size: 9.5px;
+    color: #3c4553; line-height: 1.5;
+  }
+  .brxfirma2 { font-weight: 640; }
+
+  .brxtitel { font-size: 17px; margin: 0 0 6px; }
+
+  /* Die Eckdaten stehen als Felder nebeneinander — so liest man auf
+     einen Blick, zu welchem Grundstück das Blatt gehört. */
+  .brxeck { display: flex; flex-wrap: wrap; gap: 6px 26px; margin-bottom: 5px; }
+  .brxeckfeld { display: flex; gap: 6px; align-items: baseline; }
+  .brxecklabel {
+    font-size: 8px; letter-spacing: .07em; text-transform: uppercase;
+    color: #6b7484; font-weight: 640;
+  }
+  .brxeckwert { font-size: 11px; font-weight: 600; }
+
+  .brxstand { font-size: 9px; color: #6b7484; margin-bottom: 10px; }
+
+  /* Ein Auszug muss sich als Auszug zu erkennen geben. */
+  .brxauszug {
+    font-size: 9.5px; border: 1px solid #edd6a8; background: #fdf5e6;
+    color: #7a4b00; padding: 5px 8px; border-radius: 4px; margin-bottom: 10px;
+  }
+
+  .brxgruppe {
+    font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
+    color: #3c4553; font-weight: 700; margin: 14px 0 4px;
+    border-bottom: 1px solid #c9cfd8; padding-bottom: 2px;
+    break-after: avoid;
+  }
+
+  .brxtab { width: 100%; border-collapse: collapse; }
+  .brxtab th {
+    font-size: 8px; letter-spacing: .06em; text-transform: uppercase;
+    color: #6b7484; text-align: left; font-weight: 700;
+    border-bottom: 1px solid #c9cfd8; padding: 3px 5px;
+  }
+  .brxtab td {
+    padding: 4px 5px; vertical-align: top;
+    border-bottom: 1px solid #eef1f5; font-size: 9.5px;
+  }
+  .brxtab .brxk { width: 20px; }
+
+  /* Eine Zeile samt ihren Belegen soll nicht über den Seitenrand
+     zerrissen werden. Beide Zeilen einzeln geschützt — zusammen
+     erzwingen sie sonst bei vielen Belegen einen halbleeren Umbruch. */
+  tr.brxzeile, tr.brxbelegzeile { break-inside: avoid; }
+  tr.brxzeile { break-after: avoid; }
+
+  /* Das Kästchen zum Abhaken. Gezeichnet, nicht als Schriftzeichen:
+     ☐ und ☑ fehlen in manchen Druckschriften und kämen dann als
+     leeres Rechteck heraus. */
+  .brxkasten {
+    display: inline-block; width: 10px; height: 10px; line-height: 10px;
+    border: 1px solid #6b7484; border-radius: 2px; text-align: center;
+    font-size: 9px; font-weight: 700; color: #10151c;
+  }
+  .brxkasten.an { border-color: #0d7a45; color: #0d7a45; }
+  .brxkasten.aus { border-style: dashed; color: #9aa3ae; }
+
+  .brxname { font-weight: 600; }
+  .brxhilfe { font-size: 8.5px; color: #6b7484; margin-top: 1px; }
+  .brxwert { white-space: pre-wrap; }
+  .brxbem { white-space: pre-wrap; color: #3c4553; }
+  .brxgerechnet { font-size: 8.5px; color: #6b7484; margin-top: 2px; }
+  .brxweicht { color: #b06a00; font-weight: 700; }
+
+  tr.brxentfaellt .brxname, tr.brxentfaellt .brxwert { color: #6b7484; }
+
+  /* Wie im Reiter: der Balken trägt die Warnung, damit sie auch ohne
+     Hintergrundgrafiken auf dem Blatt steht. */
+  tr.brxachtung td:first-child { border-left: 3px solid #c02e26; }
+  .brxachtungmarke {
+    display: block; font-size: 7.5px; letter-spacing: .08em;
+    text-transform: uppercase; font-weight: 700; color: #c02e26;
+    margin-bottom: 1px;
+  }
+
+  .brxbelegzelle { padding: 6px 5px 10px 26px !important; }
+  .brxbeleg { margin: 0 0 8px; break-inside: avoid; }
+  /* Breite Ausschnitte laufen über 58 % der Satzbreite — genug, dass
+     Fliesstext lesbar bleibt.
+
+     Die Höhenschranke steht bei knapp einer Blatthöhe (A4 abzüglich
+     Ränder sind rund 269 mm), nicht enger: Ein hochformatiger
+     Screenshot einer Gesetzesseite muss lesbar bleiben, und wer ihn
+     auf ein Zehntel der Seite zwingt, kann ihn gleich weglassen.
+     Sie verhindert nur, dass ein Bild über den Seitenrand
+     hinauswächst und abgeschnitten wird. */
+  .brxbeleg img {
+    display: block; width: auto; height: auto;
+    max-width: 58%; max-height: 240mm;
+    border: 1px solid #c9cfd8; border-radius: 3px;
+  }
+  .brxbeleg figcaption {
+    font-size: 8.5px; color: #3c4553; margin-top: 2px; max-width: 58%;
+  }
+  .brxbelegfehlt {
+    font-size: 9px; color: #c02e26; border: 1px dashed #c02e26;
+    border-radius: 3px; padding: 8px; max-width: 58%;
+  }
+
+  .brxleer { font-size: 10px; color: #6b7484; padding: 12px 0; }
+  .brxfuss {
+    margin-top: 16px; padding-top: 6px; border-top: 1px solid #c9cfd8;
+    font-size: 8.5px; color: #6b7484;
+  }
+}
+
+/* ---------------------------------------------------------------
    Belege zum Baurecht-Check
 
    Die Screenshots zum Prüfpunkt. Sie stehen in einer eigenen Zeile

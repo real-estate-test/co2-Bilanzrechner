@@ -766,6 +766,63 @@ window.APP = window.APP || {};
     return raus;
   };
 
+  /* ---------------------------------------------------------------
+     Umfang eines Baurecht-Exports
+
+     Was auf das Blatt kommt. Steht hier und nicht in der Oberfläche,
+     weil es die Aussage des Dokuments bestimmt: Ein Auszug, der die
+     falschen Zeilen weglässt, führt den Empfänger in die Irre.
+     --------------------------------------------------------------- */
+
+  A.BAURECHT_UMFANG = [
+    { id: 'alle',       label: 'alle Prüfpunkte',
+      hilfe: 'der vollständige Katalog, auch was noch niemand angeschaut hat' },
+    { id: 'bearbeitet', label: 'nur bearbeitete',
+      hilfe: 'was einen Eintrag, eine Bemerkung, einen Beleg oder einen ' +
+             'gesetzten Status hat' },
+    { id: 'achtung',    label: 'nur ⚠ markierte',
+      hilfe: 'die Punkte, bei denen genau hinzuschauen ist' },
+    { id: 'offen',      label: 'nur offene',
+      hilfe: 'was weder geprüft noch als nicht relevant abgehakt ist' }
+  ];
+
+  A.baurechtImUmfang = function (e, umfang) {
+    e = e || {};
+    if (umfang === 'achtung') return !!e.achtung;
+    if (umfang === 'offen') {
+      return e.status !== 'geprueft' && e.status !== 'entfaellt';
+    }
+    if (umfang === 'bearbeitet') {
+      /* Ein Beleg zählt als Bearbeitung: Wer den Paragraphen
+         hinterlegt hat, hat den Punkt angeschaut — auch wenn im
+         Eintrag noch nichts steht.
+
+         Ein gesetzter Status ebenso. «Altlasten: nicht relevant» ist
+         eine Aussage über das Grundstück und gehört auf ein
+         Ergebnisblatt, auch wenn daneben kein Wort steht. Ohne das
+         fiele heraus, was jemand ausdrücklich abgehakt hat. */
+      return !!(String(e.wert || '').trim() || String(e.bemerkung || '').trim() ||
+                (Array.isArray(e.bilder) && e.bilder.length) ||
+                (e.status && e.status !== 'offen'));
+    }
+    return true;
+  };
+
+  /* Die Prüfpunkte für einen Export, nach Gruppen. Leere Gruppen
+     fallen weg — im Reiter bleibt eine leere Überschrift stehen,
+     damit man die Gruppe nicht für verloren hält; auf einem Dokument
+     wäre sie eine Überschrift ohne Inhalt. */
+  A.baurechtExportPunkte = function (p, umfang) {
+    return A.baurechtPunkte(p).map(function (block) {
+      return {
+        gruppe: block.gruppe,
+        punkte: block.punkte.filter(function (pt) {
+          return A.baurechtImUmfang(A.baurechtEintrag(p, pt.id), umfang);
+        })
+      };
+    }).filter(function (block) { return block.punkte.length; });
+  };
+
   /* Die Prüfpunkte eines Projekts, nach Gruppen geordnet: erst die
      firmenweiten, danach die projekteigenen Ergänzungen. */
   A.baurechtPunkte = function (p) {

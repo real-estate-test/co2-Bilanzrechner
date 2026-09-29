@@ -1363,13 +1363,13 @@
 
   /* Wohnungsspiegel */
   var ia5 = IX.auswerten(mappeAus(null, [
-    ['Haus', 'Verwertung', 'Bezeichnung', 'Zimmer', 'Fläche m²', 'Preis CHF',
+    ['Haus', 'Verwertung', 'Nr.', 'Geschoss', 'Zimmer', 'Fläche m²', 'Preis CHF',
      'Miete CHF/Monat', 'Anzahl'],
-    ['Haus A', 'STWE', 'A 1.1', 3.5, 92, 850000, '', 1],
-    ['Haus A', 'STWE', 'A 1.2', 4.5, 118, 1050000, '', 2],
-    ['Haus B', 'Miete', 'B 1.1', 2.5, 64, '', 1650, 1],
-    ['', '', '', '', '', '', '', ''],
-    ['Haus B', 'Miete', '', '', '', '', '', '']
+    ['Haus A', 'STWE', 'A 1.1', 0, 3.5, 92, 850000, '', 1],
+    ['Haus A', 'STWE', 'A 1.2', 1, 4.5, 118, 1050000, '', 2],
+    ['Haus B', 'Miete', 'B 1.1', -1, 2.5, 64, '', 1650, 1],
+    ['', '', '', '', '', '', '', '', ''],
+    ['Haus B', 'Miete', '', '', '', '', '', '', '']
   ]), A.defaultProject());
 
   pruefe('Zwei Häuser erkannt', 2, ia5.spiegel.haeuser.length);
@@ -1377,11 +1377,31 @@
   pruefe('Die Anzahl wird mitgezählt: 1 + 2 + 1', 4, ia5.spiegel.wohnungen);
   pruefe('Haus A heisst Haus A', true, ia5.spiegel.haeuser[0].name === 'Haus A');
   pruefe('Haus A hat zwei Einheitszeilen', 2, ia5.spiegel.haeuser[0].einheiten.length);
+  pruefe('Die Nummer kommt mit', true, ia5.spiegel.haeuser[0].einheiten[0].nr === 'A 1.1');
   pruefe('Die Zimmerzahl kommt mit', 3.5, ia5.spiegel.haeuser[0].einheiten[0].zimmer, 0.01);
   pruefe('Der Preis kommt mit', 850000, ia5.spiegel.haeuser[0].einheiten[0].preis);
   pruefe('Die Miete kommt mit', 1650, ia5.spiegel.haeuser[1].einheiten[0].miete);
-  pruefe('Eine Zeile ohne Bezeichnung und Fläche zählt nicht',
+  pruefe('Eine Zeile ohne Nummer und Fläche zählt nicht',
     1, ia5.spiegel.haeuser[1].einheiten.length);
+
+  /* Das Geschoss ist eine Zahl und darf 0 sein — das ist das
+     Erdgeschoss, kein fehlender Wert. */
+  pruefe('Erdgeschoss als 0 kommt an', 0, ia5.spiegel.haeuser[0].einheiten[0].geschoss);
+  pruefe('Und bleibt eine Zahl, kein leerer Text',
+    true, ia5.spiegel.haeuser[0].einheiten[0].geschoss === 0);
+  pruefe('Das erste Obergeschoss', 1, ia5.spiegel.haeuser[0].einheiten[1].geschoss);
+  pruefe('Ein Untergeschoss darf negativ sein', -1,
+    ia5.spiegel.haeuser[1].einheiten[0].geschoss);
+
+  /* Fehlt die Geschossangabe, bleibt das Feld leer statt 0 zu werden —
+     sonst stünde überall Erdgeschoss, wo niemand etwas gesagt hat. */
+  var ia5b = IX.auswerten(mappeAus(null, [
+    ['Haus', 'Verwertung', 'Nr.', 'Geschoss', 'Zimmer', 'Fläche m²', 'Preis CHF',
+     'Miete CHF/Monat', 'Anzahl'],
+    ['Haus A', 'STWE', 'A 1.1', '', 3.5, 92, 850000, '', 1]
+  ]), A.defaultProject());
+  pruefe('Ohne Geschossangabe bleibt das Feld leer',
+    true, ia5b.spiegel.haeuser[0].einheiten[0].geschoss === '');
   /* Im Standardprojekt gibt es keine Mietzeile — das muss gesagt
      werden, sonst wird aus Miete stillschweigend Stockwerkeigentum. */
   pruefe('Fehlende Mietzeile wird gemeldet', 1, ia5.warnungen.length);

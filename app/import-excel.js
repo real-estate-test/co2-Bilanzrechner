@@ -41,8 +41,21 @@ window.APP = window.APP || {};
     'Höhe Untergeschoss m', 'Höhe Einstellhalle m', 'Volumen oberirdisch m³',
     'Volumen Untergeschoss m³', 'Volumen Einstellhalle m³'];
 
-  var SP_SPIEGEL = ['Haus', 'Verwertung', 'Bezeichnung', 'Zimmer', 'Fläche m²',
+  /* «Nr.» und «Geschoss» heissen so wie die Spalten im Wohnungsspiegel
+     des Werkzeugs — beim Übertragen soll niemand umdenken müssen. */
+  var SP_SPIEGEL = ['Haus', 'Verwertung', 'Nr.', 'Geschoss', 'Zimmer', 'Fläche m²',
     'Preis CHF', 'Miete CHF/Monat', 'Anzahl'];
+
+  /* Nach aussen gegeben, damit sich die Vorlage dagegen prüfen lässt.
+     Beide Listen — hier und in vorlagen/vorlage-bauen.py — müssen
+     übereinstimmen; weicht eine ab, findet der Import die Spalte nicht
+     mehr und übergeht sie stillschweigend. Genau das ist mit der
+     Spalte «Nr.» einmal passiert. */
+  IX.SPALTEN = {
+    'Flächen': SP_FLAECHEN,
+    'Kubaturen': SP_KUBATUR,
+    'Wohnungsspiegel': SP_SPIEGEL
+  };
 
   /* Objektnamen in der Vorlage auf die Kennungen im Projekt. */
   var OBJEKTE = { 'neubau': 'neubau', 'bestand': 'bestand', 'erweiterung': 'erweiterung' };
@@ -228,12 +241,12 @@ window.APP = window.APP || {};
     for (var i = kopf.zeile + 1; i < b.zeilen.length; i++) {
       var z = b.zeilen[i] || [];
       var hausName = X.text(z[kopf.spalten['Haus']]);
-      var bez = X.text(z[kopf.spalten['Bezeichnung']]);
+      var bez = X.text(z[kopf.spalten['Nr.']]);
       var flaeche = zahl(z, kopf, 'Fläche m²');
 
-      /* Eine Zeile zählt, sobald sie ein Haus und entweder eine
-         Bezeichnung oder eine Fläche trägt. Reste der Beispielzeilen
-         und leere Zeilen fallen damit weg. */
+      /* Eine Zeile zählt, sobald sie ein Haus und entweder eine Nummer
+         oder eine Fläche trägt. Reste der Beispielzeilen und leere
+         Zeilen fallen damit weg. */
       if (!hausName || (!bez && flaeche === null)) continue;
 
       var verw = X.text(z[kopf.spalten['Verwertung']]).toLowerCase();
@@ -250,10 +263,14 @@ window.APP = window.APP || {};
       }
 
       var anzahl = zahl(z, kopf, 'Anzahl');
+      var gesch = zahl(z, kopf, 'Geschoss');
       h.einheiten.push({
         nr: bez,
         anzahl: (anzahl !== null && anzahl > 0) ? anzahl : 1,
-        geschoss: '',
+        /* Das Geschoss darf 0 sein — das ist das Erdgeschoss, nicht
+           ein fehlender Wert. Deshalb gegen null geprüft und nicht
+           gegen «falsch». */
+        geschoss: gesch === null ? '' : gesch,
         zimmer: zahl(z, kopf, 'Zimmer') || 0,
         flaeche: flaeche || 0,
         preis: zahl(z, kopf, 'Preis CHF') || 0,

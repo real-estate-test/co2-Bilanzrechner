@@ -80,7 +80,9 @@ hat drei Geschosse, der Neubau sechs, und die Einstellhalle reicht mit 850 m²
 
 **Excel-Import** Der Knopf *Aus Excel übernehmen* liest eine ausgefüllte
 Vorlage (`vorlagen/projektrechner-vorlage.xlsx`) mit drei Blättern: **Flächen**
-je Objekt, **Kubaturen** je Objekt und **Wohnungsspiegel** je Wohnung. Gedacht
+je Objekt, **Kubaturen** je Objekt und **Wohnungsspiegel** je Wohnung. Dessen
+Spalten heissen wie die Tabelle im Werkzeug — *Nr.*, *Geschoss*, *Zimmer*,
+*Fläche* —, damit beim Übertragen niemand umdenken muss. Gedacht
 ist sie für den Architekten: Er bekommt die Datei, füllt sie aus, gibt sie
 zurück — und es wird nichts mehr von Hand übertragen.
 
@@ -103,6 +105,15 @@ hundert Kilobyte und könnte weit mehr, als hier je gebraucht wird. Formeln
 werden nicht gerechnet — Excel legt zu jeder Formel den zuletzt berechneten
 Wert mit ab, und den lesen wir; deshalb steht in der Anleitung, dass die Datei
 aus Excel heraus zu speichern ist.
+
+Die Vorlage entsteht aus `vorlagen/vorlage-bauen.py` — eine Binärdatei ohne
+Quelle liesse sich weder nachvollziehen noch sauber ändern. Ihre
+Spaltenüberschriften stehen zugleich in `app/import-excel.js`; weicht eine ab,
+findet der Import die Spalte nicht mehr und übergeht sie **stillschweigend**.
+Damit das auffällt, bevor es jemandem im Betrieb auffällt, prüft
+`tests/vorlage.html` beide Listen gegeneinander — in beide Richtungen: keine
+Spalte, die der Import erwartet und die Vorlage nicht hat, und keine, die der
+Architekt ausfüllt und der Import nicht liest.
 
 **Formeln in Zahlenfeldern** Jedes Zahlenfeld nimmt statt einer Zahl auch eine Rechnung
 entgegen — `2500*0.9`, `(120+80)*3`, `1'250+250`. Ein führendes `=` ist erlaubt, aber nicht
@@ -879,8 +890,9 @@ app/admin.js          Verwaltung, Änderungsverlauf, Anmerkungen
 app/main.js           Zustand, Navigation, Kennzahlenleiste, Rollen
 db/schema.sql         Tabellen, Rechteregeln, Auslöser
 db/update-*.sql       Nachträge für bereits laufende Datenbanken
-vorlagen/             Excel-Vorlage für den Architekten
+vorlagen/             Excel-Vorlage für den Architekten, samt Bauskript
 tests/engine.html     Selbsttest des Rechenkerns
+tests/vorlage.html    Prüft Vorlage und Import gegeneinander
 ```
 
 Lokale und Serverspeicherung liegen hinter **derselben Schnittstelle**. Die

@@ -31,6 +31,8 @@
 <script src="../app/engine.js"></script>
 <script src="../app/ui.js"></script>
 <script src="../app/karte.js"></script>
+<script src="../app/xlsx.js"></script>
+<script src="../app/import-excel.js"></script>
 <script>
 (function () {
   var A = window.APP, E = A.engine, tb = document.getElementById('tb');
@@ -1262,6 +1264,209 @@
      als Base64 grösser als das vollständige Projekt hier. */
   pruefe('Ein Beleg im Projekt-JSON bleibt unter 200 Zeichen',
     true, JSON.stringify(A.baurechtBilder(bb, 'gst_zone')[0]).length < 200);
+
+  /* ---- Excel: Zellen und Köpfe ------------------------------------ */
+  var X = A.xlsx;
+
+  pruefe('Spalte A ist die erste', 1, X.spalteNummer('A1'));
+  pruefe('Spalte Z ist die 26.', 26, X.spalteNummer('Z9'));
+  pruefe('Spalte AA ist die 27.', 27, X.spalteNummer('AA3'));
+  pruefe('Spalte BC ist die 55.', 55, X.spalteNummer('BC12'));
+  pruefe('Die Zeilennummer kommt aus dem Bezug', 12, X.zeileNummer('BC12'));
+
+  /* Zahlen kommen aus Excel als Zahl; steht dort Text, werden die
+     Schreibweisen verstanden, die im Haus üblich sind. */
+  pruefe('Eine Zahl bleibt eine Zahl', 3200, X.zahl(3200));
+  pruefe('Schweizer Tausendertrenner', 1250.5, X.zahl("1'250.50"), 0.001);
+  pruefe('Deutsches Format', 1250.5, X.zahl('1.250,50'), 0.001);
+  pruefe('Komma als Dezimaltrenner', 3.5, X.zahl('3,5'), 0.001);
+  pruefe('Englisches Format', 1250.5, X.zahl('1,250.50'), 0.001);
+  pruefe('Schweizer Trenner mit Komma-Dezimal', 1250.5, X.zahl("1'250,50"), 0.001);
+  pruefe('Einheit dahinter stört nicht', 92, X.zahl('92 m²'));
+  pruefe('CHF stört nicht', 850000, X.zahl('850000 CHF'));
+  pruefe('Leere Zelle ergibt null', true, X.zahl('') === null);
+  pruefe('Text ohne Zahl ergibt null', true, X.zahl('keine Angabe') === null);
+  pruefe('Null ist eine Zahl, kein Fehlen', true, X.zahl(0) === 0);
+  /* Der Unterschied zählt: null heisst «nicht ausgefüllt» und lässt den
+     vorhandenen Wert stehen, 0 heisst «ausdrücklich null». */
+  pruefe('Leerzeichen allein ergibt null', true, X.zahl('   ') === null);
+
+  /* Die Kopfzeile wird gesucht, nicht vorausgesetzt — so stören Titel
+     und Erklärungen über der Tabelle nicht. */
+  var kzeilen = [
+    ['Flächen je Objekt'],
+    ['Nur ausfüllen, was aus der Studie hervorgeht'],
+    [],
+    ['Objekt', 'Geschossfläche oberirdisch m²', 'Vollgeschosse'],
+    ['Neubau', 3200, 6]
+  ];
+  var kopf = X.kopfFinden(kzeilen, ['Objekt', 'Geschossfläche oberirdisch m²', 'Vollgeschosse']);
+  pruefe('Die Kopfzeile wird trotz Titel darüber gefunden', 3, kopf.zeile);
+  pruefe('Die Spalten sind zugeordnet', 1, kopf.spalten['Geschossfläche oberirdisch m²']);
+  pruefe('Ohne passende Überschriften kein Kopf',
+    true, X.kopfFinden(kzeilen, ['Ganz', 'Andere', 'Namen']) === null);
+
+  /* ---- Excel: Auswertung gegen ein Projekt ------------------------ */
+  var IX = A.importExcel;
+
+  function mappeAus(flaechen, spiegel) {
+    var b = [];
+    if (flaechen) b.push({ name: 'Flächen', zeilen: flaechen });
+    if (spiegel) b.push({ name: 'Wohnungsspiegel', zeilen: spiegel });
+    return { blaetter: b };
+  }
+
+  var ip = A.defaultProject();
+  var ia = IX.auswerten(mappeAus([
+    ['Objekt', 'Geschossfläche oberirdisch m²', 'Vollgeschosse', 'Untergeschoss m²',
+     'Nutzfläche NWF m²', 'Parkplätze Stk.', 'Fläche je Parkplatz m²'],
+    ['Neubau', 3200, 6, 850, '', 24, '']
+  ]), ip);
+
+  function findet(liste, label) {
+    return liste.find(function (x) { return x.label === label; }) || null;
+  }
+  pruefe('Die Geschossfläche wird gelesen', 3200, findet(ia.aenderungen, 'Geschossfläche oberirdisch').neu);
+  pruefe('Die Geschosszahl wird gelesen', 6, findet(ia.aenderungen, 'Vollgeschosse').neu);
+  pruefe('Das Untergeschoss wird gelesen', 850, findet(ia.aenderungen, 'Untergeschoss direkt').neu);
+  pruefe('Eine leere Zelle erzeugt keine Änderung',
+    true, findet(ia.aenderungen, 'Nutzfläche NWF direkt') === null);
+  pruefe('Eine leere Zelle lässt auch den Parkplatzwert stehen',
+    true, findet(ia.aenderungen, 'Fläche je Parkplatz') === null);
+  /* Die eingelesenen Flächen wirken nur im Studie-Modus — das muss in
+     der Vorschau stehen, nicht stillschweigend nebenher geschehen. */
+  pruefe('Der Wechsel der Flächenherkunft wird angekündigt',
+    true, findet(ia.aenderungen, 'Flächenherkunft') !== null);
+
+  /* Ein Wert, der schon so im Projekt steht, ist keine Änderung. */
+  var ip2 = A.defaultProject();
+  ip2.teile.neubau.modus = 'studie';
+  ip2.teile.neubau.gf_oi = 3200;
+  var ia2 = IX.auswerten(mappeAus([
+    ['Objekt', 'Geschossfläche oberirdisch m²', 'Vollgeschosse'],
+    ['Neubau', 3200, '']
+  ]), ip2);
+  pruefe('Unveränderte Werte tauchen nicht auf', 0, ia2.aenderungen.length);
+
+  /* Ein unbekannter Objektname wird übergangen, nicht geraten. */
+  var ia3 = IX.auswerten(mappeAus([
+    ['Objekt', 'Geschossfläche oberirdisch m²', 'Vollgeschosse'],
+    ['Hinterhaus', 999, 9]
+  ]), A.defaultProject());
+  pruefe('Ein unbekanntes Objekt wird übergangen', 0, ia3.aenderungen.length);
+
+  /* Ein fremdes Blatt führt zu einer Warnung, nicht zu einem Absturz. */
+  var ia4 = IX.auswerten({ blaetter: [{ name: 'Tabelle1', zeilen: [['irgendwas']] }] },
+    A.defaultProject());
+  pruefe('Eine fremde Datei wird gemeldet', 1, ia4.warnungen.length);
+  pruefe('Und ändert nichts', 0, ia4.aenderungen.length);
+
+  /* Wohnungsspiegel */
+  var ia5 = IX.auswerten(mappeAus(null, [
+    ['Haus', 'Verwertung', 'Bezeichnung', 'Zimmer', 'Fläche m²', 'Preis CHF',
+     'Miete CHF/Monat', 'Anzahl'],
+    ['Haus A', 'STWE', 'A 1.1', 3.5, 92, 850000, '', 1],
+    ['Haus A', 'STWE', 'A 1.2', 4.5, 118, 1050000, '', 2],
+    ['Haus B', 'Miete', 'B 1.1', 2.5, 64, '', 1650, 1],
+    ['', '', '', '', '', '', '', ''],
+    ['Haus B', 'Miete', '', '', '', '', '', '']
+  ]), A.defaultProject());
+
+  pruefe('Zwei Häuser erkannt', 2, ia5.spiegel.haeuser.length);
+  pruefe('Drei Zeilen gelesen — die leeren zählen nicht', 3, ia5.spiegel.zeilen);
+  pruefe('Die Anzahl wird mitgezählt: 1 + 2 + 1', 4, ia5.spiegel.wohnungen);
+  pruefe('Haus A heisst Haus A', true, ia5.spiegel.haeuser[0].name === 'Haus A');
+  pruefe('Haus A hat zwei Einheitszeilen', 2, ia5.spiegel.haeuser[0].einheiten.length);
+  pruefe('Die Zimmerzahl kommt mit', 3.5, ia5.spiegel.haeuser[0].einheiten[0].zimmer, 0.01);
+  pruefe('Der Preis kommt mit', 850000, ia5.spiegel.haeuser[0].einheiten[0].preis);
+  pruefe('Die Miete kommt mit', 1650, ia5.spiegel.haeuser[1].einheiten[0].miete);
+  pruefe('Eine Zeile ohne Bezeichnung und Fläche zählt nicht',
+    1, ia5.spiegel.haeuser[1].einheiten.length);
+  /* Im Standardprojekt gibt es keine Mietzeile — das muss gesagt
+     werden, sonst wird aus Miete stillschweigend Stockwerkeigentum. */
+  pruefe('Fehlende Mietzeile wird gemeldet', 1, ia5.warnungen.length);
+
+  /* ---- Geschosse und Untergeschoss je Objekt ---------------------- */
+
+  /* Im Modus «aus Ausnutzung» gilt weiterhin die allgemeine Zahl —
+     dort leitet sich alles aus der Ziffer ab. Ein je Objekt gesetzter
+     Wert darf dort NICHT greifen, sonst widerspräche er der Rechnung. */
+  var ga = A.defaultProject();
+  ga.grundstueck.flaeche = 2500; ga.grundstueck.az = 0.90;
+  ga.grundstueck.geschosse = 4;
+  ga.teile.neubau.geschosse = 8;          // gesetzt, aber falscher Modus
+  ga.teile.neubau.gf_ug_manuell = 9999;   // dito
+  var rga = E.compute(ga);
+  pruefe('Ausnutzung: die allgemeine Geschosszahl gilt',
+    4, rga.flaechen.teile.neubau.geschosse);
+  pruefe('Ausnutzung: Grundfläche = aGF ÷ 4',
+    562.5, rga.flaechen.teile.neubau.grundflaeche, 0.01);
+  pruefe('Ausnutzung: das Untergeschoss folgt der Quote',
+    450, rga.flaechen.teile.neubau.gf_ug, 0.01);
+
+  /* Im Modus «aus Studie» zählt, was am Objekt steht. */
+  var gs = A.defaultProject();
+  gs.grundstueck.geschosse = 4;
+  gs.teile.neubau.modus = 'studie';
+  gs.teile.neubau.gf_oi = 3000;
+  gs.teile.neubau.faktor_gf = 1.00;
+  var rgs0 = E.compute(gs);
+  pruefe('Studie ohne Angabe: die allgemeine Zahl gilt',
+    4, rgs0.flaechen.teile.neubau.geschosse);
+  pruefe('Studie ohne Angabe: Grundfläche = 3000 ÷ 4',
+    750, rgs0.flaechen.teile.neubau.grundflaeche, 0.01);
+
+  gs.teile.neubau.geschosse = 6;
+  var rgs = E.compute(gs);
+  pruefe('Studie: sechs Geschosse am Objekt zählen',
+    6, rgs.flaechen.teile.neubau.geschosse);
+  pruefe('Studie: Grundfläche = 3000 ÷ 6',
+    500, rgs.flaechen.teile.neubau.grundflaeche, 0.01);
+  pruefe('Das Untergeschoss folgt der kleineren Grundfläche',
+    400, rgs.flaechen.teile.neubau.gf_ug, 0.01);
+  /* Die Kubatur muss die Objektzahl mitnehmen, sonst rechnet sie ein
+     Gebäude mit sechs Geschossen als hätte es vier. */
+  pruefe('Kubatur oberirdisch = 500 × 6 × 3.00 m',
+    9000, rgs.flaechen.teile.neubau.gv_oi, 1);
+
+  /* Das Untergeschoss als Fläche überschreibt die Quote. */
+  gs.teile.neubau.gf_ug_manuell = 820;
+  var rgu = E.compute(gs);
+  pruefe('Untergeschoss direkt schlägt die Quote', 820,
+    rgu.flaechen.teile.neubau.gf_ug, 0.01);
+  pruefe('Die Grundfläche bleibt davon unberührt',
+    500, rgu.flaechen.teile.neubau.grundflaeche, 0.01);
+  pruefe('Das UG-Volumen folgt der eingetragenen Fläche',
+    820 * 3.40, rgu.flaechen.teile.neubau.gv_ug, 1);
+  pruefe('Die Gesamtgeschossfläche zählt das grössere UG mit',
+    3000 + 820, rgu.flaechen.teile.neubau.gf, 0.01);
+
+  /* Null heisst «nicht gesetzt», nicht «null Geschosse» */
+  gs.teile.neubau.geschosse = 0;
+  gs.teile.neubau.gf_ug_manuell = 0;
+  var rg0 = E.compute(gs);
+  pruefe('Null Geschosse heisst: allgemeine Zahl', 4,
+    rg0.flaechen.teile.neubau.geschosse);
+  pruefe('Null Untergeschossfläche heisst: Quote', 600,
+    rg0.flaechen.teile.neubau.gf_ug, 0.01);
+
+  /* Zwei Objekte mit verschiedenen Geschosszahlen nebeneinander */
+  var gz = A.defaultProject();
+  gz.grundstueck.geschosse = 4;
+  gz.teile.neubau.modus = 'studie';
+  gz.teile.neubau.gf_oi = 2400;
+  gz.teile.neubau.geschosse = 6;
+  gz.teile.bestand.aktiv = true;
+  gz.teile.bestand.modus = 'studie';
+  gz.teile.bestand.gf_oi = 1200;
+  gz.teile.bestand.geschosse = 3;
+  var rgz = E.compute(gz);
+  pruefe('Neubau rechnet mit sechs', 400,
+    rgz.flaechen.teile.neubau.grundflaeche, 0.01);
+  pruefe('Bestand rechnet daneben mit drei', 400,
+    rgz.flaechen.teile.bestand.grundflaeche, 0.01);
+  pruefe('Ein älteres Projekt ohne die Felder rechnet wie bisher',
+    562.5, E.compute(A.defaultProject()).flaechen.teile.neubau.grundflaeche, 0.01);
 
   /* ---- Eine Mail lesen -------------------------------------------- */
 

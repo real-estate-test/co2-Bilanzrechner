@@ -171,6 +171,7 @@ window.APP = window.APP || {};
     A.TEILE.forEach(function (T) {
       var t = p.teile[T.id];
       var o = { aktiv: !!t.aktiv, gf_oi: 0, gf_ug: 0, f_aeh: 0, gf: 0, attika: 0,
+                geschosse: geschosse,
                 gv_oi: 0, gv_ug: 0, gv_aeh: 0, gv: 0, nwf: 0,
                 pp: num(t.pp), grundflaeche: 0, nutzungen: {}, zeilen: [],
                 gruppen: { oi_stwe: 0, oi_miete: 0, oi_gewerbe: 0 },
@@ -185,20 +186,35 @@ window.APP = window.APP || {};
           o.agf = o.gf_oi / Math.max(0.01, num(t.faktor_gf));
         }
 
+        /* Aus einer Studie kommt die Geschosszahl des einzelnen Objekts:
+           Der Bestand hat vier Geschosse, der Neubau sechs. Ohne Angabe
+           — und im Modus «aus Ausnutzung», wo sich alles aus der Ziffer
+           ableitet — gilt die allgemeine Zahl. */
+        o.geschosse = (t.modus === 'studie' && num(t.geschosse) > 0)
+          ? Math.max(1, num(t.geschosse))
+          : geschosse;
+
         /* Gebäudegrundfläche = anrechenbare Geschossfläche je Vollgeschoss.
            Bewusst OHNE Attika — der Fussabdruck bemisst sich am Vollgeschoss. */
-        o.grundflaeche = o.agf / geschosse;
+        o.grundflaeche = o.agf / o.geschosse;
         /* Ist die Attika nicht anrechenbar, kommt ihre Fläche zusätzlich
            zur aGF hinzu; andernfalls steckt sie bereits darin. */
         o.attika = g.attika_anrechenbar ? 0 : o.grundflaeche * pct(g.attika_pct);
         o.gf_oi += o.attika;
-        o.gf_ug  = o.grundflaeche * pct(t.ug_quote);
+
+        /* Das Untergeschoss steht in der Studie als Fläche, nicht als
+           Anteil der Grundfläche — eine Einstellhalle reicht oft über
+           den Fussabdruck hinaus, ein Keller bleibt darunter. */
+        o.gf_ug  = (t.modus === 'studie' && num(t.gf_ug_manuell) > 0)
+          ? num(t.gf_ug_manuell)
+          : o.grundflaeche * pct(t.ug_quote);
         o.f_aeh  = o.pp * num(t.flaeche_pro_pp);
         o.gf     = o.gf_oi + o.gf_ug;
         o.nwf    = num(t.nwf_manuell) > 0 ? num(t.nwf_manuell) : o.gf_oi * pct(t.hnf_quote);
 
-        /* Kubaturen: Vollgeschosse zur Regelhöhe, die Attika separat. */
-        var hoehe_oi = geschosse * num(t.h_regel) + (o.attika > 0 ? num(t.h_dach) : 0);
+        /* Kubaturen: Vollgeschosse zur Regelhöhe, die Attika separat.
+           Gerechnet wird mit der Geschosszahl dieses Objekts. */
+        var hoehe_oi = o.geschosse * num(t.h_regel) + (o.attika > 0 ? num(t.h_dach) : 0);
         o.hoehe_oi = hoehe_oi;
         if (t.kubatur_modus === 'volumen') {
           o.gv_oi  = num(t.v_oi);
@@ -208,7 +224,7 @@ window.APP = window.APP || {};
           o.h_ug_ist  = o.gf_ug > 0 ? o.gv_ug / o.gf_ug : 0;
           o.h_aeh_ist = o.f_aeh > 0 ? o.gv_aeh / o.f_aeh : 0;
         } else {
-          o.gv_oi  = o.grundflaeche * geschosse * num(t.h_regel) + o.attika * num(t.h_dach);
+          o.gv_oi  = o.grundflaeche * o.geschosse * num(t.h_regel) + o.attika * num(t.h_dach);
           o.gv_ug  = o.gf_ug * num(t.h_ug);
           o.gv_aeh = o.f_aeh * num(t.h_aeh);
           o.h_oi_ist = hoehe_oi; o.h_ug_ist = num(t.h_ug); o.h_aeh_ist = num(t.h_aeh);

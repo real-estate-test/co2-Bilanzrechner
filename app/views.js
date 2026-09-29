@@ -532,6 +532,24 @@ window.APP = window.APP || {};
 
     var istAgf = p.grundstueck.az_modus === 'agf';
 
+    /* Aus Excel übernehmen: Flächen, Kubaturen und Wohnungsspiegel
+       kommen meist aus der Studie des Architekten. Der Knopf steht
+       oben, weil das der erste Handgriff ist, wenn eine Studie
+       eintrifft — danach wird nur noch nachgebessert. */
+    if (A.importExcel) {
+      out.appendChild(el('div', { class: 'panel noprint' }, [
+        el('div', { class: 'panelbody',
+          style: 'display:flex;gap:12px;align-items:center;flex-wrap:wrap' }, [
+          el('button', { class: 'primary sm schreibend', text: '⤒ Aus Excel übernehmen …',
+            onclick: function () { A.importExcel.dialog(p); } }),
+          el('span', { class: 'hilfe', style: 'flex:1;min-width:240px',
+            text: 'Flächen, Kubaturen und Wohnungsspiegel aus der ausgefüllten ' +
+                  'Vorlage. Was in der Datei steht, wird vor dem Übernehmen ' +
+                  'gegen den jetzigen Stand gestellt.' })
+        ])
+      ]));
+    }
+
     out.appendChild(U.panel('Grundstück', null, [
       U.body([
         U.num(p, 'grundstueck.flaeche', 'Grundstücksfläche', { unit: 'm²', gross: true }),
@@ -618,9 +636,33 @@ window.APP = window.APP || {};
       } else {
         felder.push(U.num(p, pfad + 'gf_oi', 'Geschossfläche oberirdisch', { unit: 'm²', gross: true }));
       }
+      /* Aus einer Studie kommen konkrete Zahlen statt Quoten: Der
+         Architekt weiss, wie viele Geschosse sein Haus hat und wie
+         gross das Untergeschoss wird. Aus der Ausnutzung gerechnet
+         leitet sich beides aus der Ziffer ab — dort stünden die Felder
+         im Widerspruch zur Rechnung. */
+      if (t.modus === 'studie') {
+        felder.push(U.num(p, pfad + 'geschosse', 'Vollgeschosse dieses Objekts',
+          { unit: 'Stk.', dez: 0,
+            hilfe: 'Leer oder 0: Es gilt die allgemeine Zahl aus Grundstück & ' +
+                   'Erwerbskosten.',
+            derive: function (r) {
+              var o = r.flaechen.teile[T.id];
+              return fmt(o.grundflaeche) + ' m² Grundfläche bei ' +
+                     A.fmt(o.geschosse, 0) + ' Geschossen';
+            } }));
+      }
+
       felder.push(U.num(p, pfad + 'ug_quote', 'Untergeschoss', { unit: '% der Grundfläche', dez: 0,
         hilfe: 'Ohne Einstellhalle — die wird über die Parkplätze gerechnet.',
         derive: function (r) { return fmt(r.flaechen.teile[T.id].gf_ug) + ' m² UG'; } }));
+
+      if (t.modus === 'studie') {
+        felder.push(U.num(p, pfad + 'gf_ug_manuell', 'Untergeschoss direkt',
+          { unit: 'm²', gross: true,
+            hilfe: 'Grösser als 0 überschreibt die Quote darüber. Eine ' +
+                   'Einstellhalle reicht oft über den Fussabdruck hinaus.' }));
+      }
       felder.push(U.num(p, pfad + 'hnf_quote', 'Nutzfläche NWF', { unit: '% der GF o.i.', dez: 0,
         derive: function (r) { return fmt(r.flaechen.teile[T.id].nwf) + ' m² NWF'; } }));
       felder.push(U.num(p, pfad + 'nwf_manuell', 'NWF direkt', { unit: 'm²', gross: true, stufe: 'detail',

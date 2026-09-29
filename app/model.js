@@ -2107,6 +2107,21 @@ window.APP = window.APP || {};
       faktor_gf: 1.00,         // Aufschlag GF oberirdisch je m² aGF
       hnf_quote: 78,           // NWF in % der GF oberirdisch
       ug_quote: 80,            // Untergeschoss in % der Gebäudegrundfläche
+
+      /* Aus einer Studie kommen konkrete Zahlen: Der Architekt weiss,
+         wie viele Geschosse sein Haus hat und wie gross das
+         Untergeschoss wird. Beide Felder gelten nur in diesem Modus —
+         aus der Ausnutzung gerechnet leitet sich alles aus der Ziffer
+         ab, und eine abweichende Geschosszahl je Objekt wäre dort ein
+         Widerspruch zur Rechnung, nicht eine Ergänzung.
+
+         0 heisst jeweils «nicht gesetzt»: Dann gilt die allgemeine
+         Geschosszahl aus Grundstück & Erwerbskosten beziehungsweise
+         die Quote darüber. Ein fehlendes Feld in einem älteren Projekt
+         liest sich als 0 — deshalb braucht die Neuerung keine
+         Migration. */
+      geschosse: 0,            // Studie: Vollgeschosse dieses Objekts
+      gf_ug_manuell: 0,        // Studie: Untergeschoss in m² (statt Quote)
       pp: 0,                   // Anzahl Parkplätze
       flaeche_pro_pp: 32,      // m² Einstellhalle je Parkplatz
 

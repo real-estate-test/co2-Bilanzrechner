@@ -65,6 +65,45 @@ Kubaturen wahlweise über Höhen (Regelgeschoss 3.00 m, Attika 3.20 m,
 Untergeschoss und Einstellhalle je 3.40 m) oder als direkt erfasstes Volumen,
 aus dem sich die Höhen ergeben.
 
+**Aus einer Studie** stehen je Objekt zwei weitere Felder bereit: die
+**Vollgeschosse dieses Objekts** und das **Untergeschoss als Fläche**. Beide
+gelten nur in diesem Modus. Aus der Ausnutzung gerechnet leitet sich alles aus
+der Ziffer ab — eine abweichende Geschosszahl je Objekt wäre dort ein
+Widerspruch zur Rechnung, nicht eine Ergänzung. Leer oder 0 heisst «nicht
+gesetzt»: Dann gilt die allgemeine Geschosszahl beziehungsweise die
+UG-Quote. So rechnet ein Projekt, das diese Felder nie gesehen hat,
+unverändert weiter.
+
+Damit lässt sich abbilden, was aus einer Studie tatsächlich kommt: Der Bestand
+hat drei Geschosse, der Neubau sechs, und die Einstellhalle reicht mit 850 m²
+über den Fussabdruck hinaus.
+
+**Excel-Import** Der Knopf *Aus Excel übernehmen* liest eine ausgefüllte
+Vorlage (`vorlagen/projektrechner-vorlage.xlsx`) mit drei Blättern: **Flächen**
+je Objekt, **Kubaturen** je Objekt und **Wohnungsspiegel** je Wohnung. Gedacht
+ist sie für den Architekten: Er bekommt die Datei, füllt sie aus, gibt sie
+zurück — und es wird nichts mehr von Hand übertragen.
+
+Vor dem Übernehmen steht eine **Vorschau**: je Feld der bisherige neben dem
+neuen Wert, nach Objekt gruppiert. Unveränderte Werte tauchen nicht auf, sonst
+verdeckten zwanzig gleiche die zwei, auf die es ankommt. Sichtbar sind dort
+auch die Nebenwirkungen — dass ein Objekt auf *aus Studie* umgestellt oder
+aktiviert wird, denn die eingelesenen Flächen wirken sonst nicht. Ein
+Wohnungsspiegel wird als Ganzes ersetzt, nicht zeilenweise abgeglichen, und
+das braucht bei vorhandenen Wohnungen eine ausdrückliche Bestätigung.
+
+**Eine leere Zelle heisst «weiss ich nicht»** und lässt den vorhandenen Wert
+stehen. Ohne diese Regel löschte eine halb ausgefüllte Vorlage die halbe
+Rechnung.
+
+Gelesen wird `.xlsx` **ohne Fremdbibliothek**: Eine Excel-Datei ist ein
+ZIP-Archiv mit XML darin, und beides kann der Browser von sich aus
+(`DecompressionStream`, `DOMParser`). Eine Tabellenbibliothek wöge mehrere
+hundert Kilobyte und könnte weit mehr, als hier je gebraucht wird. Formeln
+werden nicht gerechnet — Excel legt zu jeder Formel den zuletzt berechneten
+Wert mit ab, und den lesen wir; deshalb steht in der Anleitung, dass die Datei
+aus Excel heraus zu speichern ist.
+
 **Formeln in Zahlenfeldern** Jedes Zahlenfeld nimmt statt einer Zahl auch eine Rechnung
 entgegen — `2500*0.9`, `(120+80)*3`, `1'250+250`. Ein führendes `=` ist erlaubt, aber nicht
 nötig. Beim Hineinklicken erscheint die Formel, beim Verlassen das Ergebnis; eine kleine
@@ -832,12 +871,15 @@ app/portfolio.js      Portfolio, Tracking, Archivieren, Import und Export
 app/protokoll.js      Sitzungsprotokolle, Aufgaben in vier Ansichten
 app/meineaufgaben.js  Sammelordner über alle Projekte, Kalenderabzug
 app/posteingang.js    Mails aufnehmen und zu Aufgaben machen
+app/xlsx.js           Excel-Dateien lesen (ZIP und XML, ohne Fremdbibliothek)
+app/import-excel.js   Excel-Import: auswerten, Vorschau, übernehmen
 app/baurecht.js       Baurecht-Check: geltendes Baurecht je Grundstück
 app/termine.js        Terminplan: Gantt mit Abhängigkeiten, Meilensteine
 app/admin.js          Verwaltung, Änderungsverlauf, Anmerkungen
 app/main.js           Zustand, Navigation, Kennzahlenleiste, Rollen
 db/schema.sql         Tabellen, Rechteregeln, Auslöser
 db/update-*.sql       Nachträge für bereits laufende Datenbanken
+vorlagen/             Excel-Vorlage für den Architekten
 tests/engine.html     Selbsttest des Rechenkerns
 ```
 

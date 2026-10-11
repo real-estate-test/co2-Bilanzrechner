@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Projektrechner · Selbsttest Excel-Vorlage</title>
+<style>
+  body { font-family: system-ui, sans-serif; background: #f4f6f8; color: #10151c; padding: 24px; font-size: 14px; }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  p.sub { color: #6b7484; margin-bottom: 18px; max-width: 760px; line-height: 1.5; }
+  table { border-collapse: collapse; width: 100%; max-width: 1000px; background: #fff;
+          border: 1px solid #e2e6ec; border-radius: 7px; overflow: hidden; }
+  th, td { padding: 7px 11px; border-bottom: 1px solid #eef1f5; text-align: left; vertical-align: top; }
+  th { background: #fafbfc; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: #6b7484; }
+  .ok { color: #0d7a45; font-weight: 600; }
+  .no { color: #c02e26; font-weight: 600; }
+  tr.no td { background: #fdf0ef; }
+  #summe { margin: 16px 0; padding: 11px 14px; border-radius: 7px; font-weight: 600; max-width: 1000px; }
+  code { font-family: ui-monospace, monospace; font-size: 12px; background: #f0f2f5; padding: 1px 4px; border-radius: 3px; }
+</style>
+</head>
+<body>
+<h1>Selbsttest Excel-Vorlage</h1>
+<p class="sub">
+  Prüft, ob <code>vorlagen/projektrechner-vorlage.xlsx</code> und der Import in
+  <code>app/import-excel.js</code> dieselben Spalten kennen. Weicht eine
+  Überschrift ab, findet der Import die Spalte nicht mehr und übergeht sie
+  <strong>stillschweigend</strong> — die Zahl fehlt dann im Projekt, ohne dass
+  jemand eine Meldung sieht. Genau das ist mit der Spalte «Nr.» einmal passiert.
+  Die Vorlage entsteht aus <code>vorlagen/vorlage-bauen.py</code>; wer dort eine
+  Überschrift ändert, muss sie auch in <code>import-excel.js</code> ändern.
+</p>
+<div id="summe">wird geprüft …</div>
+<table><thead><tr>
+  <th>Prüfung</th><th>Erwartet</th><th>Gefunden</th><th>Ergebnis</th>
+</tr></thead><tbody id="tb"></tbody></table>
+
+<script src="../app/model.js"></script>
+<script src="../app/engine.js"></script>
+<script src="../app/ui.js"></script>
+<script src="../app/xlsx.js"></script>
+<script src="../app/import-excel.js"></script>
+<script>
+(function () {
+  var A = window.APP, tb = document.getElementById('tb');
+  var gut = 0, schlecht = 0;
+
+  function zeile(name, erwartet, gefunden, ok) {
+    ok ? gut++ : schlecht++;
+    var tr = document.createElement('tr');
+    if (!ok) tr.className = 'no';
+    tr.innerHTML = '<td>' + name + '</td>' +
+      '<td>' + A.escape(String(erwartet)) + '</td>' +
+      '<td>' + A.escape(String(gefunden)) + '</td>' +
+      '<td class="' + (ok ? 'ok' : 'no') + '">' + (ok ? 'bestanden' : 'ABWEICHUNG') + '</td>';
+    tb.appendChild(tr);
+  }
+
+  function fertig() {
+    var box = document.getElementById('summe');
+    box.textContent = gut + ' von ' + (gut + schlecht) + ' Prüfungen bestanden' +
+      (schlecht ? ' — ' + schlecht + ' Abweichung(en)' : '');
+    box.style.background = schlecht ? '#fdf0ef' : '#edf7f1';
+    box.style.color = schlecht ? '#8c2b23' : '#0d5c34';
+  }
+
+  fetch('../vorlagen/projektrechner-vorlage.xlsx')
+    .then(function (a) {
+      if (!a.ok) throw new Error('Die Vorlage wurde nicht gefunden (HTTP ' + a.status + ').');
+      return a.blob();
+    })
+    .then(function (blob) {
+      return A.xlsx.lesen(new File([blob], 'vorlage.xlsx'));
+    })
+    .then(function (mappe) {
+      var namen = mappe.blaetter.map(function (b) { return b.name; });
+      zeile('Die Vorlage lässt sich lesen', 'mindestens 1 Blatt',
+        namen.length + ' Blätter: ' + namen.join(', '), namen.length > 0);
+
+      Object.keys(A.importExcel.SPALTEN).forEach(function (blattName) {
+        var erwartet = A.importExcel.SPALTEN[blattName];
+        var blatt = mappe.blaetter.find(function (b) { return b.name === blattName; });
+
+        if (!blatt) {
+          zeile('Blatt «' + blattName + '»', 'vorhanden', 'FEHLT', false);
+          return;
+        }
+
+        var kopf = A.xlsx.kopfFinden(blatt.zeilen, erwartet);
+        if (!kopf) {
+          zeile('Kopfzeile in «' + blattName + '»', 'gefunden',
+            'nicht gefunden', false);
+          return;
+        }
+
+        /* Jede Spalte, die der Import erwartet, muss in der Vorlage
+           stehen — sonst liest er sie nie. */
+        var fehlend = erwartet.filter(function (s) {
+          return kopf.spalten[s] === undefined;
+        });
+        zeile('Spalten in «' + blattName + '»', erwartet.join(' · '),
+          fehlend.length ? 'es fehlen: ' + fehlend.join(', ')
+                         : 'alle ' + erwartet.length + ' vorhanden',
+          fehlend.length === 0);
+
+        /* Und umgekehrt: Eine Spalte in der Vorlage, die der Import
+           nicht kennt, füllt der Architekt umsonst aus. */
+        var inVorlage = (blatt.zeilen[kopf.zeile] || []).map(function (x) {
+          return String(x == null ? '' : x).trim();
+        }).filter(Boolean);
+        var unbekannt = inVorlage.filter(function (s) {
+          return erwartet.indexOf(s) < 0;
+        });
+        zeile('Keine unbeachtete Spalte in «' + blattName + '»', 'keine',
+          unbekannt.length ? unbekannt.join(', ') : 'keine',
+          unbekannt.length === 0);
+      });
+
+      /* Jedes Objekt, das die Rechnung kennt, muss in der Vorlage eine
+         Zeile haben — sonst kann der Architekt es nicht ausfüllen.
+
+         Geprüft wird nur, ob sie vorhanden sind. Unter der Tabelle
+         stehen Hinweistexte in derselben Spalte; die übergeht der
+         Import, weil sie keinem Objektnamen entsprechen, und hier
+         dürfen sie ebenso wenig stören. */
+      ['Flächen', 'Kubaturen'].forEach(function (blattName) {
+        var bl = mappe.blaetter.find(function (b) { return b.name === blattName; });
+        if (!bl) return;
+        var kopf = A.xlsx.kopfFinden(bl.zeilen, A.importExcel.SPALTEN[blattName]);
+        if (!kopf) return;
+
+        var gefunden = {};
+        for (var i = kopf.zeile + 1; i < bl.zeilen.length; i++) {
+          var w = A.xlsx.text((bl.zeilen[i] || [])[kopf.spalten['Objekt']]).toLowerCase();
+          if (w) gefunden[w] = true;
+        }
+
+        var bekannt = A.TEILE.map(function (t) { return t.id; });
+        var fehlend = bekannt.filter(function (id) { return !gefunden[id]; });
+        zeile('Objektzeilen in «' + blattName + '»', bekannt.join(', '),
+          fehlend.length ? 'es fehlen: ' + fehlend.join(', ')
+                         : 'alle ' + bekannt.length + ' vorhanden',
+          fehlend.length === 0);
+      });
+    })
+    .catch(function (f) {
+      zeile('Vorlage prüfen', 'lesbar', f.message, false);
+    })
+    .then(fertig);
+})();
+</script>
+</body>
+</html>

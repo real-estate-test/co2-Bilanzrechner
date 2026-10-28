@@ -135,6 +135,34 @@ und Marge; ein Klick öffnet das Projekt. Status- und Gefässfilter gelten mit. 
 steht dieselbe Karte mit festem Ausschnitt über alle Projekte. Kachelquelle und Adresssuche
 sind in `app/config.js` einstellbar, falls die Nutzung einen bezahlten Anbieter verlangt.
 
+**Drei Wege zum Standort.** Die Adresssuche trifft nicht jede Parzelle — ein
+Grundstück ohne Hausnummer, eine Strasse, die zwei Gemeinden kennt, ein Feld
+am Ortsrand. Deshalb steht unter Projekt & Phasen neben der Suche:
+
+**Einfügen.** Ein Feld nimmt Koordinaten aus der Zwischenablage. Verstanden
+wird das Zahlenpaar `47.3769, 8.5417` — was Google Maps beim Rechtsklick →
+«Koordinaten kopieren» ablegt — und die Google-Maps-Adresse aus der
+Browserzeile. Ausgewertet wird beim Einfügen, ohne weiteren Knopfdruck.
+
+Eine Google-Adresse trägt die Koordinaten an zwei Stellen: hinter `@` die
+Mitte des Kartenausschnitts, in den Daten dahinter als `!3d/!4d` den Ort
+selbst. Wer eine Parzelle anklickt und die Adresse kopiert, meint den Ort —
+der Ausschnitt ist oft um einige Meter versetzt. Deshalb gilt `!3d/!4d`
+zuerst, und das Feld sagt hinterher, welche der beiden es genommen hat.
+Kurzadressen (`maps.app.goo.gl`) tragen keine Koordinaten in sich; der Fall
+wird benannt statt stillschweigend abgewiesen.
+
+**Auf der Karte platzieren.** Unter den Feldern steht eine Karte: Hineinklicken
+setzt den Standort, der Marker lässt sich ziehen. Das ist der genaueste Weg.
+Die Karte wird dabei **nicht neu gezeichnet** — sie verschiebt nur ihren
+Marker. Ein Neuaufbau risse sie unter dem Mauszeiger weg und setzte den
+Ausschnitt zurück, mitten im Zielen. Aus demselben Grund zieht auch ein
+Treffer aus der Adresssuche nur den Marker nach.
+
+Unmögliche Werte werden abgewiesen statt übernommen: eine Breite über 90 Grad
+gibt es nicht, und 0/0 liegt im Atlantik — das ist fast immer ein leeres Feld,
+kein Standort.
+
 **Zahlungsmodalitäten** Der Zahlungsplan beim Verkauf von Stockwerkeigentum lässt sich in
 der Verwaltung firmenweit vorgeben. Die Fälligkeiten unterscheiden drei Arten: **Vertragstermine je Einheit** (bei Beurkundung,
 3 Tage nach Tagebucheintrag, bei Übergabe), **Bautermine aus dem Modell** (Baustart, Rohbau

@@ -602,6 +602,29 @@ tr.brachtung:hover td { background: #fbe4e2; }
 tr.brentfaellt.brachtung td:first-child { border-left-color: var(--neg); }
 
 /* ---------------------------------------------------------------
+   Standort: Koordinaten einfügen und auf der Karte platzieren
+   --------------------------------------------------------------- */
+.geoeinfuegen {
+  width: 100%; max-width: 560px; font-size: 12.5px; font-family: var(--sans);
+  border: 1.5px dashed var(--line2); border-radius: 6px; padding: 8px 11px;
+}
+.geoeinfuegen:focus {
+  outline: none; border-color: var(--accent); border-style: solid;
+  box-shadow: 0 0 0 2px var(--accent2);
+}
+
+/* Die Karte zum Zielen. Der Fadenkreuz-Zeiger sagt, dass ein Klick
+   hier etwas setzt — sonst hielte man sie für eine blosse Anzeige. */
+.platzkarte {
+  width: 100%; margin-top: 12px; border: 1px solid var(--line2);
+  border-radius: 7px; overflow: hidden; cursor: crosshair;
+}
+.platzkarte .leaflet-marker-icon { cursor: grab; }
+.platzkarte .leaflet-dragging .leaflet-marker-icon { cursor: grabbing; }
+
+@media print { .platzkarte, .geoeinfuegen { display: none !important; } }
+
+/* ---------------------------------------------------------------
    Excel-Import
    --------------------------------------------------------------- */
 .xlablage {

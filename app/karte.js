@@ -54,6 +54,80 @@ window.APP = window.APP || {};
   };
 
   /* ---------------------------------------------------------------
+     Koordinaten aus eingefügtem Text
+
+     Die Adresssuche trifft nicht jede Parzelle. Schneller geht es oft
+     über Google Maps: Rechtsklick auf die Stelle, «Koordinaten
+     kopieren» — oder gleich die Adresszeile des Browsers hierher.
+
+     Verstanden werden zwei Formen. Die blosse Zahlenpaarung
+     «47.3769, 8.5417» ist das, was die Zwischenablage nach dem
+     Rechtsklick enthält. Eine Google-Maps-Adresse trägt die
+     Koordinaten an mehreren Stellen; welche gilt, steht unten.
+     --------------------------------------------------------------- */
+
+  function gueltig(lat, lon) {
+    return isFinite(lat) && isFinite(lon) &&
+           Math.abs(lat) <= 90 && Math.abs(lon) <= 180 &&
+           !(lat === 0 && lon === 0);
+  }
+
+  K.koordinatenLesen = function (roh) {
+    var s = String(roh == null ? '' : roh).trim();
+    if (!s) return null;
+
+    /* Kurzadressen tragen keine Koordinaten in sich — sie verweisen
+       nur auf einen Eintrag bei Google. Auflösen liesse sich das nur
+       mit einem Aufruf dorthin, den der Browser aus Sicherheitsgründen
+       ohnehin abweist. Statt es zu versuchen und zu scheitern, wird
+       der Fall benannt. */
+    if (/maps\.app\.goo\.gl|goo\.gl\/maps/i.test(s)) {
+      return { kurz: true };
+    }
+
+    var m;
+
+    if (/google\.[a-z.]+\/maps|maps\.google\./i.test(s)) {
+      /* In einer Google-Maps-Adresse stehen bis zu zwei Koordinaten:
+         hinter «@» der Mittelpunkt des Kartenausschnitts, in den
+         Daten dahinter als !3d/!4d der Ort selbst. Wer eine Parzelle
+         anklickt und die Adresse kopiert, meint den Ort — und der
+         Ausschnitt ist oft um einige Meter versetzt. Deshalb zuerst
+         !3d/!4d. */
+      m = s.match(/!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/);
+      if (m && gueltig(+m[1], +m[2])) {
+        return { lat: +m[1], lon: +m[2], quelle: 'Google Maps (Ort)' };
+      }
+      m = s.match(/[?&](?:q|ll|daddr|saddr)=(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)/i);
+      if (m && gueltig(+m[1], +m[2])) {
+        return { lat: +m[1], lon: +m[2], quelle: 'Google Maps' };
+      }
+      m = s.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/);
+      if (m && gueltig(+m[1], +m[2])) {
+        return { lat: +m[1], lon: +m[2], quelle: 'Google Maps (Kartenmitte)' };
+      }
+      return null;
+    }
+
+    /* Ein blosses Zahlenpaar: Komma, Strichpunkt oder Leerzeichen
+       dazwischen. Die Breite steht zuerst — so legt es Google in die
+       Zwischenablage, und so steht es auf jeder Karte. */
+    m = s.match(/^\s*(-?\d{1,3}(?:[.,]\d+)?)\s*[,;\s]\s*(-?\d{1,3}(?:[.,]\d+)?)\s*$/);
+    if (m) {
+      /* Dezimalkomma ist möglich, aber nur wenn es nicht zugleich der
+         Trenner ist — «47,3769 8,5417» geht, «47,3769, 8,5417» wäre
+         nicht eindeutig und fällt oben schon durch. */
+      var lat = parseFloat(m[1].replace(',', '.'));
+      var lon = parseFloat(m[2].replace(',', '.'));
+      if (gueltig(lat, lon)) {
+        return { lat: lat, lon: lon, quelle: 'eingefügt' };
+      }
+    }
+
+    return null;
+  };
+
+  /* ---------------------------------------------------------------
      Adresssuche. Nominatim liefert mehrere Treffer — die Auswahl
      trifft der Anwender, weil Adressen mehrdeutig sind.
      --------------------------------------------------------------- */
@@ -96,6 +170,80 @@ window.APP = window.APP || {};
      --------------------------------------------------------------- */
 
   K.verfuegbar = function () { return typeof window.L !== 'undefined'; };
+
+  /* ---------------------------------------------------------------
+     Karte zum Platzieren
+
+     Eine Karte für ein einzelnes Projekt: Klick setzt den Punkt, der
+     Marker lässt sich ziehen. Für die Fälle, in denen die Adresssuche
+     danebenliegt — eine Parzelle am Ortsrand, ein Grundstück ohne
+     Hausnummer, eine Strasse, die zwei Gemeinden kennt.
+
+     «setzen» wird bei jeder Änderung mit (lat, lon, wie) gerufen. Die
+     Karte zeichnet sich dabei NICHT neu, sondern verschiebt nur ihren
+     Marker: Ein Neuaufbau risse sie unter dem Mauszeiger weg und
+     setzte den Ausschnitt zurück — mitten im Zielen.
+     --------------------------------------------------------------- */
+
+  K.platzieren = function (p, setzen, opts) {
+    opts = opts || {};
+    var el = A.ui.el;
+
+    if (!K.verfuegbar()) {
+      return A.ui.hinweis('warn', 'Die Kartenbibliothek konnte nicht geladen werden. ' +
+        'Die Datei <code>vendor/leaflet/leaflet.js</code> fehlt oder wurde blockiert.');
+    }
+
+    var knoten = el('div', { class: 'platzkarte',
+      style: 'height:' + (opts.hoehe || 260) + 'px' });
+
+    /* Nach aussen gegeben, damit Einfügefeld und Zahlenfelder den
+       Marker nachziehen können, ohne die Karte neu zu bauen. */
+    var steuer = { karte: null, marke: null, setzeMarke: function () {} };
+    knoten.steuer = steuer;
+
+    setTimeout(function () {
+      if (!knoten.isConnected) return;
+
+      var hat = K.hatStandort(p);
+      /* Ohne Standort ein Ausschnitt, der die Schweiz zeigt. Von dort
+         findet man sich zurecht; eine Weltkarte wäre zum Zielen
+         unbrauchbar. */
+      var mitte = hat ? [p.geo.lat, p.geo.lon] : [46.85, 8.23];
+
+      var m = window.L.map(knoten, { attributionControl: true });
+      steuer.karte = m;
+      window.L.tileLayer(K.kachelAdresse(), {
+        maxZoom: 19, attribution: K.kachelHinweis()
+      }).addTo(m);
+      m.setView(mitte, hat ? 16 : 7);
+
+      function marke(lat, lon) {
+        if (steuer.marke) { steuer.marke.setLatLng([lat, lon]); return; }
+        steuer.marke = window.L.marker([lat, lon], { draggable: true }).addTo(m);
+        steuer.marke.on('dragend', function () {
+          var q = steuer.marke.getLatLng();
+          setzen(q.lat, q.lng, 'auf der Karte verschoben');
+        });
+      }
+
+      steuer.setzeMarke = function (lat, lon, hinziehen) {
+        marke(lat, lon);
+        if (hinziehen) m.setView([lat, lon], Math.max(m.getZoom(), 16));
+      };
+
+      if (hat) marke(p.geo.lat, p.geo.lon);
+
+      m.on('click', function (e) {
+        marke(e.latlng.lat, e.latlng.lng);
+        setzen(e.latlng.lat, e.latlng.lng, 'auf der Karte gesetzt');
+      });
+
+      setTimeout(function () { m.invalidateSize(); }, 60);
+    }, 0);
+
+    return knoten;
+  };
 
   /* eintraege: [{ p, r }] wie im Portfolio */
   K.bauen = function (eintraege, opts) {

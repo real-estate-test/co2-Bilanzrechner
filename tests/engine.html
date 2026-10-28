@@ -1265,6 +1265,62 @@
   pruefe('Ein Beleg im Projekt-JSON bleibt unter 200 Zeichen',
     true, JSON.stringify(A.baurechtBilder(bb, 'gst_zone')[0]).length < 200);
 
+  /* ---- Koordinaten aus eingefügtem Text --------------------------- */
+  var KL = A.karte.koordinatenLesen;
+
+  /* Was Google beim Rechtsklick → «Koordinaten kopieren» ablegt */
+  var k1 = KL('47.3769, 8.5417');
+  pruefe('Zahlenpaar: Breite', 47.3769, k1.lat, 0.00001);
+  pruefe('Zahlenpaar: Länge', 8.5417, k1.lon, 0.00001);
+  pruefe('Auch mit Leerzeichen statt Komma', 47.3769, KL('47.3769 8.5417').lat, 0.00001);
+  pruefe('Auch mit Strichpunkt', 8.5417, KL('47.3769; 8.5417').lon, 0.00001);
+  pruefe('Führende und folgende Leerzeichen stören nicht',
+    47.3769, KL('  47.3769,8.5417  ').lat, 0.00001);
+  pruefe('Dezimalkomma bei Leerzeichen-Trennung',
+    47.3769, KL('47,3769 8,5417').lat, 0.00001);
+  pruefe('Negative Werte für Süd und West', -33.8688, KL('-33.8688, 151.2093').lat, 0.00001);
+
+  /* Google-Maps-Adressen. In einer Ortsadresse stehen zwei
+     Koordinatenpaare: hinter «@» die Kartenmitte, als !3d/!4d der Ort.
+     Gemeint ist der Ort — die Kartenmitte ist oft versetzt. */
+  var k2 = KL('https://www.google.com/maps/place/Bahnhofstrasse+1,+8001+Z%C3%BCrich/' +
+              '@47.3700,8.5390,17z/data=!3m1!4b1!4m5!3m4!1s0x0:0x0!8m2!3d47.3769!4d8.5417');
+  pruefe('Aus der Ortsadresse gilt der Ort, nicht die Kartenmitte',
+    47.3769, k2.lat, 0.00001);
+  pruefe('Und dessen Länge', 8.5417, k2.lon, 0.00001);
+  pruefe('Die Quelle wird benannt', true, k2.quelle.indexOf('Ort') > 0);
+
+  var k3 = KL('https://www.google.com/maps/@47.3769,8.5417,17z');
+  pruefe('Ohne Ortsdaten gilt die Kartenmitte', 47.3769, k3.lat, 0.00001);
+  pruefe('Und das wird gesagt', true, k3.quelle.indexOf('Kartenmitte') > 0);
+
+  pruefe('Adresse mit ?q=', 47.3769,
+    KL('https://www.google.com/maps?q=47.3769,8.5417').lat, 0.00001);
+  pruefe('Adresse mit &ll=', 8.5417,
+    KL('https://maps.google.com/maps?hl=de&ll=47.3769,8.5417&z=16').lon, 0.00001);
+
+  /* Eine Kurzadresse trägt keine Koordinaten — das muss gesagt
+     werden, statt sie stillschweigend abzuweisen. */
+  var k4 = KL('https://maps.app.goo.gl/AbCdEfGh123');
+  pruefe('Kurzadresse wird als solche erkannt', true, !!(k4 && k4.kurz));
+  pruefe('Und liefert keine Koordinaten', true, k4.lat === undefined);
+
+  /* Was keine Koordinaten sind, gibt null — nicht geratene Zahlen. */
+  pruefe('Leerer Text ergibt null', true, KL('') === null);
+  pruefe('Ein Ortsname ergibt null', true, KL('Zürich') === null);
+  pruefe('Eine einzelne Zahl ergibt null', true, KL('47.3769') === null);
+  pruefe('Drei Zahlen ergeben null', true, KL('47.3769, 8.5417, 123') === null);
+  pruefe('Eine Google-Adresse ohne Koordinaten ergibt null',
+    true, KL('https://www.google.com/maps/search/Baustelle') === null);
+
+  /* Unmögliche Werte werden abgewiesen, nicht übernommen: Eine Breite
+     über 90 Grad gibt es nicht, und 0/0 liegt im Atlantik — das ist
+     fast immer ein leeres Feld, kein Standort. */
+  pruefe('Breite über 90 wird abgewiesen', true, KL('91.0, 8.5') === null);
+  pruefe('Länge über 180 wird abgewiesen', true, KL('47.0, 181.0') === null);
+  pruefe('Null/Null wird abgewiesen', true, KL('0, 0') === null);
+  pruefe('Aber 0 in nur einer Achse geht', true, KL('0.0, 8.5417') !== null);
+
   /* ---- Excel: Zellen und Köpfe ------------------------------------ */
   var X = A.xlsx;
 

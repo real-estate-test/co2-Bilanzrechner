@@ -410,52 +410,157 @@ window.APP = window.APP || {};
     var koerper = el('div', { class: 'panelbody' });
     var treffer = el('div', { style: 'margin-top:10px' });
 
+    /* Die Karte wird einmal gebaut und bleibt stehen. Jedes
+       Neuzeichnen setzte sonst den Ausschnitt zurück — mitten im
+       Zielen, und genau dann, wenn man gerade einen Punkt gesetzt
+       hat. Nachgeführt wird nur der Marker. */
+    var kartenblock = null;
+    var latFeld = null, lonFeld = null, marke = null;
+
+    /* Alle Anzeigen auf einen neuen Standort nachführen, ohne die
+       Seite neu zu bauen. */
+    function uebernehmen(lat, lon, wie, hinziehen) {
+      p.geo.lat = lat;
+      p.geo.lon = lon;
+      p.geo.bezeichnung = wie || 'von Hand';
+      A.markDirty();
+      if (latFeld) latFeld.value = A.fmt(lat, 6);
+      if (lonFeld) lonFeld.value = A.fmt(lon, 6);
+      if (marke) {
+        marke.textContent = 'auf der Karte';
+        marke.className = 'tag pos';
+      }
+      if (herkunft) {
+        herkunft.textContent = 'Standort: ' + p.geo.bezeichnung;
+        herkunft.hidden = false;
+      }
+      if (kartenblock && kartenblock.steuer) {
+        kartenblock.steuer.setzeMarke(lat, lon, hinziehen);
+      }
+    }
+
+    var herkunft = el('div', { class: 'muted', style: 'font-size:11.5px;margin-top:6px' });
+
     function stand() {
       U.leeren(koerper);
       var hat = p.geo.lat && p.geo.lon;
+
+      latFeld = el('input', { type: 'text', inputmode: 'decimal',
+        value: hat ? A.fmt(p.geo.lat, 6) : '', placeholder: '47.391' });
+      latFeld.addEventListener('input', function () {
+        p.geo.lat = U.parseZahl(latFeld.value);
+        p.geo.bezeichnung = 'von Hand';
+        A.markDirty();
+        if (kartenblock && kartenblock.steuer && p.geo.lat && p.geo.lon) {
+          kartenblock.steuer.setzeMarke(p.geo.lat, p.geo.lon, false);
+        }
+      });
+
+      lonFeld = el('input', { type: 'text', inputmode: 'decimal',
+        value: hat ? A.fmt(p.geo.lon, 6) : '', placeholder: '8.045' });
+      lonFeld.addEventListener('input', function () {
+        p.geo.lon = U.parseZahl(lonFeld.value);
+        p.geo.bezeichnung = 'von Hand';
+        A.markDirty();
+        if (kartenblock && kartenblock.steuer && p.geo.lat && p.geo.lon) {
+          kartenblock.steuer.setzeMarke(p.geo.lat, p.geo.lon, false);
+        }
+      });
+
+      marke = el('span', { class: 'tag ' + (hat ? 'pos' : ''),
+        text: hat ? 'auf der Karte' : 'nicht auf der Karte' });
+
       koerper.appendChild(el('div', {
         style: 'display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap' }, [
         el('div', { class: 'f', style: 'margin:0;min-width:150px' }, [
           el('label', {}, [el('span', { text: 'Breite' })]),
-          el('div', { class: 'inp' }, [(function () {
-            var i = el('input', { type: 'text', inputmode: 'decimal',
-              value: hat ? A.fmt(p.geo.lat, 6) : '', placeholder: '47.391' });
-            i.addEventListener('input', function () {
-              p.geo.lat = U.parseZahl(i.value); p.geo.bezeichnung = 'von Hand';
-              A.markDirty();
-            });
-            return i;
-          })()])
+          el('div', { class: 'inp' }, [latFeld])
         ]),
         el('div', { class: 'f', style: 'margin:0;min-width:150px' }, [
           el('label', {}, [el('span', { text: 'Länge' })]),
-          el('div', { class: 'inp' }, [(function () {
-            var i = el('input', { type: 'text', inputmode: 'decimal',
-              value: hat ? A.fmt(p.geo.lon, 6) : '', placeholder: '8.045' });
-            i.addEventListener('input', function () {
-              p.geo.lon = U.parseZahl(i.value); p.geo.bezeichnung = 'von Hand';
-              A.markDirty();
-            });
-            return i;
-          })()])
+          el('div', { class: 'inp' }, [lonFeld])
         ]),
         el('button', { class: 'schreibend', text: 'Koordinaten suchen', onclick: suchen }),
         hat ? el('button', { class: 'ghost sm', text: 'Standort löschen', onclick: function () {
           p.geo = { lat: 0, lon: 0, bezeichnung: '', gesucht: '' };
           A.markDirty(); A.render();
         } }) : null,
-        el('span', { class: 'tag ' + (hat ? 'pos' : ''),
-          text: hat ? 'auf der Karte' : 'nicht auf der Karte' })
+        marke
       ]));
-      if (p.geo.bezeichnung) {
-        koerper.appendChild(el('div', { class: 'muted', style: 'font-size:11.5px;margin-top:6px',
-          text: 'Gefunden als: ' + p.geo.bezeichnung }));
-      }
+
+      herkunft.textContent = p.geo.bezeichnung ? 'Standort: ' + p.geo.bezeichnung : '';
+      herkunft.hidden = !p.geo.bezeichnung;
+      koerper.appendChild(herkunft);
+
+      koerper.appendChild(einfuegefeld());
       koerper.appendChild(treffer);
+
+      /* Die Karte entsteht beim ersten Aufbau und wird danach nur noch
+         eingehängt — ein zweites L.map() auf demselben Knoten bricht ab. */
+      if (A.karte && A.karte.verfuegbar()) {
+        if (!kartenblock) {
+          kartenblock = A.karte.platzieren(p, function (lat, lon, wie) {
+            uebernehmen(lat, lon, wie, false);
+          });
+        }
+        koerper.appendChild(kartenblock);
+        koerper.appendChild(el('div', { class: 'hilfe', style: 'margin-top:6px',
+          text: 'In die Karte klicken setzt den Standort; der Marker lässt sich ziehen. ' +
+                'Das ist der genaueste Weg, wenn die Adresssuche die Parzelle nicht trifft.' }));
+      }
+
       koerper.appendChild(el('div', { class: 'hilfe', style: 'margin-top:8px',
-        text: 'Gesucht wird über Ort und Kanton bei Nominatim (OpenStreetMap) — für ' +
-              'Schweizer und deutsche Adressen. Die Suche läuft nur auf Knopfdruck; das ' +
-              'Ergebnis bleibt im Projekt gespeichert.' }));
+        text: 'Die Adresssuche läuft über Ort und Kanton bei Nominatim (OpenStreetMap) ' +
+              'und nur auf Knopfdruck; das Ergebnis bleibt im Projekt gespeichert.' }));
+    }
+
+    /* --- Koordinaten einfügen ----------------------------------- */
+    function einfuegefeld() {
+      var feld = el('input', { type: 'text', class: 'geoeinfuegen',
+        placeholder: 'Koordinaten oder Google-Maps-Adresse einfügen (Strg+V)' });
+
+      function lesen(text, still) {
+        var k = A.karte.koordinatenLesen(text);
+        if (!k) {
+          if (!still) {
+            A.meldung('warn', 'Daraus liessen sich keine Koordinaten lesen. ' +
+              'Erwartet wird «47.3769, 8.5417» oder eine Google-Maps-Adresse.');
+          }
+          return false;
+        }
+        if (k.kurz) {
+          A.meldung('warn', 'Diese Kurzadresse (maps.app.goo.gl) enthält keine ' +
+            'Koordinaten. Bitte in Google Maps öffnen und dann die lange Adresse ' +
+            'aus der Browserzeile einfügen — oder rechtsklicken und ' +
+            '«Koordinaten kopieren».');
+          return false;
+        }
+        uebernehmen(k.lat, k.lon, k.quelle, true);
+        feld.value = '';
+        A.meldung('ok', 'Standort übernommen: ' + A.fmt(k.lat, 6) + ', ' + A.fmt(k.lon, 6) +
+          ' (' + k.quelle + ').');
+        return true;
+      }
+
+      /* Beim Einfügen sofort auswerten — der Text ist ohnehin
+         vollständig, und ein zusätzlicher Knopfdruck wäre nur ein
+         Handgriff mehr. */
+      feld.addEventListener('paste', function (ev) {
+        var text = ev.clipboardData && ev.clipboardData.getData('text/plain');
+        if (!text) return;
+        ev.preventDefault();
+        lesen(text);
+      });
+      feld.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Enter') { ev.preventDefault(); lesen(feld.value); }
+      });
+
+      return el('div', { style: 'margin-top:10px' }, [
+        feld,
+        el('div', { class: 'hilfe', style: 'margin-top:4px',
+          text: 'In Google Maps auf die Stelle rechtsklicken und «Koordinaten kopieren» — ' +
+                'oder die Adresszeile des Browsers hierher kopieren.' })
+      ]);
     }
 
     function suchen() {
@@ -478,8 +583,12 @@ window.APP = window.APP || {};
           treffer.appendChild(el('button', { class: 'sm', style: 'display:block;text-align:left;' +
             'margin-bottom:4px;max-width:100%;white-space:normal', text: t.bezeichnung,
             onclick: function () {
-              p.geo = { lat: t.lat, lon: t.lon, bezeichnung: t.bezeichnung, gesucht: text };
-              A.markDirty(); A.render();
+              /* Nicht neu zeichnen: Das baute die Karte neu auf und
+                 setzte ihren Ausschnitt zurück. Der Treffer zieht
+                 stattdessen den Marker dorthin. */
+              p.geo.gesucht = text;
+              uebernehmen(t.lat, t.lon, t.bezeichnung, true);
+              U.leeren(treffer);
               A.meldung('ok', 'Standort übernommen — das Projekt erscheint jetzt auf der Karte.');
             } }));
         });

@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Projektrechner · Selbsttest Formeleingabe</title>
+<style>
+  body { font-family: system-ui, sans-serif; background: #f4f6f8; color: #10151c; padding: 24px; font-size: 14px; }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  p.sub { color: #6b7484; margin-bottom: 18px; }
+  table { border-collapse: collapse; width: 100%; max-width: 820px; background: #fff;
+          border: 1px solid #e2e6ec; border-radius: 7px; overflow: hidden; }
+  th, td { padding: 7px 11px; border-bottom: 1px solid #eef1f5; text-align: left; }
+  th { background: #fafbfc; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: #6b7484; }
+  td.m { font-family: ui-monospace, monospace; }
+  .ok { color: #0d7a45; font-weight: 600; }
+  .no { color: #c02e26; font-weight: 600; }
+  tr.no td { background: #fdf0ef; }
+  #summe { margin: 16px 0; padding: 11px 14px; border-radius: 7px; font-weight: 600; max-width: 820px; }
+</style>
+</head>
+<body>
+<h1>Selbsttest Formeleingabe</h1>
+<p class="sub">Prüft den Formelparser der Zahlenfelder — + − * / und Klammern, ohne <code>eval</code>.</p>
+<div id="summe"></div>
+<table><thead><tr>
+  <th>Eingabe</th><th>erwartet</th><th>berechnet</th><th>gemerkte Formel</th><th>Ergebnis</th>
+</tr></thead><tbody id="tb"></tbody></table>
+
+<script src="../app/model.js"></script>
+<script src="../app/ui.js"></script>
+<script>
+(function () {
+  var U = window.APP.ui, tb = document.getElementById('tb');
+  var gut = 0, schlecht = 0;
+
+  function zeile(eingabe, erwartet, berechnet, formel, ok) {
+    gut += ok ? 1 : 0; schlecht += ok ? 0 : 1;
+    var tr = document.createElement('tr');
+    if (!ok) tr.className = 'no';
+    tr.innerHTML = '<td class="m">' + (eingabe === '' ? '<i>leer</i>' : eingabe.replace(/</g, '&lt;')) + '</td>' +
+      '<td class="m">' + erwartet + '</td><td class="m">' + berechnet + '</td>' +
+      '<td class="m">' + (formel || '—') + '</td>' +
+      '<td class="' + (ok ? 'ok' : 'no') + '">' + (ok ? 'bestanden' : 'ABWEICHUNG') + '</td>';
+    tb.appendChild(tr);
+  }
+
+  /* Gültige Eingaben: Wert und die Frage, ob sie als Formel gemerkt wird.
+     Eine reine Zahl ist keine Formel. */
+  [
+    ['2500',        2500,    ''],
+    ['2500*0.9',    2250,    '2500*0.9'],
+    ['=2500*0.9',   2250,    '=2500*0.9'],
+    ["1'250+250",   1500,    "1'250+250"],
+    ['1,5*2',       3,       '1,5*2'],
+    ['(120+80)*3',  600,     '(120+80)*3'],
+    ['100/4',       25,      '100/4'],
+    ['-500',        -500,    ''],
+    ['10-2-3',      5,       '10-2-3'],
+    ['100/2/5',     10,      '100/2/5'],
+    ['2+3*4',       14,      '2+3*4'],
+    ['(2+3)*4',     20,      '(2+3)*4'],
+    ['-(2+3)*4',    -20,     '-(2+3)*4'],
+    ['3400/4*0.6',  510,     '3400/4*0.6'],
+    ['2500 * 0.9',  2250,    '2500 * 0.9'],
+    ['2++3',        5,       '2++3'],
+    ['--3',         3,       '--3'],
+    /* Leerzeichen gelten wie Hochkommata als Tausendertrennung */
+    ['1 250 000',   1250000, ''],
+    ['',            0,       ''],
+    ['   ',         0,       '']
+  ].forEach(function (f) {
+    var e = U.formelWert(f[0]);
+    var ok = e.ok && Math.abs(e.wert - f[1]) < 1e-9 && e.formel === f[2];
+    zeile(f[0], f[1], e.ok ? e.wert : '(' + e.fehler + ')', e.formel, ok);
+  });
+
+  /* Ungültige Eingaben müssen erkannt werden — der Aufrufer behält dann
+     den letzten guten Wert, statt auf null zu fallen. */
+  ['2500*', '*5', '(2+3', '2**3', 'abc', '2/0', '=)(', '1..5', ')', '()', '2)(3', '5%']
+    .forEach(function (t) {
+      var e = U.formelWert(t);
+      zeile(t, 'Fehler', e.ok ? e.wert : '(' + e.fehler + ')', '', !e.ok);
+    });
+
+  var s = document.getElementById('summe');
+  s.textContent = schlecht === 0
+    ? gut + ' von ' + gut + ' Prüfungen bestanden'
+    : (gut + ' von ' + (gut + schlecht) + ' Prüfungen bestanden — ' + schlecht + ' Abweichung(en)');
+  s.style.background = schlecht === 0 ? '#e6f4ec' : '#fdf0ef';
+  s.style.color = schlecht === 0 ? '#0d7a45' : '#c02e26';
+})();
+</script>
+</body>
+</html>
